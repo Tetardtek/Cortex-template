@@ -1,0 +1,33 @@
+# workflows/brain-engine.yml — Workflow Brain Engine
+# Usage : bash scripts/workflow-launch.sh workflows/brain-engine.yml [--step N]
+# TODO : définir la feature BE-X cible avant lancement — ne pas lancer en l'état
+
+name: brain-engine
+status: draft
+note: "À renseigner — définir la feature BE-X cible avant lancement"
+branch: theme/brain-engine
+pilote: ~   # renseigné au lancement
+
+chain:
+
+  - step: 1
+    type: code
+    scope: brain-engine/
+    story_angle: "# TODO : définir — feature BE-X non spécifiée"
+
+  - step: 2
+    type: test
+    scope: brain-engine/
+    story_angle: "# TODO : définir — tests à écrire après step 1 spécifié"
+    gate: 0-failures
+
+  - step: 3
+    type: brain-write
+    scope: brain-engine/README.md
+    story_angle: "# TODO : définir — documentation à préciser"
+
+  - step: 4
+    type: deploy
+    scope: vps/
+    story_angle: "# TODO : définir — scope deploy à préciser"
+    gate: human

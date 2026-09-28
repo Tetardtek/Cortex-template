@@ -1,0 +1,21 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+mcp[cli]>=1.0.0,<2          # mcp 2.x renomme FastMCP (mcp_server.py) — gel : requirements-gel.txt
+PyYAML>=6.0
+umap-learn>=0.5.6
+numpy>=1.26.0
+# Backend Dolt — `db.py` s'en sert dès que BRAIN_DB_BACKEND=dolt.
+# Absent de ce fichier jusqu'au 05/09 : un fork qui installait les dépendances
+# et choisissait Dolt tombait sur un ImportError. Trouvé en écrivant le README
+# du template.
+PyMySQL>=1.1.0
+
+# Le CORE de Myéline (`core`) — ses dépendances sont ci-dessus (pymysql, numpy).
+#
+#   Dans un fork (le gabarit) : il est LIVRÉ dans `brain-engine/core/`, copié par
+#   la synchro au moment de la publication — rien à installer, et sa version est
+#   celle du gabarit.
+#   Dans le brain d'origine : il s'installe en éditable depuis son dépôt,
+#       .venv/bin/pip install -e <chemin du dépôt myeline>
+#   Un `-e` ICI figerait un chemin de machine dans un fichier que les forks
+#   recopient.

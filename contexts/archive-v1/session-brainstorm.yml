@@ -1,0 +1,51 @@
+# session-brainstorm.yml — Contexte BHP pour sessions de brainstorm
+# Trigger : "brain boot mode brainstorm[/<project>]"
+# Cible : ~22% contexte max au boot
+
+session_type: brainstorm
+description: "Session d'idéation — explorer, challenger, structurer avant de coder"
+tier_required: free   # agents fondamentaux — disponible pour tous les tiers
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~8%) — tier free
+L1:
+  - now.md                          # bridge session précédente — fils ouverts
+  - focus.md                        # direction actuelle
+  - todo/README.md                  # index intentions (warm — todo/brain.md sur demande)
+  - agents/coach-boot.md            # boot-summary — challenger les idées (free)
+  - wiki/patterns.md                # patterns connus pour ne pas réinventer
+
+# L1_pro — coach complet pour brainstorm architectural profond
+L1_pro:
+  - agents/coach.md                 # coach complet byTask — challenger + gate décisions
+
+# L2 — Project scope (~8%) — optionnel si brainstorm sur un projet spécifique
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+    - "todo/brain.md"               # 1932 lignes — on demand uniquement, pas au boot
+    - "wiki/concepts.md"
+  fallback: null
+
+# L3 — On demand
+# Exemples : wiki/* détaillé, autres projets pour cross-pollination,
+#            agents/game-designer.md, agents/doc.md
+L3:
+  hint: "Charger à la demande : wiki détaillé, cross-project, agents spécialisés idéation"
+
+# --- Règle brainstorm-before-build ---
+# Ce manifest applique le pattern : identifier 2-3 décisions structurelles AVANT de coder.
+# wiki/patterns.md en L1 pour que ce réflexe soit présent dès le boot.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~12%"
+  L2: "~8%"
+  total_boot: "~22%"

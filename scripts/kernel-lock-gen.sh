@@ -1,0 +1,83 @@
+#!/bin/bash
+# brain-distribuable: oui
+# kernel-lock-gen.sh — Génère kernel.lock
+# Checksums SHA-256 de tous les fichiers zone:kernel trackés
+# Usage : bash scripts/kernel-lock-gen.sh
+
+set -euo pipefail
+
+BRAIN_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+LOCK_FILE="$BRAIN_ROOT/kernel.lock"
+
+# Extraire la version depuis brain-compose.yml
+VERSION=$(grep '^version:' "$BRAIN_ROOT/brain-compose.yml" | head -1 | sed 's/version: "//;s/"//' || true)
+GENERATED_AT=$(date +%Y-%m-%dT%H:%M)
+
+# --- Écriture du header ---
+cat > "$LOCK_FILE" << EOF
+# kernel.lock — généré automatiquement
+# Ne pas éditer manuellement.
+# Régénérer : bash scripts/kernel-lock-gen.sh
+# Vérifier  : bash scripts/kernel-isolation-check.sh
+
+kernel_version: "$VERSION"
+generated_at: "$GENERATED_AT"
+
+files:
+EOF
+
+# --- Fichiers kernel racine ---
+KERNEL_ROOT_FILES=(
+  "KERNEL.md"
+  "brain-compose.yml"
+  "brain-constitution.md"
+)
+
+for f in "${KERNEL_ROOT_FILES[@]}"; do
+  if [ -f "$BRAIN_ROOT/$f" ]; then
+    hash=$(sha256sum "$BRAIN_ROOT/$f" | cut -d' ' -f1)
+    echo "  $f: $hash" >> "$LOCK_FILE"
+  fi
+done
+
+# --- Les fichiers SUIVIS par git, pas ceux du disque —, 26/09 ---
+#
+# `find` parcourait le disque : il embarquait des fichiers IGNORES par git
+# (la distribution Ventoy decompressee, `scripts/ventoy/ventoy-*/` dans
+# .gitignore). Le lock dependait donc de la machine qui le generait — le
+# checkout principal y mettait neuf scripts Ventoy, un worktree propre les
+# retirait. L'en-tete disait deja « fichiers zone:kernel trackés ».
+suivis() {   # suivis <pathspec>... → chemins absolus, tries, separes par \0
+  git -C "$BRAIN_ROOT" ls-files -- "$@" | sort \
+    | while IFS= read -r rel; do
+        [ -f "$BRAIN_ROOT/$rel" ] && printf '%s\0' "$BRAIN_ROOT/$rel"
+      done
+}
+
+# --- agents/ (hors reviews/) ---
+while IFS= read -r -d '' f; do
+  case "$f" in */reviews/*|*/_template*) continue ;; esac
+  rel="${f#$BRAIN_ROOT/}"
+  hash=$(sha256sum "$f" | cut -d' ' -f1)
+  echo "  $rel: $hash" >> "$LOCK_FILE"
+done < <(suivis 'agents/*.md')
+
+# --- scripts/ ---
+#
+# Les scripts qui declarent `# brain-rattachement: ponctuel` sont EXCLUS. Ce
+# sont ceux que rien ne rattache au brain : outils de jeu, interventions infra
+# d'un jour, bricoles de poste. Mesure le 04/09 — 15 des 73 scripts n'etaient
+# cites par aucun agent, aucun contexte, aucun cron, aucun service.
+#
+# CE QU'ON PERD, et il faut le dire : leur integrite n'est plus verifiee. Un
+# `wow-dbc-dump.py` modifie ne fera plus rougir le controle. C'est le prix
+# assume pour que la derive du NOYAU redevienne lisible — avant, toucher a son
+# lanceur d'un projet declarait le noyau derive.
+while IFS= read -r -d '' f; do
+  head -12 "$f" | grep -qE '^#\s*brain-rattachement:\s*ponctuel\b' && continue
+  rel="${f#$BRAIN_ROOT/}"
+  hash=$(sha256sum "$f" | cut -d' ' -f1)
+  echo "  $rel: $hash" >> "$LOCK_FILE"
+done < <(suivis 'scripts/*.sh' 'scripts/*.py')
+
+echo "✅ kernel.lock généré — version $VERSION ($(grep -c ': [a-f0-9]\{64\}' "$LOCK_FILE") fichiers)"

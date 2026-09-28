@@ -1,0 +1,761 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# brain-engine.sh — CLI unifiée pour le lifecycle brain-engine
+#
+# @workflow: brain-engine
+# @description: Lifecycle du brain-engine (start, embed, status, stop)
+# @trigger: manuel
+# @steps: start server → embed one-shot → status check → stop
+# @args: start=Demarrer le serveur (background)|stop=Arreter proprement|status=PID, port, mode, uptime|embed=Embedding one-shot
+#
+# Usage :
+#   brain-engine start [--fg]     Démarrer le moteur ET le serveur MCP (--fg = foreground)
+#   brain-engine stop             Arrêter proprement ce que CE brain a lancé
+#   brain-engine status           PID, port, mode, uptime
+#   brain-engine embed            Lancer un embedding one-shot
+#   brain-engine logs             Tail des logs (journald ou fichier)
+#   brain-engine install pm2      Installer via pm2 (restart on crash)
+#   brain-engine install systemd  Unités systemd UTILISATEUR (survit au reboot, sans sudo)
+#
+# Le mode (dev/prod/demo) est lu depuis BRAIN_MODE env var
+# ou détecté depuis brain-compose.local.yml.
+#
+# Graduation :
+#   Manuel  → brain-engine start        (je lance quand j'en ai besoin)
+#   pm2     → brain-engine install pm2   (restart on crash, pas au reboot)
+#   systemd → brain-engine install systemd (survit au reboot, logs journald)
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"  # python3 = celui du venv brain-engine
+
+set -euo pipefail
+
+BRAIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ENGINE_DIR="$BRAIN_ROOT/brain-engine"
+
+# Les ports déclarés dans `brain-engine/.env.local` — comme `db.py` les lit.
+# `dolt-setup.sh` y écrit BRAIN_DOLT_PORT quand il n'est pas 3307 ; ce script ne
+# lisait que l'environnement, et lançait alors Dolt sur 3307 pendant que `db.py`
+# cherchait la base sur l'autre port (relecture du 28/09). L'environnement
+# garde la priorité, comme dans `db.py`.
+for _var in BRAIN_DOLT_PORT BRAIN_PORT BRAIN_MCP_PORT; do
+  if [[ -z "${!_var:-}" && -f "$ENGINE_DIR/.env.local" ]]; then
+    _val=$(grep -sE "^${_var}=" "$ENGINE_DIR/.env.local" | tail -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
+    [[ -n "$_val" ]] && export "$_var=$_val"
+  fi
+done
+unset _var _val
+SERVER="$ENGINE_DIR/server.py"
+PID_FILE="$BRAIN_ROOT/.brain-engine.pid"
+LOG_FILE="$BRAIN_ROOT/brain-engine.log"
+MCP_SERVER="$ENGINE_DIR/mcp_server.py"
+MCP_PID_FILE="$BRAIN_ROOT/.brain-mcp.pid"
+MCP_LOG_FILE="$BRAIN_ROOT/brain-mcp.log"
+MCP_PORT="${BRAIN_MCP_PORT:-7701}"
+
+# ── Couleurs ─────────────────────────────────────────────────────────────────
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+ok()   { echo -e "${GREEN}✅ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+err()  { echo -e "${RED}❌ $1${NC}" >&2; }
+info() { echo -e "   $1"; }
+
+# ── Détection mode ───────────────────────────────────────────────────────────
+detect_mode() {
+  # 1. Env var explicite
+  if [[ -n "${BRAIN_MODE:-}" ]]; then
+    echo "$BRAIN_MODE"
+    return
+  fi
+
+  # 2. brain-compose.local.yml
+  local local_yml="$BRAIN_ROOT/brain-compose.local.yml"
+  if [[ -f "$local_yml" ]]; then
+    local mode
+    mode=$(grep '^  *mode:' "$local_yml" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' || true)
+    if [[ -n "$mode" ]]; then
+      echo "$mode"
+      return
+    fi
+  fi
+
+  # 3. Défaut
+  echo "dev"
+}
+
+# ── Détection port ───────────────────────────────────────────────────────────
+detect_port() {
+  echo "${BRAIN_PORT:-7700}"
+}
+
+# ── Prérequis ────────────────────────────────────────────────────────────────
+check_prereqs() {
+  if [[ ! -f "$SERVER" ]]; then
+    err "brain-engine/server.py introuvable ($SERVER)"
+    exit 1
+  fi
+  if ! command -v python3 &>/dev/null; then
+    err "python3 non trouvé"
+    exit 1
+  fi
+  if ! python3 -c "import fastapi, uvicorn" 2>/dev/null; then
+    err "Dépendances manquantes — pip3 install -r $ENGINE_DIR/requirements.txt"
+    exit 1
+  fi
+}
+
+# ── PID helpers ──────────────────────────────────────────────────────────────
+#
+# Deux questions distinctes, deux fonctions :
+#
+#   get_pid      ce que `start` a lancé — SON fichier de PID, rien d'autre.
+#                C'est la seule chose que `stop` arrête.
+#   pid_en_cours un moteur de CE brain tourne-t-il, lancé par qui que ce soit
+#                (systemd, pm2, un terminal) ? Sert à ne pas en lancer un second.
+#
+# L'ancien repli de `get_pid` — `pgrep -f "python3.*brain-engine/server.py"` —
+# attrapait le moteur de N'IMPORTE QUEL brain de la machine, et `stop` l'aurait
+# tué : le 27/09, un essai de fork l'a appelé à côté de la prod, qui n'a survécu
+# que parce qu'elle tourne en `.venv/bin/python`. Le chercher par chemin absolu
+# ne suffit pas : il trouverait alors À COUP SÛR le moteur de ce brain géré par
+# systemd, et `stop` l'arrêterait proprement — un arrêt que `Restart=on-failure`
+# ne relance pas.
+# Un fichier de PID ne vaut que si le processus est ENCORE le nôtre : après un
+# redémarrage, le numéro peut désigner n'importe quel processus de l'utilisateur,
+# et `kill -0` seul ferait tuer un inconnu par `stop` (relecture du 28/09).
+#   pid_du_fichier <fichier> <motif> [<dossier courant attendu>]
+pid_du_fichier() {
+  local f="$1" motif="$2" cwd="${3:-}" pid
+  [[ -f "$f" ]] || return 0
+  pid=$(cat "$f" 2>/dev/null || true)
+  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null \
+      && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qF -- "$motif" \
+      && { [[ -z "$cwd" ]] || [[ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null)" == "$(readlink -f "$cwd")" ]]; }; then
+    echo "$pid"
+    return 0
+  fi
+  rm -f "$f"
+}
+
+get_pid() {
+  pid_du_fichier "$PID_FILE" "$SERVER"
+}
+
+pid_en_cours() {
+  local pid
+  pid=$(get_pid)
+  [[ -n "$pid" ]] && { echo "$pid"; return; }
+  pgrep -f -- " $SERVER\$" 2>/dev/null | head -1 || true
+}
+
+# Un port local qui répond déjà — un service (dolt-server.service, une unité
+# utilisateur) ou une autre instance. On ne lance pas un second serveur dessus.
+port_servi() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+# QUI répond sur ce port : le PID à l'écoute (vide si invisible — un autre
+# utilisateur, root). Un port qui répond n'est pas un port à NOUS : un second
+# brain sur la machine se serait branché sur la base et le MCP de l'autre, en
+# annonçant « réutilisé » (relecture du 28/09).
+pid_a_l_ecoute() {
+  ss -ltnpH "( sport = :$1 )" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2 || true
+}
+
+ligne_de() {
+  tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null || true
+}
+
+is_running() {
+  [[ -n "$(pid_en_cours)" ]]
+}
+
+# ── Commandes ────────────────────────────────────────────────────────────────
+
+DOLT_DIR="${BRAIN_ROOT}/brain-dolt"
+DOLT_PORT="${BRAIN_DOLT_PORT:-3307}"
+DOLT_PID_FILE="${BRAIN_ROOT}/.dolt-server.pid"
+DOLT_LOG_FILE="${BRAIN_ROOT}/brain-engine/dolt-server.log"
+
+start_dolt_server() {
+  # Vérifie le backend dans .env.local
+  local backend
+  # Le défaut est `dolt`, comme dans db.py. `|| echo …` ne rattrapait
+  # rien : dans `$(grep | cut)`, c'est `cut` qui répond, et il réussit sur une
+  # entrée vide — le backend valait "" quand la ligne manquait.
+  backend=$(grep -s '^BRAIN_DB_BACKEND=' "${BRAIN_ROOT}/brain-engine/.env.local" | cut -d= -f2)
+  backend="${backend:-dolt}"
+  if [[ "$backend" != "dolt" ]]; then
+    return 0  # pas de dolt sql-server nécessaire
+  fi
+
+  if [[ ! -d "$DOLT_DIR" ]]; then
+    warn "brain-dolt/ absent — dolt sql-server non démarré"
+    return 0
+  fi
+
+  # Déjà en cours ?
+  local deja
+  deja=$(pid_du_fichier "$DOLT_PID_FILE" "sql-server" "$DOLT_DIR")
+  if [[ -n "$deja" ]]; then
+    info "dolt sql-server : déjà en cours (PID $deja)"
+    return 0
+  fi
+  # Déjà servi — par dolt-server.service, que `dolt-setup.sh` pose sur ce port
+  #. Mais seulement si c'est la base de CE brain : le serveur qui
+  # écoute doit tourner dans `brain-dolt/` d'ici.
+  if port_servi "$DOLT_PORT"; then
+    local p
+    p=$(pid_a_l_ecoute "$DOLT_PORT")
+    if [[ -n "$p" && "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" == "$(readlink -f "$DOLT_DIR")" ]]; then
+      info "dolt : le port $DOLT_PORT sert déjà la base de ce brain (PID $p) — réutilisé"
+      return 0
+    fi
+    err "le port $DOLT_PORT répond, mais pas avec la base de ce brain ($DOLT_DIR)"
+    info "  servi par : ${p:+PID $p — $(readlink -f "/proc/$p/cwd" 2>/dev/null)}${p:-un processus invisible depuis ce compte}"
+    info "  un autre brain ? choisir un port : BRAIN_DOLT_PORT=<port> dans brain-engine/.env.local"
+    return 1
+  fi
+
+  cd "$DOLT_DIR"
+  dolt sql-server -P "$DOLT_PORT" --host 127.0.0.1 >> "$DOLT_LOG_FILE" 2>&1 &
+  local pid=$!
+  echo "$pid" > "$DOLT_PID_FILE"
+  sleep 1
+
+  if kill -0 "$pid" 2>/dev/null; then
+    ok "dolt sql-server démarré (PID $pid, port $DOLT_PORT)"
+  else
+    warn "dolt sql-server n'a pas démarré — voir $DOLT_LOG_FILE"
+    rm -f "$DOLT_PID_FILE"
+  fi
+  cd "$BRAIN_ROOT"
+}
+
+stop_dolt_server() {
+  local pid
+  pid=$(pid_du_fichier "$DOLT_PID_FILE" "sql-server" "$DOLT_DIR")
+  if [[ -n "$pid" ]]; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    ok "dolt sql-server arrêté (PID $pid)"
+  fi
+  rm -f "$DOLT_PID_FILE"
+}
+
+# ── Le serveur MCP — l'interface de Claude Code ─────────────────────────────
+# Rien ne le lançait dans un fork : la doc disait d'ajouter une URL que personne
+# ne servait.
+start_mcp() {
+  local env_prefix="${1:-}"
+  [[ -f "$MCP_SERVER" ]] || return 0
+  local deja
+  deja=$(pid_du_fichier "$MCP_PID_FILE" "$MCP_SERVER")
+  if [[ -n "$deja" ]]; then
+    info "mcp : déjà en cours (PID $deja)"
+    return 0
+  fi
+  if port_servi "$MCP_PORT"; then
+    local p
+    p=$(pid_a_l_ecoute "$MCP_PORT")
+    if [[ -n "$p" ]] && ligne_de "$p" | grep -qF -- "$MCP_SERVER"; then
+      info "mcp : le serveur MCP de ce brain répond déjà (PID $p)"
+    else
+      warn "mcp : le port $MCP_PORT est tenu par un AUTRE processus — MCP de ce brain non lancé"
+      info "  ${p:+$(ligne_de "$p")}${p:-processus invisible depuis ce compte} — choisir BRAIN_MCP_PORT=<port>"
+    fi
+    return 0
+  fi
+  eval "${env_prefix}BRAIN_MCP_PORT=$MCP_PORT exec python3 '$MCP_SERVER'" >> "$MCP_LOG_FILE" 2>&1 &
+  local pid=$!
+  echo "$pid" > "$MCP_PID_FILE"
+  sleep 1
+  if kill -0 "$pid" 2>/dev/null; then
+    ok "serveur MCP démarré (PID $pid) — http://127.0.0.1:$MCP_PORT/mcp"
+  else
+    warn "le serveur MCP n'a pas démarré — voir $MCP_LOG_FILE"
+    rm -f "$MCP_PID_FILE"
+  fi
+}
+
+stop_mcp() {
+  local pid
+  pid=$(pid_du_fichier "$MCP_PID_FILE" "$MCP_SERVER")
+  if [[ -n "$pid" ]]; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    ok "serveur MCP arrêté (PID $pid)"
+  fi
+  rm -f "$MCP_PID_FILE"
+}
+
+cmd_start() {
+  local fg=false
+  [[ "${1:-}" == "--fg" ]] && fg=true
+
+  check_prereqs
+
+  if is_running; then
+    warn "brain-engine déjà en cours (PID $(pid_en_cours))"
+    return 0
+  fi
+
+  # Démarrer dolt sql-server si backend=dolt — et refuser de démarrer le moteur
+  # sur la base d'un autre brain.
+  start_dolt_server || exit 1
+
+  local mode port
+  mode=$(detect_mode)
+  port=$(detect_port)
+
+  echo "▶ brain-engine start"
+  info "mode : $mode"
+  info "port : $port"
+  info "root : $BRAIN_ROOT"
+
+  # Charger MYSECRETS si disponible et mode != demo
+  local env_prefix=""
+  local secrets_path="${BRAIN_ROOT}/brain-secrets/MYSECRETS"
+  if [[ "$mode" != "demo" && -f "$secrets_path" ]]; then
+    env_prefix="set -a && source '$secrets_path' && set +a && "
+    info "secrets : chargés"
+  elif [[ "$mode" == "demo" ]]; then
+    info "secrets : non requis (demo)"
+  else
+    info "secrets : absents (fonctionnement dégradé)"
+  fi
+
+  start_mcp "$env_prefix"
+
+  if $fg; then
+    info "mode foreground — Ctrl+C pour arrêter"
+    echo ""
+    eval "${env_prefix}BRAIN_MODE=$mode BRAIN_PORT=$port python3 '$SERVER'"
+  else
+    # `exec` : le processus en arrière-plan DOIT être python lui-même. Sans lui,
+    # `$!` était le sous-shell de l'`eval`, le fichier de PID le désignait, et
+    # `stop` tuait ce sous-shell en laissant le serveur tourner.
+    eval "${env_prefix}BRAIN_MODE=$mode BRAIN_PORT=$port exec python3 '$SERVER'" \
+      >> "$LOG_FILE" 2>&1 &
+    local pid=$!
+    echo "$pid" > "$PID_FILE"
+    sleep 1
+
+    if kill -0 "$pid" 2>/dev/null; then
+      ok "brain-engine démarré (PID $pid, port $port)"
+      info "logs : tail -f $LOG_FILE"
+    else
+      err "brain-engine a crashé au démarrage — voir $LOG_FILE"
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+  fi
+}
+
+cmd_stop() {
+  local pid
+  pid=$(get_pid)
+
+  if [[ -z "$pid" ]]; then
+    local autre
+    autre=$(pid_en_cours)
+    if [[ -n "$autre" ]]; then
+      info "brain-engine tourne (PID $autre), mais pas lancé par ce script — non arrêté"
+      info "  systemd : systemctl --user stop brain-engine · pm2 : pm2 stop brain-engine"
+    else
+      info "brain-engine n'est pas en cours"
+    fi
+    stop_mcp
+    stop_dolt_server
+    return 0
+  fi
+
+  echo "▶ brain-engine stop (PID $pid)"
+  kill "$pid" 2>/dev/null || true
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [[ $i -lt 10 ]]; do
+    sleep 0.5
+    # `((i++))` rend 1 quand i vaut 0 : sous `set -e`, `stop` mourait après le
+    # premier `kill`, laissant le fichier de PID, le MCP et Dolt.
+    i=$((i + 1))
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    warn "kill -9 (arrêt forcé)"
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+
+  rm -f "$PID_FILE"
+  ok "brain-engine arrêté"
+
+  # Ce que `start` a lancé avec lui — par leurs fichiers de PID, jamais par motif
+  stop_mcp
+  stop_dolt_server
+}
+
+cmd_status() {
+  local pid mode port
+  pid=$(pid_en_cours)
+  mode=$(detect_mode)
+  port=$(detect_port)
+
+  echo "▶ brain-engine status"
+  info "mode : $mode"
+  info "port : $port"
+  info "root : $BRAIN_ROOT"
+
+  if [[ -z "$pid" ]]; then
+    # Vérifier systemd
+    if systemctl --user is-active --quiet brain-engine 2>/dev/null; then
+      info "pid  : $(systemctl --user show brain-engine --property=MainPID --value)"
+      info "via  : systemd"
+      ok "en cours (systemd)"
+      return 0
+    fi
+    # Vérifier pm2
+    if command -v pm2 &>/dev/null && pm2 describe brain-engine &>/dev/null 2>&1; then
+      local pm2_status
+      pm2_status=$(pm2 describe brain-engine 2>/dev/null | grep status | awk '{print $4}')
+      info "via  : pm2 ($pm2_status)"
+      if [[ "$pm2_status" == "online" ]]; then
+        ok "en cours (pm2)"
+      else
+        warn "pm2 status: $pm2_status"
+      fi
+      return 0
+    fi
+    warn "arrêté"
+    return 1
+  fi
+
+  # Uptime
+  local uptime_s
+  uptime_s=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ' || echo "?")
+  if [[ "$uptime_s" =~ ^[0-9]+$ ]]; then
+    local h=$((uptime_s / 3600))
+    local m=$(((uptime_s % 3600) / 60))
+    info "pid  : $pid"
+    info "up   : ${h}h ${m}m"
+  else
+    info "pid  : $pid"
+  fi
+
+  # Health check
+  if curl -sf "http://localhost:$port/health" &>/dev/null; then
+    ok "en cours — /health OK"
+  else
+    warn "process actif mais /health ne répond pas"
+  fi
+  if port_servi "$MCP_PORT"; then
+    info "mcp  : http://127.0.0.1:$MCP_PORT/mcp"
+  else
+    warn "mcp  : le port $MCP_PORT ne répond pas"
+  fi
+}
+
+cmd_embed() {
+  local mode
+  mode=$(detect_mode)
+
+  if [[ "$mode" == "demo" ]]; then
+    warn "embed désactivé en mode demo"
+    return 0
+  fi
+
+  check_prereqs
+
+  echo "▶ brain-engine embed (one-shot)"
+
+  if ! command -v ollama &>/dev/null; then
+    err "ollama non trouvé — requis pour l'embedding"
+    exit 1
+  fi
+
+  local embed_script="$ENGINE_DIR/embed.py"
+  if [[ ! -f "$embed_script" ]]; then
+    err "brain-engine/embed.py introuvable"
+    exit 1
+  fi
+
+  cd "$BRAIN_ROOT"
+  BRAIN_MODE="$mode" python3 "$embed_script"
+  ok "embedding terminé"
+}
+
+cmd_logs() {
+  # systemd ?
+  if systemctl --user is-active --quiet brain-engine 2>/dev/null; then
+    info "source: journald"
+    journalctl --user -u brain-engine -f --no-hostname
+    return
+  fi
+
+  # pm2 ?
+  if command -v pm2 &>/dev/null && pm2 describe brain-engine &>/dev/null 2>&1; then
+    info "source: pm2"
+    pm2 logs brain-engine
+    return
+  fi
+
+  # fichier
+  if [[ -f "$LOG_FILE" ]]; then
+    info "source: $LOG_FILE"
+    tail -f "$LOG_FILE"
+  else
+    warn "aucun log trouvé"
+  fi
+}
+
+cmd_install() {
+  local target="${1:-}"
+
+  case "$target" in
+    pm2)
+      cmd_install_pm2
+      ;;
+    systemd)
+      cmd_install_systemd
+      ;;
+    *)
+      echo "Usage : brain-engine install <pm2|systemd>"
+      echo ""
+      echo "  pm2     — restart on crash (pas au reboot)"
+      echo "  systemd — survit au reboot, logs journald"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_install_pm2() {
+  if ! command -v pm2 &>/dev/null; then
+    err "pm2 non trouvé — npm install -g pm2"
+    exit 1
+  fi
+
+  check_prereqs
+
+  local mode port
+  mode=$(detect_mode)
+  port=$(detect_port)
+
+  # Générer ecosystem.config.js template-ready
+  # Le python du venv, comme `lib/python.sh` : celui du système n'a pas les
+  # dépendances quand le setup les installe dans le venv.
+  local PY_VENV="$ENGINE_DIR/.venv/bin/python3"
+  [[ -x "$PY_VENV" ]] || PY_VENV=$(command -v python3)
+  local eco="$BRAIN_ROOT/ecosystem.config.js"
+  cat > "$eco" << JSEOF
+// ecosystem.config.js — généré par brain-engine.sh
+// Usage : pm2 start ecosystem.config.js
+
+const fs   = require('fs')
+const path = require('path')
+
+function loadSecrets() {
+  const p = path.join(__dirname, 'brain-secrets', 'MYSECRETS')
+  if (!fs.existsSync(p)) return {}
+  return Object.fromEntries(
+    fs.readFileSync(p, 'utf8')
+      .split('\\n')
+      .filter(l => l && !l.startsWith('#') && l.includes('='))
+      .map(l => {
+        const idx = l.indexOf('=')
+        return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()]
+      })
+  )
+}
+
+const secrets = loadSecrets()
+
+module.exports = {
+  apps: [
+    {
+      name: 'brain-engine',
+      script: 'brain-engine/server.py',
+      interpreter: '${PY_VENV}',
+      cwd: __dirname,
+      env: {
+        ...secrets,
+        BRAIN_MODE: '${mode}',
+        BRAIN_PORT: '${port}',
+      },
+      watch: false,
+      autorestart: true,
+    },
+  ],
+}
+JSEOF
+
+  # Arrêter l'instance manuelle si elle tourne
+  if is_running; then
+    info "Arrêt de l'instance manuelle..."
+    cmd_stop
+  fi
+
+  pm2 start "$eco"
+  pm2 save
+  ok "brain-engine installé via pm2 (mode: $mode, port: $port)"
+  info "pm2 logs brain-engine — pour voir les logs"
+  info "pm2 stop brain-engine — pour arrêter"
+  info "Prochaine étape : brain-engine install systemd (quand tu es prêt)"
+}
+
+cmd_install_systemd() {
+  # Des unités UTILISATEUR, comme dolt-server.service : ni sudo, ni unité
+  # système. L'ancienne version écrivait /etc/systemd/system/brain-engine.service
+  # avec `/usr/bin/python3` (sans les dépendances du venv) et un `ExecStartPre`
+  # qui tuait (`fuser -k`) tout ce qui tenait le port.
+  command -v systemctl >/dev/null 2>&1 || { err "systemctl absent — rester en manuel (start/stop)"; exit 1; }
+  check_prereqs
+
+  local mode port unites py
+  mode=$(detect_mode)
+  port=$(detect_port)
+  unites="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  py="$ENGINE_DIR/.venv/bin/python3"
+  [[ -x "$py" ]] || py=$(command -v python3)
+
+  # `-` : un fichier absent n'empêche pas le démarrage.
+  local env_file="EnvironmentFile=-$BRAIN_ROOT/brain-secrets/MYSECRETS"
+
+  # Des ports tenus par un AUTRE processus que ce brain : les unités
+  # redémarreraient sans fin (`Restart=on-failure`), puis se disputeraient les
+  # ports au prochain démarrage de session — avec la prod d'un autre brain de la
+  # machine, par exemple (relecture du 28/09).
+  local pt pp cible
+  for pt in "$port:$SERVER" "$MCP_PORT:$MCP_SERVER"; do
+    cible="${pt#*:}"; pt="${pt%%:*}"
+    if port_servi "$pt"; then
+      pp=$(pid_a_l_ecoute "$pt")
+      if [[ -z "$pp" ]] || ! ligne_de "$pp" | grep -qF -- "$cible"; then
+        err "le port $pt est tenu par un autre processus — rien n'est installé"
+        info "  ${pp:+$(ligne_de "$pp")}${pp:-processus invisible depuis ce compte}"
+        info "  choisir BRAIN_PORT / BRAIN_MCP_PORT, ou arrêter ce qui tient le port"
+        exit 1
+      fi
+    fi
+  done
+
+  echo "▶ brain-engine install systemd (utilisateur)"
+  info "mode : $mode"
+  info "port : $port · mcp : $MCP_PORT"
+  mkdir -p "$unites"
+
+  # Une unité différente déjà là est SAUVEGARDÉE à côté, comme dolt-setup.sh le
+  # fait — jamais écrasée sans trace.
+  local u
+  for u in brain-engine brain-mcp; do
+    if [[ -f "$unites/$u.service" ]]; then
+      cp "$unites/$u.service" "$unites/$u.service.avant-$(date +%Y%m%d%H%M%S)"
+      info "$u.service existait — sauvegardé à côté"
+    fi
+  done
+  if ! systemctl --user cat dolt-server.service >/dev/null 2>&1; then
+    warn "pas de dolt-server.service : rien ne relancera la base au démarrage"
+    info "  bash scripts/dolt-setup.sh   (sans --sans-service) pour la servir"
+  fi
+
+  cat > "$unites/brain-engine.service" << SVCEOF
+[Unit]
+Description=Brain — brain-engine ($mode)
+Wants=dolt-server.service
+After=dolt-server.service
+
+[Service]
+Type=simple
+WorkingDirectory=$BRAIN_ROOT
+$env_file
+Environment=BRAIN_PORT=$port
+Environment=BRAIN_MODE=$mode
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=$py $SERVER
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SVCEOF
+
+  cat > "$unites/brain-mcp.service" << SVCEOF
+[Unit]
+Description=Brain — serveur MCP
+After=brain-engine.service
+
+[Service]
+Type=simple
+WorkingDirectory=$BRAIN_ROOT
+$env_file
+Environment=BRAIN_MCP_PORT=$MCP_PORT
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=$py $MCP_SERVER
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SVCEOF
+
+  # Arrêter l'instance manuelle ou pm2 — celles de CE brain
+  if is_running; then
+    info "Arrêt de l'instance manuelle..."
+    cmd_stop
+  fi
+  if command -v pm2 &>/dev/null && pm2 describe brain-engine &>/dev/null 2>&1; then
+    info "Arrêt de l'instance pm2..."
+    pm2 stop brain-engine 2>/dev/null || true
+    pm2 delete brain-engine 2>/dev/null || true
+  fi
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now brain-engine.service brain-mcp.service
+
+  sleep 2
+  if curl -sf "http://localhost:$port/health" &>/dev/null; then
+    ok "brain-engine opérationnel (port $port) — unités brain-engine + brain-mcp"
+  else
+    warn "/health ne répond pas — vérifier : journalctl --user -u brain-engine -n 30"
+  fi
+  info "Survivre à la déconnexion : loginctl enable-linger \$USER"
+
+  # Proposer le cron embed si mode prod
+  if [[ "$mode" == "prod" ]]; then
+    echo ""
+    info "Mode prod détecté — activer le cron embed (toutes les 6h) ?"
+    info "  (crontab -l; echo '0 */6 * * * cd $BRAIN_ROOT && $py brain-engine/embed.py >> brain-engine/embed-cron.log 2>&1') | crontab -"
+    info "Copie-colle la commande ci-dessus si tu veux l'activer."
+  fi
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  start)   cmd_start "$@" ;;
+  stop)    cmd_stop ;;
+  status)  cmd_status ;;
+  embed)   cmd_embed ;;
+  logs)    cmd_logs ;;
+  install) cmd_install "$@" ;;
+  *)
+    echo "brain-engine — CLI lifecycle"
+    echo ""
+    echo "Usage : bash scripts/brain-engine.sh <commande>"
+    echo ""
+    echo "Commandes :"
+    echo "  start [--fg]       Démarrer (background par défaut)"
+    echo "  stop               Arrêter proprement"
+    echo "  status             PID, port, mode, uptime"
+    echo "  embed              Embedding one-shot"
+    echo "  logs               Tail des logs"
+    echo "  install pm2        Installer via pm2"
+    echo "  install systemd    Installer via systemd"
+    echo ""
+    echo "Mode détecté : $(detect_mode)"
+    echo "Port détecté : $(detect_port)"
+    exit 1
+    ;;
+esac

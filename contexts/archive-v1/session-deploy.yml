@@ -1,0 +1,46 @@
+# session-deploy.yml — Contexte BHP pour sessions de déploiement
+# Trigger : "brain boot mode deploy[/<project>]"
+# Cible : ~25% contexte max au boot
+
+session_type: deploy
+description: "Session de déploiement — VPS, Docker, SSL, CI/CD, infra"
+tier_required: pro    # deploy = agents vps/ci-cd/monitoring (tous pro)
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%)
+L1:
+  - now.md                          # état dernière session — ce qui a changé, ce qui est en attente
+  - focus.md                        # projets actifs — savoir quoi déployer
+  - agents/vps.md                   # VPS, Apache, Docker, SSL, vhost, certbot  # tier: pro
+  - agents/ci-cd.md                 # pipelines, GitHub Actions, Gitea CI         # tier: pro
+  - agents/monitoring.md            # Kuma, alertes, logs post-déploiement        # tier: pro
+
+# L2 — Project scope (~8%) — optionnel sur projet déclaré
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+  fallback: null
+
+# L3 — On demand
+# Exemples : agents/security.md (audit pré-deploy), agents/mail.md (DNS/DKIM),
+#            agents/pm2.md, agents/migration.md, config spécifique
+L3:
+  hint: "Charger à la demande : security pre-deploy, mail/DNS, pm2, migration schema"
+
+# --- Règle deploy ---
+# agents/security.md NOT en L1 par défaut — deploy ≠ audit sécurité.
+# Charger si audit pré-déploiement explicitement demandé (→ session-audit).
+# agents/monitoring.md en L1 : toujours vérifier les alertes après deploy.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~12%"
+  L2: "~8%"
+  total_boot: "~25%"

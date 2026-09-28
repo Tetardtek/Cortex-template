@@ -1,0 +1,45 @@
+# session-infra.yml — Contexte BHP pour sessions infrastructure
+# Trigger : "brain boot mode infra"
+# Focus : ops quotidien — monitoring, maintenance VPS, config, santé système
+# Distinct de session-deploy (deploy = ship code ; infra = ops/health/maintenance)
+# Cible : ~22% contexte max au boot
+
+session_type: infra
+description: "Session infrastructure — ops quotidien, maintenance VPS, santé système"
+tier_required: pro    # vps, pm2, monitoring = agents pro
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~14%)
+L1:
+  - now.md                          # bridge session précédente
+  - agents/coach-boot.md            # présence légère — pas de bilan complet en infra
+  - agents/vps.md                   # VPS, Apache, Docker, SSL, vhost, certbot  # tier: pro
+  - agents/pm2.md                   # process manager, restart, logs              # tier: pro
+  - focus.md                        # projets actifs — contexte des services en cours
+
+# L2 — Project scope — optionnel si scope projet déclaré
+L2:
+  template: "projets/{project}.md"
+  extras: []
+  fallback: null
+
+# L3 — On demand
+# agents/monitoring.md, agents/mail.md (DNS/DKIM), agents/ci-cd.md, agents/migration.md
+L3:
+  hint: "Charger à la demande : monitoring, mail/DNS, ci-cd, migration schema, security pre-audit"
+
+# --- Distinction infra / deploy ---
+# infra  = état du système, maintenance, vérifications, config — pas de CI/CD au boot
+# deploy = livraison code, CI/CD, releases, pipeline — agents/ci-cd.md en L1
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~14%"
+  L2: "~3%"
+  total_boot: "~22%"

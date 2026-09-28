@@ -1,0 +1,38 @@
+# session-testing.yml — Contexte BHP pour sessions de tests
+# Trigger : "brain boot mode testing" ou détection domaine tests
+# Cible : ~15% contexte max au boot
+
+session_type: testing
+description: "Session tests — TDD, Jest/Vitest, coverage, validation avant prod. Writes autorisés sur tests/ uniquement sans gate."
+tier_required: free
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~10%)
+L1:
+  - agents/testing.md             # agent principal — TDD, coverage, frameworks
+  - agents/coach-boot.md          # présence minimale coach
+  - profil/lexique.md             # vocabulaire
+
+# L2 — Projet actif
+L2:
+  hint: "Charger selon le projet : agents/debug.md si bug, agents/code-review.md si validation avant PR"
+
+# L3 — On demand
+L3:
+  hint: "Charger à la demande : agents/ci-cd.md (pipeline tests), agents/migration.md (tests migration)"
+
+# --- Permissions implicites ---
+# Write autorisé : *.test.ts, *.spec.ts, tests/, __tests__/
+# Write restreint : code source (confirmation si hors zone tests)
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~10%"
+  L2: "~5%"
+  total_boot: "~15%"

@@ -1,0 +1,48 @@
+# session-brain.yml — Contexte BHP pour sessions brain/kernel
+# Trigger : "brain boot mode brain"
+# Cible : ~22% contexte max au boot
+
+session_type: brain
+description: "Session de travail sur le brain — agents, todo, focus, scribe. PAS le kernel."
+tier_required: free   # brain = couche applicative — agents fondamentaux suffisent
+# Kernel (KERNEL.md, CLAUDE.md, brain-constitution) → session-kernel (lecture) ou session-edit-brain (write)
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~10%) — tier free
+L1:
+  - now.md                          # bridge session précédente — état, décisions, fix en attente
+  - focus.md                        # direction actuelle brain
+  - BRAIN-INDEX.md                  # état global claims, projets, signaux
+  - todo/brain.md                   # todos kernel actifs
+  - agents/coach-boot.md            # garde comportemental kernel (free)
+  - agents/brain-guardian.md        # auto-méfiance structurelle — assertions prouvées uniquement
+  - agents/scribe.md                # mise à jour brain après session significative
+
+# L1_pro — coach complet pour sessions brain architecturales
+L1_pro:
+  - agents/coach.md                 # coach complet byTask — gardien kernel, gate décisions
+
+# L2 — Project scope (~5%)
+L2:
+  template: null
+  extras:
+    - wiki/concepts.md              # vocabulaire + patterns kernel
+  fallback: null
+
+# L3 — On demand
+# agents/orchestrator.md, agents/bsi-schema.md, wiki/multi-instance.md,
+# wiki/context-loading.md, scripts détaillés, brain-template/README.md
+L3:
+  hint: "Charger à la demande : orchestrator, bsi-schema, multi-instance, context-loading, scripts"
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~5%"
+  total_boot: "~22%"

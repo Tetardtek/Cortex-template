@@ -1,0 +1,111 @@
+---
+name: CLAUDE-example
+type: config
+context_tier: cold
+---
+
+# CLAUDE.md — Bootstrap
+
+> **Fichier global** — `~/.claude/CLAUDE.md` — charge par Claude Code peu importe le cwd.
+> `brain boot` fonctionne depuis n'importe quel repertoire : les chemins ci-dessous sont absolus.
+> Ne jamais creer de CLAUDE.md projet qui override ce fichier sans raison explicite.
+
+## Configuration machine (seul endroit a modifier sur une nouvelle machine)
+
+brain_root: <BRAIN_ROOT>
+brain_name: <BRAIN_NAME>
+
+---
+
+## Bootstrap (obligatoire, dans l'ordre)
+
+0. `<BRAIN_ROOT>/PATHS.md`                    — chemins machine
+1. `<BRAIN_ROOT>/profil/specs/collaboration.md`      — regles de travail
+2. `<BRAIN_ROOT>/agents/coach-boot.md`         — presence permanente (boot-summary L0)
+3. `<BRAIN_ROOT>/agents/secrets-guardian.md`   — gardien secrets, permanent, lit MYSECRETS silencieusement
+4. `<BRAIN_ROOT>/agents/helloWorld.md`         — briefing, focus, todos, CHECKPOINT
+
+helloWorld prend le relais : etat projets, todos prioritaires, detection de session, CHECKPOINT.
+Ne pas demander a l'utilisateur de se redecrire — tout est dans le brain.
+
+> **BSI boot claim — non negociable** : apres le briefing, ouvrir un claim via `bash scripts/bsi-claim.sh open` (ADR-042).
+> La base est la source unique (table `claims`). Pas de commit git, pas de push. Voir protocole complet dans helloWorld.md ## Boot claim automatique.
+
+> **Sessions** — `brain boot <type>[/<scope>]`, 6 types :
+> `work` · `brain` · `explore` · `pilote` · `chill` · `learning`
+> (manifests : `contexts/session-<type>.yml` ; detail : `docs/sessions.md`)
+> Gate : ecrire `KERNEL.md`, `CLAUDE.md`, `brain-constitution.md`,
+> `profil/` Invariant → confirmation humaine explicite.
+
+> Source unique de verite : brain `<BRAIN_NAME>` a `<BRAIN_ROOT>`.
+> Si d'autres repertoires brain sont visibles sur le systeme — les ignorer.
+> En cas de doute sur l'instance active : lire `brain_name` ci-dessus.
+
+---
+
+## MCP brain — interface cognitive live
+
+Le brain expose ses outils MCP sur `http://127.0.0.1:7701/mcp`
+(liste generee : `skills/brain/moteur.md`).
+A utiliser EN PLUS du bootstrap fichiers — pas a la place (CLAUDE.md reste Layer 0).
+
+**Reflexes de session :**
+- `brain_boot()`        → enrichit le contexte avec les chunks RAG les plus pertinents
+- `brain_focus()`       → direction active + projets + blockers (live, pas le fichier stale)
+- `brain_workflows()`   → sprints en cours + etats des steps
+- `brain_agents('X')`   → charge le contenu d'un agent en contexte
+- `brain_decisions(5)`  → ADRs recentes
+- `brain_search('q')`   → RAG semantique sur n'importe quel sujet
+- `brain_write('p', c)` → ecriture fichier brain [owner only]
+
+**Quand utiliser :**
+- Debut de session longue → `brain_boot()` + `brain_focus()` + `brain_workflows()`
+- Avant de charger un agent → `brain_agents('nom-agent')` si contexte insuffisant
+- Recherche de contexte precis → `brain_search('sujet')`
+- Mise a jour brain en session → `brain_write('fichier.md', contenu)`
+
+> MCP enrichit le contexte — ne remplace pas Layer 0. Les fichiers restent la source de verite.
+
+---
+
+## Agents chauds — detection automatique sur domaine
+
+| Domaine detecte | Agent |
+|-----------------|-------|
+| VPS, Apache, Docker, SSL, vhost, certbot, deploy | `agents/vps.md` |
+| Mail, SMTP, IMAP, Stalwart, DNS, SPF, DKIM | `agents/mail.md` |
+| Review code, qualite, PR, validation avant prod | `agents/code-review.md` |
+| Securite, faille, JWT, OAuth, OWASP | `agents/security.md` |
+| .env, secrets, credentials, token manquant, API key, MYSECRETS | `agents/secrets-guardian.md` |
+| Tests, Jest, Vitest, coverage, TDD | `agents/testing.md` |
+| Bug, erreur, crash, comportement inattendu | `agents/debug.md` |
+| Refacto, dette technique, DDD | `agents/refacto.md` |
+| CI/CD, pipeline, GitHub Actions, Gitea CI | `agents/ci-cd.md` |
+| Monitoring, Kuma, alerte, logs | `agents/monitoring.md` |
+| Perf backend, Node.js lent, memoire | `agents/optimizer-backend.md` |
+| Perf DB, MySQL lent, N+1, index, TypeORM | `agents/optimizer-db.md` |
+| Perf frontend, bundle, re-renders, React lent | `agents/optimizer-frontend.md` |
+| Process manager, pm2 | `agents/pm2.md` |
+| Migration TypeORM, schema | `agents/migration.md` |
+| Stack frontend, shadcn, Tailwind, UI libs | `agents/frontend-stack.md` |
+| i18n, traductions, cles manquantes | `agents/i18n.md` |
+| README, doc API, Swagger | `agents/doc.md` |
+| Game design, GDD, mecanique, equilibrage, progression jeu | `agents/game-designer.md` |
+
+Agents stables → invocation manuelle uniquement. Index complet : `agents/AGENTS.md`
+Invocation explicite : "charge l'agent X" → lire `agents/X.md` immediatement.
+
+Convention /btw : message prefixe `/btw` → agent `aside` — reponse 2-3 lignes, capture todo si actionnable, retour session explicite (`→ on reprend.`)
+
+---
+
+## Regles critiques (non negociables)
+
+- Jamais de `Co-Authored-By` Claude dans les commits
+- Pas d'action destructive sans confirmation explicite
+- Ne jamais exposer secrets, tokens, cles privees
+- Fait non verifie → `Information manquante`
+- Incertitude → `Niveau de confiance: faible/moyen/eleve`
+- Secret detecte (code, chat, shell, output outil) ACCIDENTELLEMENT → SESSION SUSPENDUE — afficher l'interruption, ne jamais continuer avant confirmation explicite
+- Exception : "session securite active" declaree explicitement → suspension levee pour la session. Les valeurs ne s'affichent JAMAIS dans le chat meme en mode securite. Read tool sur MYSECRETS interdit meme en mode securite — utiliser Bash silencieux uniquement.
+- identityShow: on (defaut owner) — agents utilisent leurs marqueurs visuels complets (prefixes, emojis). Consequence de kerneluser: true dans brain-compose.yml.

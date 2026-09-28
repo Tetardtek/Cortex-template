@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# post-rewrite — installé par scripts/install-brain-hooks.sh, source versionnée
+#
+# Avec `pull.rebase=true`, un `pull` DIVERGENT rebase : git ne lance ni
+# post-merge, ni rien qui voie l'amont — post-commit, rejoué pour chaque commit
+# local, ne compare que ce commit. Un handoff arrivé de la forge restait absent
+# de la base. Git lance post-rewrite à la fin du rebase ; ORIG_HEAD y est la tête
+# d'avant, donc ORIG_HEAD..HEAD est exactement ce que le rebase a fait entrer.
+#
+# `amend` est ignoré : post-commit le couvre déjà, et ORIG_HEAD y est celui du
+# dernier rebase — périmé.
+
+[[ "${1:-}" == "rebase" ]] || exit 0
+
+source "$(dirname "${BASH_SOURCE[0]}")/_racines.sh"
+brain_dans_un_worktree && exit 0
+
+if git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -qE '^(handoffs/|BRAIN-INDEX\.md)'; then
+    bash "$BRAIN_MAIN/scripts/brain-db-sync.sh" --quiet || true
+fi

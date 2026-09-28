@@ -1,0 +1,71 @@
+# session-edit-brain.yml — Contexte BHP pour modifications kernel
+# Trigger : "brain boot sudo" ou "brain boot mode edit-brain"
+# Objectif : modifications kernel autorisées — avec gates explicites
+# Cible : ~25% contexte max au boot
+
+session_type: edit-brain
+description: "Modifications kernel — KERNEL.md, CLAUDE.md, agents/, profil/. Gate humain obligatoire avant chaque write."
+tier_required: full    # kernel write = zone owner uniquement — kerneluser: true requis (full = owner)
+
+# --- Gates obligatoires ---
+# Avant toute modification kernel :
+#   1. Lire le fichier cible (brain-guardian enforce)
+#   2. Décrire la modification et son impact
+#   3. Confirmation humaine explicite
+#   4. Écrire la modification
+#   5. Relire le fichier après modification
+#   6. Entrée changelog si fichier kernel absolu (KERNEL.md, CLAUDE.md, brain-constitution.md)
+#
+# Fichiers kernel absolu (protection maximale) :
+#   KERNEL.md, CLAUDE.md, brain-constitution.md, bsi-spec.md
+#   → Gate humain + confirmation + changelog obligatoire
+#
+# Fichiers kernel fort (agents/, profil/) :
+#   → Gate humain + confirmation
+#   → Changelog recommandé si changement structurel
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~18%)
+L1:
+  - now.md                          # bridge session précédente
+  - agents/brain-guardian.md        # auto-méfiance structurelle — OBLIGATOIRE en edit-brain
+  - agents/coach-boot.md            # garde comportemental — observe les décisions kernel
+  - BRAIN-INDEX.md                  # état global claims + signaux
+  - focus.md                        # direction actuelle — contexte des modifications
+
+# L1_pro — coach complet pour décisions architecturales kernel
+L1_pro:
+  - agents/coach.md                 # coach complet — gate sur décisions structurantes kernel
+
+# L2 — Kernel scope (~5%) — fichiers cibles si déclarés dans le signal
+L2:
+  template: null
+  extras:
+    - brain-constitution.md         # si modification identité / Layer 0
+    - profil/specs/bsi-spec.md            # si modification protocole BSI
+  fallback: null
+
+# L3 — On demand
+# scripts/kernel-lock-gen.sh (après modification kernel), profil/decisions/ (ADR),
+# wiki/, agents spécifiques
+L3:
+  hint: "kernel-lock-gen après modification, ADR si décision structurante, wiki/, scripts/"
+
+# --- Règle post-modification ---
+# Après toute modification kernel absolu :
+#   → scripts/kernel-lock-gen.sh — régénérer kernel.lock
+#   → commit type: kernel: (contrat) ou feat: (capacité)
+#   → entrée changelog dans le fichier modifié
+#   → now.md mis à jour avant fermeture session
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~5%"
+  total_boot: "~25%"

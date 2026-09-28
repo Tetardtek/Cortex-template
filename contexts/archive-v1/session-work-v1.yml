@@ -1,0 +1,52 @@
+# session-work.yml — Contexte BHP pour sessions de travail projet
+# Trigger : "brain boot mode work[/<project>]"
+# Cible : ~28% contexte max au boot
+
+session_type: work
+description: "Session de développement sur un projet actif"
+tier_required: free   # tier free = agents fondamentaux; pro = + code-review + security
+
+# L0 — Invariant (~5%) — TOUJOURS chargé, non négociable
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~10%) — tier free — déterministe, même signal = même chargement
+L1:
+  - now.md                          # bridge session précédente
+  - focus.md                        # focus actuel, todos prioritaires
+  - agents/coach-boot.md            # coach boot-summary — observe le projet en cours (free)
+  - agents/debug.md                 # bug, crash, comportement inattendu
+  - metabolism/README.md            # état métabolique, énergie session
+
+# L1_featured — chargé si tier: featured+ — coach complet remplace coach-boot
+L1_featured:
+  - agents/coach.md                 # coach complet byTask — observe le projet en cours
+
+# L1_pro — Session type (~5%) — chargé uniquement si tier: pro déclaré
+# Pas de code-review ni security pour tier free — chargement explicite sur demande sinon
+L1_pro:
+  - agents/code-review.md           # qualité code, PR, validation
+  - agents/security.md              # failles, JWT, OAuth, OWASP
+
+# L2 — Project scope (~10%) — conditionnel sur project déclaré dans le signal
+# Clé : projet déclaré → projets/<project>.md + todo/<project>.md
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+  fallback: null  # absent si pas de projet déclaré
+
+# L3 — On demand (0% au boot) — tout le reste
+# Exemples : agents/testing.md, agents/refacto.md, agents/migration.md,
+#            wiki/, progression/, autres projets, agents spécialisés métier
+L3:
+  hint: "Charger à la demande : testing, refacto, migration, infra, i18n, doc"
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~8%"
+  total_boot: "~28%"

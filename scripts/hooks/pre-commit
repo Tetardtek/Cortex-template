@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# pre-commit — installé par scripts/install-brain-hooks.sh, source versionnée
+#
+#   1. la posture de l'instance (replica : pas de commit kernel), si le garde existe
+#   2. la zone d'écriture du type de session, si le garde existe
+#   3. docs-generer --check quand une source de la doc change
+#
+# Le Python, la base et la posture sont ceux du dépôt PRINCIPAL ; les fichiers,
+# ceux du commit. Voir _racines.sh.
+
+source "$(dirname "${BASH_SOURCE[0]}")/_racines.sh"
+BRAIN_ROOT="$BRAIN_MAIN" source "$BRAIN_MAIN/scripts/lib/python.sh"
+
+if [[ -f "$BRAIN_MAIN/scripts/hooks/pre-commit-posture" ]]; then
+    bash "$BRAIN_MAIN/scripts/hooks/pre-commit-posture" || exit 1
+fi
+if [[ -f "$BRAIN_MAIN/scripts/hooks/pre-commit-zone" ]]; then
+    python3 "$BRAIN_MAIN/scripts/hooks/pre-commit-zone" || exit 1
+fi
+
+# La doc générée suit ses sources : un commit qui change une source de la doc
+# (agents, manifests, schéma, routes, outils MCP, pages sources) sans régénérer
+# `docs/` et `skills/brain/` est refusé — avec la commande. On juge l'INDEX, pas
+# la copie de travail : le disque aurait laissé passer une doc régénérée mais
+# pas indexée, et fait refuser un commit juste à cause du travail non indexé
+# d'une autre session (relecture du 28/09).
+triggers=$(git diff --cached --name-only | grep -E '^(agents/|contexts/|brain-compose\.yml|docs/|skills/brain/|brain-engine/(schema-dolt|views-dolt)\.sql|brain-engine/(server|mcp_server)\.py)' || true)
+if [[ -n "$triggers" && -f "$BRAIN_WT/scripts/docs-generer.py" ]]; then
+    index=$(mktemp -d)
+    trap 'rm -rf "$index"' EXIT
+    git checkout-index -a --prefix="$index/"
+    code=0
+    sortie=$(python3 "$BRAIN_WT/scripts/docs-generer.py" --brain "$index" --check 2>&1) || code=$?
+    if [[ $code -eq 1 ]]; then
+        echo "docs-generer : la doc de ce commit n'est plus à jour de ses sources."
+        echo "$sortie" | grep "⚠" | sed 's/^/  /'
+        echo "  python3 scripts/docs-generer.py --ecrire   puis ajouter docs/ et skills/brain/"
+        exit 1
+    elif [[ $code -ne 0 ]]; then
+        # 2 : illisible (PyYAML absent, frontmatter cassé) — ce n'est pas « en
+        # retard », et le dire comme tel enverrait chercher au mauvais endroit.
+        echo "docs-generer : impossible de juger la doc de ce commit (code $code)."
+        echo "$sortie" | tail -3 | sed 's/^/  /'
+        exit 1
+    fi
+fi

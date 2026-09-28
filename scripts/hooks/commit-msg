@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# commit-msg — installé par scripts/install-brain-hooks.sh, source versionnée
+# Refuse un message de commit sans type déclaré dans KERNEL.md (celui du commit).
+
+set -euo pipefail
+SUJET="$(head -1 "$1")"
+
+# Ce qui n'est pas un message d'auteur ne se juge pas : git compose ces
+# sujets lui-même, et les refuser casserait merge, revert et rebase.
+case "$SUJET" in
+    Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *) exit 0 ;;
+esac
+
+RACINE="$(git rev-parse --show-toplevel)"
+KERNEL="$RACINE/KERNEL.md"
+
+# Un contrôle qui invente sa référence ne mesure plus rien : sans la source,
+# il se tait plutôt que de juger au hasard.
+[ -r "$KERNEL" ] || exit 0
+
+TYPES="$(sed -n '/^## Commit types/,/^## [^C]/p' "$KERNEL" \
+         | sed -n 's/^| *`\([a-z]\{1,\}\):` *|.*/\1/p' | tr '\n' '|' | sed 's/|$//')"
+[ -n "$TYPES" ] || exit 0
+
+if printf '%s' "$SUJET" | grep -qE "^($TYPES)(\([a-z0-9/-]+\))?: "; then
+    exit 0
+fi
+
+echo "" >&2
+echo "  ❌ Message de commit sans type déclaré." >&2
+echo "" >&2
+echo "     $SUJET" >&2
+echo "" >&2
+echo "     Types attendus : $(printf '%s' "$TYPES" | tr '|' ' ')" >&2
+echo "" >&2
+echo "     Un type est une PROPRIÉTÉ, pas un préfixe décoratif : il dit quel" >&2
+echo "     scribe possède le changement et dans quelle zone." >&2
+echo "     Détail — KERNEL.md ## Commit types" >&2
+echo "" >&2
+echo "     La convention porte sur TOUTES les sessions qui écrivent ici," >&2
+echo "     projet comprises (tranché le 05/09)." >&2
+echo "" >&2
+echo "     Si ce commit doit vraiment passer : git commit --no-verify" >&2
+echo "" >&2
+exit 1

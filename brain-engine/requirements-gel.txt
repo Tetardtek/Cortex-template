@@ -1,0 +1,57 @@
+# Gel de brain-engine/.venv tel qu il tournait sur le fixe Pop!_OS (Python 3.12).
+# Releve le 26/09 depuis .venv.popos a la migration Omarchy : requirements.txt seul
+# (bornes >=) avait tire mcp 2.x, qui a renomme FastMCP -> mcp_server.py ne chargeait plus.
+# Le CORE (myeline) s installe a part : .venv/bin/pip install -e ~/Dev/Gitea/myeline
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.12.1
+attrs==23.2.0
+certifi==2026.7.22
+cffi==2.1.1
+click==8.3.1
+cryptography==41.0.7
+fastapi==0.135.1
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.6
+joblib==1.5.3
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+llvmlite==0.46.0
+markdown-it-py==3.0.0
+mcp==1.26.0
+mdurl==0.1.2
+numba==0.64.0
+numpy==2.4.3
+pycparser==3.0
+pydantic==2.12.5
+pydantic_core==2.41.5
+pydantic-settings==2.15.0
+Pygments==2.17.2
+PyJWT==2.12.1
+PyMySQL==1.1.2
+pynndescent==0.6.0
+python-dotenv==1.0.1
+python-multipart==0.0.22
+PyYAML==6.0.1
+referencing==0.37.0
+rich==13.7.1
+rpds-py==0.30.0
+scikit-learn==1.8.0
+scipy==1.17.1
+shellingham==1.5.4
+sse-starlette==3.3.2
+starlette==0.52.1
+threadpoolctl==3.6.0
+tqdm==4.67.3
+typer==0.24.1
+typing_extensions==4.15.0
+typing-inspection==0.4.2
+umap-learn==0.5.11
+uvicorn==0.42.0
+uvloop==0.22.1
+watchfiles==1.3.0
+websockets==10.4

@@ -1,0 +1,40 @@
+# session-migration.yml — Contexte BHP pour sessions de migration
+# Trigger : "brain boot mode migration" ou détection domaine migration schema/data
+# Cible : ~20% contexte max au boot
+
+session_type: migration
+description: "Session migration — TypeORM, schéma DB, data migration, deploy safe. Writes DB critiques — confirmation explicite sur destructif."
+tier_required: pro
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%)
+L1:
+  - agents/migration.md           # agent principal — TypeORM, schema, deploy safe
+  - agents/testing.md             # migrations sans tests de rollback = bloqué
+  - agents/vps.md                 # migrations touchent souvent le VPS
+  - agents/coach-boot.md          # présence minimale coach
+
+# L2 — Projet actif
+L2:
+  hint: "Charger selon le projet : agents/debug.md (migration KO), agents/monitoring.md (watch post-migration)"
+
+# L3 — On demand
+L3:
+  hint: "À la demande : agents/ci-cd.md (pipeline migration), agents/optimizer-db.md (index post-migration)"
+
+# --- Permissions implicites ---
+# Write autorisé : migrations/, src/migrations/
+# Write restreint (confirmation) : tout script destructif (DROP, TRUNCATE, ALTER)
+# Règle non-négociable : rollback plan obligatoire avant toute migration
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~5%"
+  total_boot: "~20%"

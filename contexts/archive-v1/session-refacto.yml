@@ -1,0 +1,39 @@
+# session-refacto.yml — Contexte BHP pour sessions de refactoring
+# Trigger : "brain boot mode refacto" ou détection domaine dette technique
+# Cible : ~18% contexte max au boot
+
+session_type: refacto
+description: "Session refacto — dette technique, DDD, architecture code. Writes larges autorisés avec pattern test-before-refacto."
+tier_required: free
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~13%)
+L1:
+  - agents/refacto.md             # agent principal — architecture, patterns, DDD
+  - agents/testing.md             # refacto sans tests = interdit — chargé en L1
+  - agents/coach-boot.md          # présence minimale coach
+  - profil/lexique.md             # vocabulaire
+
+# L2 — Projet actif
+L2:
+  hint: "Charger selon le projet : agents/code-review.md (validation post-refacto), agents/debug.md (régression)"
+
+# L3 — On demand
+L3:
+  hint: "À la demande : agents/optimizer-backend.md, agents/optimizer-db.md, agents/optimizer-frontend.md"
+
+# --- Permissions implicites ---
+# Write autorisé : src/, lib/, tout le code source
+# Règle non-négociable : écrire les tests AVANT de refacto — testing.md enforce
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~13%"
+  L2: "~5%"
+  total_boot: "~18%"

@@ -1,0 +1,72 @@
+# workflows/_template.yml — Template workflow thématique
+# Copier + renommer : cp workflows/_template.yml workflows/<theme>.yml
+# Lancer le premier step : bash scripts/workflow-launch.sh workflows/<theme>.yml
+
+name: <theme-slug>          # ex: brain-engine-be7
+branch: theme/<theme-slug>  # branche git dédiée — créer avec theme-branch-open.sh
+pilote: <sess-id>            # renseigné au lancement (sess-id de la session pilote)
+
+# ---
+# execution_mode : déclaré dans la SESSION qui lance ce workflow, pas ici.
+# Ce fichier définit le QUOI. La session définit le COMMENT. (BRAIN-032)
+#
+# Pour référence :
+#   manual   → humain valide chaque step (défaut — premier run)
+#   assisted → brain orchestre, humain a la vue de l'intérieur
+#   swarm    → brain exécute, humain gate entrée + livrable final
+#
+# swarm_ready: false   # passe à true quand checklist BACT agentic.swarm-ready-gate OK
+# ---
+
+swarm_ready: false
+
+# ---
+# chain : séquence de satellites dans l'ordre d'exécution
+# Chaque step est traduit en claim BSI par workflow-launch.sh
+# ---
+
+chain:
+
+  - step: 1
+    type: code               # satellite_type : code | brain-write | test | deploy | search
+    scope: <scope>/          # dossier ou fichier cible
+    story_angle: "<description courte de la tâche>"
+    agents: []               # agents à charger pour ce step
+    # input_contract: null   # step 1 — pas de prior_output
+    # gate absent → proceed si result.status = ok
+
+  - step: 2
+    type: test
+    scope: <scope>/
+    story_angle: "Tests <scope>"
+    agents: [testing]
+    gate: 0-failures         # proceed uniquement si result.tests.failed = 0
+    # input_contract: "output step 1 — fichiers modifiés + résumé"
+
+  - step: 3
+    type: brain-write
+    scope: <fichier>.md
+    story_angle: "Documenter <livrable>"
+    agents: [scribe]
+    # input_contract: "output step 2 — résultats tests + gaps identifiés"
+    # gate absent → proceed si result.status = ok
+
+  - step: 4
+    type: deploy
+    scope: vps/
+    story_angle: "Déployer <livrable>"
+    agents: [vps]
+    gate: human              # pause — confirmation humaine avant deploy
+    # input_contract: "output step 3 — doc à jour + artefacts build"
+
+# ---
+# Gates disponibles :
+#   absent       → proceed si result.status = ok
+#   0-failures   → proceed si result.tests.failed = 0 (step type:test uniquement)
+#   human        → pause + confirmation avant de lancer le step suivant
+#   never        → chaîne s'arrête ici (step terminal)
+#
+# Contrats I/O (mode assisté / swarm) :
+#   input_contract  → ce que ce step reçoit du step précédent (prior_output)
+#   Les contrats sont optionnels en mode manual — obligatoires avant swarm_ready: true
+# ---

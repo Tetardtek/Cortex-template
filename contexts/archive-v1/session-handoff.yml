@@ -1,0 +1,52 @@
+# session-handoff.yml — Contexte BHP pour sessions HANDOFF
+# Trigger : "brain boot mode HANDOFF[/<handoff-id>]"
+# Cible : ~15% contexte max au boot — minimum viable pour reprendre
+
+session_type: HANDOFF
+description: "Reprise d'une session via handoff — contexte minimal + fichier handoff cible"
+tier_required: free   # handoff = protocole BSI de base — disponible pour tous
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~8%) — chirurgical : seulement ce qu'il faut pour reprendre
+L1:
+  - BRAIN-INDEX.md                  # trouver le handoff actif
+
+# L2 — Handoff scope (~5%) — fichier handoff si déclaré dans le signal
+# Signal : "HANDOFF/<handoff-id>" → charger le fichier handoff directement
+L2:
+  template: "handoffs/{handoff_id}.md"
+  extras: []
+  fallback:
+    - handoffs/LATEST.md            # si pas d'ID déclaré → dernier handoff
+
+# L3 — On demand
+# Exemples : context complet projet, agents métier, focus.md
+# Principe : le fichier handoff CONTIENT les pointeurs vers L3.
+# La nouvelle session lit le handoff → décide elle-même quoi charger.
+L3:
+  hint: "Lire le handoff d'abord. Il indique quoi charger en L3."
+
+# --- Règle HANDOFF ---
+# Le handoff est la source de vérité pour la reprise.
+# Ne pas charger focus.md, metabolism, agents au boot — le handoff décide.
+# Après lecture du handoff → promouvoir le contexte nécessaire en L2 implicite.
+# Le claim ouvert doit référencer le handoff : parent_satellite ou story_angle.
+
+# --- Format handoff attendu ---
+# handoffs/<id>.md doit contenir :
+#   - Contexte de la session précédente (état, décisions, bloquants)
+#   - Fichiers à charger (L3 → L2 pour cette session)
+#   - Todos ouverts prioritaires
+#   - Signal de session recommandé pour la suite
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~5%"
+  L2: "~5%"
+  total_boot: "~15%"

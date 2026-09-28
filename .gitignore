@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+brain-ui/node_modules/
+
+# Brain engine
+brain-engine/.venv/
+
+# Satellite repos (replaced by your own clones during setup)
+# Each satellite is autonomous with its own git remote.
+# Placeholder READMEs are tracked to guide new users.
+toolkit/*
+!toolkit/README.md
+profil/*
+!profil/README.md
+!profil/CLAUDE.md.example
+# Les specs du PROGRAMME partent avec le gabarit (tranché le 04/09) — ce sont
+# les données personnelles de profil/ qui restent au fork.
+!profil/specs/
+progression/*
+!progression/README.md
+reviews/*
+!reviews/README.md
+todo/*
+!todo/README.md
+
+# Instance-specific (never committed)
+brain-compose.local.yml
+MYSECRETS
+brain.db
+brain-template.db
+*.pid
+
+# Dolt local data
+brain-dolt/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Logs
+*.log

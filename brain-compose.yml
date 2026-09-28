@@ -1,0 +1,337 @@
+# brain-compose.yml — Kernel spec
+# Versionné dans le kernel. Schema + feature flags + registre agents.
+# Géré par l'agent brain-compose — ne pas éditer manuellement.
+
+version: "2.3.2"
+
+# ---
+# Ownership — kerneluser
+# true  : propriétaire de ce brain — écriture zone:kernel autorisée (human-confirmed)
+# false : utilisateur invité (SaaS futur) — zone:kernel bloquée
+# Défaut : true sur tout brain forké (l'owner est toujours kerneluser)
+# ---
+kerneluser: true
+identityShow: on    # conséquence de kerneluser: true — présence visuelle complète des agents
+                    # kerneluser: false → identityShow: off (mode clean/pro — BaaS client)
+
+# ---
+# Postures — rôle de l'instance dans la flotte (BRAIN-069)
+# Orthogonal à kerneluser (identité owner) et tier (accès features).
+# Déclaré par instance dans brain-compose.local.yml sous instances.<name>.posture
+# Défaut implicite si non déclaré : master (rétrocompat — un brain seul est master)
+# ---
+postures:
+
+  master:
+    description: "Source prioritaire — tous droits, brain build autorisé"
+    sessions: "*"            # tous les types de session autorisés
+    kernel_write: true       # écriture zone:kernel autorisée (avec confirmation humaine)
+
+  replica-nomad:
+    description: "Owner complet, projet uniquement, brain build bloqué par défaut"
+    sessions: [work, explore, chill]   # 'brain' et 'pilote' bloqués par défaut
+    kernel_write: false                # zone:kernel en lecture seule
+    override_env: BRAIN_KERNEL_OVERRIDE # variable env pour override exception (déplacement long + truc cassé)
+    enforcement:
+      filesystem: "chmod -w sur agents/ profil/ scripts/"
+      git_hook: "scripts/hooks/pre-commit-posture refuse kernel:/feat:/fix: sur paths kernel"
+      preflight: "helloWorld step 4.5 vérifie posture au boot, bloque session brain sans override"
+
+
+# ---
+# Modes — comportement de session (permissions BSI + agents autorisés)
+# Priorité : déclaration explicite > detectmode > brain-compose.local.yml > prod (safe default)
+# ---
+
+# Sessions V2 (BRAIN-047) : le TYPE de session (work/brain/explore/pilote) determine
+# la posture et les agents charges. Le MODE ci-dessous determine les permissions
+# d'ecriture. Les deux sont orthogonaux :
+#   type = ce que je fais (routing, agents, metriques)
+#   mode = ce que j'ai le droit de modifier (permissions)
+# brain-compose.local.yml declare le mode actif. Par defaut : prod.
+modes:
+
+  prod:
+    description: "Session normale — Invariants protégés, écriture confirmée"
+    permissions:
+      invariant: confirm
+      contexte: confirm
+      reference: write
+      personnel: write
+      brain_write: false
+      forge: false
+    agents: "*"
+
+  dev:
+    description: "Forge — pleine puissance, écriture libre sur le brain"
+    permissions:
+      invariant: confirm          # même en dev, les Invariants demandent confirmation
+      contexte: write
+      reference: write
+      personnel: write
+      brain_write: true
+      forge: true
+    agents: "*"
+
+  toolkit-only:
+    description: "Croissance autonome — toolkit source unique, docs officielles si inconnu"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: toolkit-scribe-only
+      forge: false
+    docs_fetch: ask               # always | ask | never
+    agents: [toolkit-scribe, debug, code-review]
+    behavior: |
+      Pattern connu dans toolkit → agit seul
+      Pattern inconnu → docs officielles (selon docs_fetch) → toolkit-scribe écrit
+      Jamais d'invention
+
+  brainstorm:
+    description: "Réflexion scopée — pas d'écriture système"
+    permissions:
+      invariant: false
+      contexte: scope-only
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [brainstorm, coach]
+
+  coach:
+    description: "Mentorat — progression en écriture, brain en lecture"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: write
+      brain_write: progression-only
+      forge: false
+    agents: [coach, coach-scribe, scribe]
+
+  deploy:
+    description: "Déploiement — agents infra uniquement"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [vps, ci-cd, pm2, secrets-guardian]
+
+  debug:
+    description: "Debug — lecture + agents debug"
+    permissions:
+      invariant: false
+      contexte: scope-only
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [debug, code-review]
+
+  projet-audit:
+    description: "Audit lecture seule — todo-scribe uniquement en écriture"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: todo-scribe-only
+      forge: false
+    agents: [coach, agent-review]
+
+  review-front:
+    description: "Review frontend"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [code-review, frontend-stack, testing]
+
+  review-back:
+    description: "Review backend/sécu"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [code-review, security, testing]
+
+  conserve:
+    description: "Économie context — proposé auto si seuil métabolisme dépassé"
+    permissions:
+      invariant: confirm
+      contexte: confirm
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: [debug, code-review, todo-scribe, metabolism-scribe]
+    behavior: |
+      Cible context < 40%. Pas de chargement de sources non essentielles.
+      metabolism-scribe en fin de session obligatoire.
+
+  HANDOFF:
+    description: "Reprise propre depuis une session précédente"
+    permissions:
+      invariant: false
+      contexte: scope-only
+      reference: read
+      personnel: false
+      brain_write: false
+      forge: false
+    agents: "*"
+
+  rendering:
+    description: "Instance autonome sur projet — scope strict, zéro drift kernel"
+    permissions:
+      invariant: false
+      contexte: false
+      reference: read
+      personnel: false
+      brain_write: false      # pas d'écriture brain/ — uniquement le repo projet
+      forge: false
+    scope_lock: true          # BLOQUÉ hors du scope déclaré dans le claim
+    zone_lock: project        # zone:kernel → BLOCKED_ON immédiat, pas de négociation
+    circuit_breaker:
+      max_consecutive_fails: 3   # 3 échecs → arrêt + signal BLOCKED_ON vers pilote
+      on_trigger: "signal → BLOCKED_ON pilote"
+    agents: [code-review, security, testing, debug, vps, ci-cd, pm2, migration]
+    behavior: |
+      Instance travaille sur zone:project uniquement.
+      Toute tentative d'accès zone:kernel → BLOCKED_ON immédiat, signal pilote.
+      Fichier hors scope déclaré → vérifier mutex (BSI-v3-7) avant d'écrire.
+      3 on_fail consécutifs → circuit breaker → arrêt complet + signal pilote.
+      Jamais de décision architecturale — signal pilote si ambiguïté.
+
+  cockpit:
+    description: "Mode assisté — coach proactif, routing automatique, pipeline kanban"
+    permissions:
+      invariant: confirm
+      contexte: write
+      reference: write
+      personnel: write
+      brain_write: true
+      forge: false
+    agents: [coach, kanban-scribe, interprete, brainstorm, orchestrator]
+    behavior: |
+      Coach proactif : route avant qu'on cherche, anticipe, propose
+      kanban-scribe  : actif automatiquement au wrap
+      interprete     : écoute en continu — pas besoin d'invocation explicite
+      Human nodes    : décision de valeur uniquement, jamais de mécanique
+
+# ---
+# detectmode — helloWorld détecte le mode selon les signaux de session
+# ---
+
+detectmode:
+  signals:
+    - match: [vps, ci-cd, pm2]
+      mode: deploy
+    - match: [code-review, frontend-stack]
+      mode: review-front
+    - match: [code-review, security]
+      mode: review-back
+    - match: [debug]
+      mode: debug
+    - match: [brainstorm]
+      mode: brainstorm
+    - match: [coach, progression]
+      mode: coach
+    - bsi_claim: HANDOFF
+      mode: HANDOFF
+  default: prod    # mode permissions par défaut — session type par défaut = navigate (BRAIN-044)
+
+# ---
+# Feature sets — contrôlent les agents invocables par instance
+# Les agents "bloqués" existent dans le kernel, brain-compose contrôle l'accès.
+# ---
+
+# Le changelog part avec le gabarit : il décrit le PROGRAMME. Les jalons de
+# l'instance — publications, comptes, domaines, applications à part — vivent
+# dans l'historique git du brain, pas ici (27/09).
+changelog:
+  - version: "0.1.0"
+    date: "2026-03-13"
+    notes: "Initial — 30+ agents, config-scribe, brain-compose Phase 1, symlinks, feature flags"
+  - version: "0.2.0"
+    date: "2026-03-14"
+    notes: "BSI (BRAIN-INDEX.md), brain_name, brain-template, aside, brainstorm, brain-compose up"
+  - version: "0.3.0"
+    date: "2026-03-14"
+    notes: "orchestrator-scribe (free), brain-compose+config-scribe (pro), CHECKPOINT signal, session-as-identity, orchestration-patterns"
+  - version: "0.4.0"
+    date: "2026-03-14"
+    notes: "Système de modes — 11 modes, permissions BSI par mode, detectmode, toolkit-only autonome avec docs_fetch"
+  - version: "0.5.0"
+    date: "2026-03-14"
+    notes: "Multi-sessions BSI v1.2 — CHECKPOINT/HANDOFF signals + handoff files ; brain-watch-vps daemon (stale TTL check, Telegram notifications) ; brain-bot Telegram webhook (/status /sessions /focus /help) ; workspace spec v1.0 (ram.md log.md feedback.md) ; supervisor patterns v1 (7 protocoles) ; statusline session-role ; secrets-guardian recovery protocol ; BLOCKED_ON false-positive fix"
+  - version: "0.5.1"
+    date: "2026-03-14"
+    notes: "Métabolisme v1 — mode conserve, metabolism-scribe, metabolism-spec, progression/metabolism/, helloWorld briefing métabolisme"
+  - version: "0.6.0"
+    date: "2026-03-15"
+    notes: "Constitution v1.1.0 — Section 9 North Star + invariants autonomie + auto-amélioration (BRAIN-011) ; wiki/concepts.md fondamentaux brain V2 ; brain-engine vision north star"
+  - version: "0.7.0"
+    date: "2026-03-16"
+    notes: "BSI-v3 fondations — tiered-close, zone-aware claims (BRAIN-014), result contract, exit triggers ; kerneluser: true ancré kernel ; KERNEL.md délégation human-only phase actuelle"
+  - version: "0.8.0"
+    date: "2026-03-17"
+    notes: "Brain API Key Phase 1 — brain_api_key field (optionnel), feature_set_schema contractuel, tiers free/pro/full ; cache feature_set dans brain-compose.local.yml"
+  - version: "0.8.1"
+    date: "2026-03-17"
+    notes: "brain-store CATALOG — agents/CATALOG.yml source de vérité par tier (free/pro/owner) ; GET /agents filtré par tier ; catalog_version dans feature_set_schema"
+  - version: "0.9.0"
+    date: "2026-03-17"
+    notes: "Feature sets v2 — coach_level par tier (boot/full/L2), sessions disponibles par tier, distillation flag owner, pattern-scribe + audit + time-anchor en free"
+  - version: "0.9.1"
+    date: "2026-03-18"
+    notes: "identityShow ancré — conséquence directe de kerneluser (on=owner/off=client) ; G-4 migration session-infra/capital/urgence vers format L0/L1/L2/L3 ; session-projet retiré (alias → session-work)"
+  - version: "0.9.2"
+    date: "2026-03-18"
+    notes: "Tier featured ajouté (RAG + distillation progression, non-dev) ; session-kernel + session-edit-brain → full tier uniquement (owner) ; brain-guardian ajouté en free ; chaîne tiers : free → featured → pro → full"
+  - version: "0.9.3"
+    date: "2026-03-29"
+    notes: "Dolt migration steps 1-9 — brain.db → brain-dolt (9 tables, 3100 rows, pymysql) ; BSI scripts migrés db.py ; intentions V2 schema Dolt (4 tables, 58 intentions) ; sessions V2 (4 types, BRAIN-047) ; conciergerie v1 (brain-audit.sh, seuils par scope) ; 8 agents forgés vague 31 mars"
+  - version: "0.9.4"
+    date: "2026-04-01"
+    notes: "Distribution — Cortex-Template v1.0 publié ; brain_focus() MCP live depuis Dolt ; cap.md remplace now.md"
+  - version: "0.9.5"
+    date: "2026-04-05"
+    notes: "Intentions V2 completes — GET /intentions API + brain_intentions() MCP ; chrome-pilot agent forgé"
+  - version: "2.1.0"
+    date: "2026-04-07"
+    notes: "Modele de donnees complet — 26 tables Dolt (~19 500 rows). Intentions YAML supprimes (source unique Dolt). Tables projects, agents, decisions, todo_sections, todo_items, learning_tracks, learning_modules, backlog_visions. 19 fichiers refs corrigees. Le brain passe de fichiers avec conventions a systeme de donnees versionne."
+  - version: "2.0.0"
+    date: "2026-04-24"
+    notes: "Realignement versioning single-axis — convention 1 projet = 1 CHANGELOG posee (wiki/versioning.md). Brain stack unifie (brain + brain-ui + brain-engine). 19 ADRs BRAIN-049 a BRAIN-067 livrees (Sessions V2, BSI enrichi, Metabolism V2, Scratch pad, Profile pipeline, ADR system rework, Couches cognitives, Per-game companion, Identity loading at boot, Doctrine agents triplet). chrome-pilot + profile-scribe + pulse + forge watch agents forges. secrets-guardian Surface 5 Config MCP. Conciergerie v1 + docs single-source pipeline. Cortex Template v1.0 publie."
+  - version: "2.0.1"
+    date: "2026-04-28"
+    notes: "Schema postures (BRAIN-069) — concept master/replica-nomad pour instances multi-machines. Permet avancement parallèle desktop (master) ⇄ laptop (replica-nomad) sur scopes disjoints. Schema déclaré ici, posture active dans brain-compose.local.yml par instance. Enforcement (pre-flight helloWorld + hook git + chmod) à livrer dans patches suivants. Aucun comportement actif tant que livrable 3-4 non livrés — rétrocompat totale."
+  - version: "2.1.0"
+    date: "2026-09-02"
+    notes: "BRAIN-072 — TierGate retire. brain_api_key, feature_set_schema et feature_sets supprimes ; feature-gate-check.sh, key-guardian.sh et leurs agents supprimes ; routes /tier et /brain-compose/tiers retirees. Les ROLES (_TOKEN_MAP owner/mcp/public -> scopes) restent et portent desormais seuls l'autorisation. kerneluser conserve — axe identite, orthogonal."
+  - version: "2.2.0"
+    date: "2026-09-27"
+    notes: "Premiere publication du gabarit depuis le 31/03. Dolt socle de persistance (BRAIN-074) ; programme immuable vs data, ancres de version (BRAIN-073) ; registre unique des secrets et son controle (BRAIN-076) ; parole entre sessions (BRAIN-075) ; un claim connait sa session et une session reprise garde son claim (BRAIN-077) ; hooks git versionnes (pre-commit, commit-msg, post-commit, post-merge, post-rewrite) et la base qui suit les handoffs ; satellites declares par machine (satellites.yml, brain-satellites.py) ; le moteur (brain-engine) et brain-ui partent avec le gabarit ; la synchro rend, liste et juge avant de publier (aucun marqueur d'instance, aucun renvoi prive)."
+  - version: "2.2.1"
+    date: "2026-09-27"
+    notes: "Le CORE part avec le gabarit : copie dans brain-engine/core/ (modules et tests, BSL 1.1), le moteur demarre chez un fork — la 2.2.0 l'importait depuis un depot non publie. La synchro lance le moteur du rendu avant de publier, et publie le CORE commite."
+  - version: "2.3.0"
+    date: "2026-09-28"
+    notes: "La doc se genere et se juge : docs/ et la skill brain sont produites depuis le code (docs-generer), et la synchro refuse une doc qui nomme ce qui n'existe pas (docs-verite) — 149 affirmations fausses de la 2.2.1 ramenees a 0. Un fork s'installe ou il est clone, sans service ni chemin impose, et garde son push. Sans jeton, le moteur ne repond qu'a la machine elle-meme. Un agent qui renvoie a un agent absent le dit ; l'index ne presente que les agents livres. Le wiki ne part plus. Aucun nom de l'instance qui publie ne part (filet a la synchro). La vue Documentation assainit le HTML qu'elle affiche."
+  - version: "2.3.1"
+    date: "2026-09-28"
+    notes: "Un peer se joint la ou son brain est installe (brain_root declare, sinon le chemin d'ici ; racine validee, jamais echappee). Plus aucun script ne meurt en silence sur un tuyau coupe sous pipefail : premieres (scripts/lib) remplace head, et un grep sans resultat ou un service arrete ne tuent plus brain-status, human-gate-ack ni install-brain-watch. La doc juge aussi les modeles d'issue, qui demandaient encore un palier."
+  - version: "2.3.2"
+    date: "2026-09-28"
+    notes: "Les douze specs du programme (profil/specs/) partent enfin avec le gabarit : le .gitignore du gabarit les ecartait depuis le 04/09, alors que la doc et les agents les citent. La synchro juge desormais ce que git publie, pas ce qu'elle ecrit sur le disque : un fichier ecrit et ignore est un refus."

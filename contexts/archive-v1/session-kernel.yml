@@ -1,0 +1,50 @@
+# session-kernel.yml — Contexte BHP pour lecture kernel
+# Trigger : "brain boot mode kernel"
+# Objectif : lire, comprendre, auditer le kernel — JAMAIS écrire
+# Cible : ~20% contexte max au boot
+
+session_type: kernel
+description: "Lecture seule kernel — audit, compréhension, diagnostic. Toute écriture → session-edit-brain."
+tier_required: full    # kernel = zone owner uniquement — kerneluser: true requis (full = owner)
+
+write_lock: true       # Signal absolu — aucune écriture kernel autorisée dans cette session
+                       # Tentative write kernel → refus immédiat + redirection session-edit-brain
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%)
+L1:
+  - now.md                          # bridge session précédente
+  - agents/brain-guardian.md        # auto-méfiance structurelle — assertions prouvées uniquement
+  - agents/coach-boot.md            # présence légère — observation
+  - BRAIN-INDEX.md                  # état global pour contexte kernel
+
+# L2 — Kernel scope (~8%) — fichiers kernel à auditer
+L2:
+  template: null
+  extras:
+    - brain-constitution.md         # identité + protocoles Layer 0
+    - profil/specs/bsi-spec.md            # spec BSI complète si audit claims
+  fallback: null
+
+# L3 — On demand
+# agents/audit.md, scripts/, profil/decisions/, wiki/
+L3:
+  hint: "Charger à la demande : audit, scripts, decisions/, wiki/, profil/ détaillé"
+
+# --- Règle absolue ---
+# session-kernel = LECTURE SEULE. Zéro exception.
+# Toute décision de modification kernel → fermer cette session
+# → rouvrir avec : brain boot sudo (session-edit-brain)
+# Cette règle est non-négociable. brain-guardian enforcer.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~10%"
+  L2: "~5%"
+  total_boot: "~20%"

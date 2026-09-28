@@ -1,0 +1,95 @@
+# session-learning.yml — Sessions V2 extension (BRAIN-049)
+# Posture : je découvre / j'expérimente
+# Trigger : "brain boot learning[/<track>]"
+# Cible : ~15% contexte max au boot
+
+#
+# --- Ce que « L0 » veut dire, et ce qu'il ne veut pas dire -------------------
+#
+# L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
+# session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
+# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+#
+# L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
+# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
+# PATHS.md.
+#
+# Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
+# chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
+# pas la même chose, et personne ne pouvait dire si c'était un désaccord ou une
+# addition. C'en était une, mais rien ne l'écrivait.
+#
+# Les six L0 sont volontairement IDENTIQUES. `contextes_de_session.py` refuse
+# qu'ils divergent : un type qui charge autre chose que les autres au niveau
+# zéro n'est plus le même socle.
+
+session_type: learning
+description: "Session d'apprentissage — exploration, experimentation, progression libre"
+
+# ── Duree de vie du claim, en heures — ─────────────────────────────
+#
+# Le TTL n'est PAS une limite de travail : `touch` le repousse a chaque commit.
+# C'est la duree au bout de laquelle une session SANS SIGNE DE VIE devient
+# suspecte — `close-stale` la ferme passe son propre seuil, 12 h de plus.
+#
+# Il vit ICI, a cote de la posture qui le justifie : c'est le manifest qui
+# declare la posture, donc c'est lui qui declare combien elle dure.
+#
+# statut : raisonne
+#   1 session mesuree seulement — indecidable.
+#   « Une video digeree a la fois » suggere des sessions
+#   courtes et espacees, mais un echantillon ne prouve
+#   rien. A REVOIR a 10 sessions mesurees.
+ttl_hours: 4
+
+# L0 — Invariant (~4%) — TOUJOURS charge
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~8%)
+# BRAIN-072 : L1_featured fusionne ici.
+L1:
+  - agents/coach-boot.md            # garde comportemental
+  - agents/coach.md                 # coach complet — observe convergences entre tracks
+  - BRAIN-INDEX.md                  # aiguillage BSI — les claims et signaux sont en base
+
+# L2 — Track conditionnelle (~3%)
+# "brain boot learning/blockchain" → charge learning/blockchain.md ou learning/blockchain/
+L2:
+  template: "learning/{project}.md"
+  extras: []
+  fallback: null
+
+# L3 — On demand (0% au boot)
+# Agents charges selon la track et le besoin :
+#   <formation> → agents pertinents au domaine touche (vps, deploy, etc.)
+#   blockchain  → observatory/, sources videos
+#   tout track  → todo/ si capture necessaire
+L3:
+  hint: "Agents charges au besoin selon track — pas de preload domaine"
+
+# --- Comportements ---
+# Pas de wrap pressure — le rythme est libre
+# Pas de sprint ni todo obligatoire
+# Coach : observe connexions, signale convergences, jamais de push module suivant
+# Hands-on OK : coder un tuto, experimenter, forker — sans pression livrable
+# Hub au boot : afficher tracks actives + inbox + statut
+
+# --- Gates ---
+gates:
+  no_kernel_write: "zone kernel en lecture seule — jamais de write kernel en learning"
+  no_wrap_pressure: "pas de detection fin de session proactive — l'utilisateur decide"
+
+# --- Zone access ---
+# Lecture : toutes zones
+# Ecriture : learning/, todo/, repos projets (si experimentation)
+# Interdit : kernel write
+
+# --- Metriques cibles ---
+context_target:
+  L0: "~4%"
+  L1: "~8%"
+  L2: "~3%"
+  total_boot: "~15%"

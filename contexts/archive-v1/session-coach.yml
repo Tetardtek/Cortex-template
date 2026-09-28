@@ -1,0 +1,46 @@
+# session-coach.yml — Contexte BHP pour sessions de coaching
+# Trigger : "brain boot mode coach"
+# Cible : ~20% contexte max au boot
+
+session_type: coach
+description: "Session coaching — progression, réflexion, cap stratégique, clarté"
+tier_required: featured    # coaching complet (coach.md) = tier featured (RAG + progression)
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%)
+L1:
+  - now.md                          # bridge session précédente — contexte pour le coach
+  - agents/coach.md                 # présence permanente coaching
+  - metabolism/README.md            # état métabolique + énergie
+  - profil/specs/collaboration.md         # règles de travail, préférences
+  - BRAIN-INDEX.md                  # vue d'ensemble pour coaching stratégique
+
+# L2 — Project scope (~5%) — optionnel si le coaching porte sur un projet
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+  fallback:
+    - focus.md                      # si pas de projet déclaré → focus global
+
+# L3 — On demand
+# Exemples : progression/ détaillée, wiki/patterns.md, sessions passées
+L3:
+  hint: "Charger à la demande : progression détaillée, sessions passées, wiki/patterns"
+
+# --- Note coaching ---
+# Le coach est L1 permanent — même sans signal "coach", il est disponible.
+# session-coach = le coach PREND LE DESSUS sur les autres dimensions.
+# focus.md en L2 fallback car contexte coaching global fréquent.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~12%"
+  L2: "~5%"
+  total_boot: "~20%"

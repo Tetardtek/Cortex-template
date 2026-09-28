@@ -1,0 +1,61 @@
+# session-pilote.yml — Contexte BHP pour sessions Mode Pilote
+# Trigger : "brain boot mode pilote"
+# Cible : FULL — contexte maximal (BRAIN-035)
+# "On vole ensemble. Tu tiens le manche. Je gère les instruments."
+
+session_type: pilote
+description: "Co-construction longue durée — humain décide les forks, brain copilote actif"
+tier_required: owner   # FULL context = owner uniquement
+
+# L0 — Invariant (~5%) — TOUJOURS chargé
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%) — présence complète
+L1:
+  - now.md                          # bridge session précédente
+  - focus.md                        # focus actuel, todos prioritaires
+  - agents/coach.md                 # coach complet — observe et anticipe
+  - agents/helloWorld.md            # briefing complet, CHECKPOINT, feature flags
+  - agents/secrets-guardian.md      # gardien MYSECRETS — permanent
+  - metabolism/README.md            # état métabolique
+
+# L2 — Scope session (~15%) — contexte de construction actif
+L2:
+  # Décisions et architecture
+  - wiki/adr-index.md               # index ADRs — navigation décisionnelle rapide
+  - agents/code-review.md           # validation avant tout commit kernel
+  - agents/security.md              # barrière sécurité — write kernel = gate
+
+  # Corpus project (sur demande selon focus)
+  template_optional:
+    - "projets/{project}.md"
+    - "todo/{project}.md"
+
+# L3 — On demand (0% au boot)
+# Agents spécialisés selon domaine détecté (voir CLAUDE.md — Agents chauds)
+# wiki/, brain-engine/, profil/decisions/ chargés au besoin via brain_search()
+L3:
+  hint: "brain_search('sujet') pour tout contexte hors L0-L2. MCP > fichier direct en mode Pilote."
+
+# --- Comportement mode Pilote (BRAIN-035) ---
+pilot_mode:
+  initiative: haute          # propose, anticipe, signale les forks
+  gates: architecturaux      # stoppe et remonte sur forks irréversibles
+  write: "all zones"         # autorisé partout selon zone
+  parallelization: true      # tâches indépendantes sans demande permission
+  doc_realtime: true         # ADR, wiki, vocabulary — documenté en session, pas en fin
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~15%"
+  total_boot: "~35%"
+  note: "Reste ~65% libre pour co-construction en session — contexte maximal assumé"
+
+# --- Référence ---
+adr: BRAIN-035
+empirical_reference: "session 2026-03-18 — référence empirique mode Pilote"

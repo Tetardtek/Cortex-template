@@ -1,0 +1,12 @@
+sess_id: sess-init-cold-start
+type: explore
+scope: brain/
+agent: helloWorld
+status: closed
+opened_at: "2026-01-01T00:00"
+closed_at: "2026-01-01T00:01"
+result_status: success
+story_angle: "Premier boot — le brain est vierge, bienvenue."
+zone: project
+mode: cold-start
+handoff_level: "NO"

@@ -1,0 +1,43 @@
+# session-debug.yml — Contexte BHP pour sessions de debug
+# Trigger : "brain boot mode debug[/<project>[/<file>]]"
+# Cible : ~12% contexte max au boot
+
+session_type: debug
+description: "Session de debug ciblé — bug, crash, comportement inattendu"
+tier_required: free   # debug = agent fondamental — disponible pour tous les tiers
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~7%) — ultra chirurgical sur le debug
+L1:
+  - agents/debug.md                 # agent principal debug
+
+# L2 — Project scope — fichier cible si déclaré dans le signal
+# Signal : "debug/<project>/<file>" → charger le fichier + projet
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "{file}"                      # fichier cible si déclaré
+    - "todo/{project}.md"           # todos projet pour contexte
+  fallback: null
+
+# L3 — On demand
+# Exemples : agents/testing.md, agents/security.md, logs, config spécifique
+# Note : agents/testing.md chargé automatiquement si debug implique des tests
+L3:
+  hint: "Charger à la demande : testing, security, logs, agents métier, wiki"
+
+# --- Règle debug ---
+# Un signal debug/project/file = on charge uniquement le fichier concerné.
+# Pas de focus.md, pas de metabolism — contexte minimal pour aller au problème vite.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~5%"
+  L2: "~5%"
+  total_boot: "~12%"

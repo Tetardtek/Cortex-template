@@ -1,0 +1,108 @@
+# session-work.yml v2 — Sessions V2 (BRAIN-047)
+# Posture : je produis
+# Absorbe : work, deploy, debug, infra, urgence
+# Trigger : "brain boot work[/<project>]"
+# Cible : ~25% contexte max au boot
+
+#
+# --- Ce que « L0 » veut dire, et ce qu'il ne veut pas dire -------------------
+#
+# L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
+# session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
+# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+#
+# L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
+# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
+# PATHS.md.
+#
+# Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
+# chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
+# pas la même chose, et personne ne pouvait dire si c'était un désaccord ou une
+# addition. C'en était une, mais rien ne l'écrivait.
+#
+# Les six L0 sont volontairement IDENTIQUES. `contextes_de_session.py` refuse
+# qu'ils divergent : un type qui charge autre chose que les autres au niveau
+# zéro n'est plus le même socle.
+
+session_type: work
+description: "Session de production — code, deploy, debug, infra, ops"
+
+# ── Duree de vie du claim, en heures — ─────────────────────────────
+#
+# Le TTL n'est PAS une limite de travail : `touch` le repousse a chaque commit.
+# C'est la duree au bout de laquelle une session SANS SIGNE DE VIE devient
+# suspecte — `close-stale` la ferme passe son propre seuil, 12 h de plus.
+#
+# Il vit ICI, a cote de la posture qui le justifie : c'est le manifest qui
+# declare la posture, donc c'est lui qui declare combien elle dure.
+#
+# statut : mesure
+#   69 sessions mesurees, moyenne 2,6 h
+ttl_hours: 4
+
+# L0 — Invariant (~5%) — TOUJOURS charge
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~12%)
+# BRAIN-072 : L1_featured et L1_pro fusionnes ici. Les couches par tier etaient
+# une barriere commerciale, pas une decision de contexte — tout le monde charge
+# la meme chose.
+L1:
+  # ── La carte des chantiers —, le 17/09 ──────────────────────────
+  #
+  # `LATEST.md` ecrivait « lu par helloWorld au boot » depuis des semaines, et
+  # AUCUN manifest ne le chargeait : helloWorld ne lit un handoff que sur signal
+  # CHECKPOINT/HANDOFF explicite. Une affirmation qu'aucun mecanisme n'appliquait
+  # — une affirmation que rien ne verifiait, comme d'autres relevees la meme semaine.
+  #
+  # Son defaut n'etait donc pas son cout, c'etait son inutilite : il grossissait
+  # (343 lignes) et personne ne le consommait, donc rien ne forcait sa tenue.
+  # Il est passe en index — 51 lignes — et il entre ici.
+  #
+  # Ce qu'il apporte : savoir ou en est chaque chantier et ce qui attend l'owner
+  # SANS charger le contexte d'aucun backlog. La doctrine BHP appliquee a l'etat
+  # des projets — charger pour choisir, au lieu de charger pour savoir.
+  #
+  # Ce qui le tient a jour : `brain doctor`, controle « l etat annonce vs la
+  # forge ». Un index que rien ne verifie ne ferait que deplacer le defaut.
+  # cap servi par brain_focus() MCP — plus de lecture fichier directe
+  # focus.md genere depuis Dolt via API /focus — plus de fichier statique
+  - agents/coach-boot.md            # garde comportemental
+  - agents/coach.md                 # coach complet byTask
+  - agents/debug.md                 # debug disponible nativement
+  - agents/code-review.md           # qualite code, PR
+  - agents/security.md              # failles, OWASP
+
+# L2 — Project scope (~8%) — conditionnel sur project declare
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+  fallback: null
+
+# L3 — On demand (0% au boot)
+# Agents charges a la demande selon tags/scope :
+#   deploy → agents/vps.md, agents/ci-cd.md, agents/monitoring.md
+#   infra  → agents/vps.md, agents/pm2.md
+#   urgence → agents/vps.md, agents/pm2.md (+ conserve: auto si context < 40%)
+#   refacto → agents/refacto.md
+#   test   → agents/testing.md
+#   migration → agents/migration.md
+L3:
+  hint: "Charger a la demande : vps, ci-cd, pm2, monitoring, refacto, testing, migration"
+
+# --- Comportements absorbes ---
+# urgence : conserve mode auto si context > 60%, coach silencieux
+# deploy  : agents vps + ci-cd charges en L3 sur signal
+# debug   : debug.md deja en L1 (chirurgical)
+# infra   : vps + pm2 charges en L3 sur signal
+
+# --- Metriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~12%"
+  L2: "~8%"
+  total_boot: "~25%"

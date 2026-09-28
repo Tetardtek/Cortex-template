@@ -1,0 +1,45 @@
+# session-capital.yml — Contexte BHP pour sessions capital professionnel
+# Trigger : "brain boot mode capital"
+# Focus : bilan, objectifs, CV, capital professionnel, progression long terme
+# Cible : ~23% contexte max au boot
+
+session_type: capital
+description: "Session capital — bilan, objectifs, CV, capital professionnel"
+tier_required: featured    # coach.md complet + capital-scribe = tier featured (RAG + progression)
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~18%)
+L1:
+  - now.md                          # bridge session précédente
+  - agents/coach.md                 # coach complet — bilan et cap stratégique (pas boot-summary)
+  - profil/objectifs.md             # objectifs actifs + prochaines étapes
+  - profil/capital.md               # preuves CV, milestones, capital accumulé
+  - progression/README.md           # état métabolique + ratio sessions + tendances
+
+# L2 — non applicable (capital = session introspective, pas de scope projet)
+L2:
+  template: null
+  extras: []
+  fallback: null
+
+# L3 — On demand
+# progression/ détaillée, sessions passées, capital-scribe pour mise à jour capital.md
+L3:
+  hint: "Charger à la demande : progression/ détaillée, sessions passées, capital-scribe"
+
+# --- Note capital ---
+# capital-scribe actif automatiquement si modification capital.md détectée en session.
+# Pas de projets/ en L2 — le coaching capital est orthogonal aux projets actifs.
+# session-coach = réflexion stratégique ; session-capital = capital pro + CV + milestones.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~18%"
+  L2: "0%"
+  total_boot: "~23%"

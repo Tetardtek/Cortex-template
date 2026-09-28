@@ -1,0 +1,46 @@
+# session-navigate.yml — Contexte BHP pour sessions navigate
+# Trigger : "brain boot navigate" ou "brain boot mode navigate"
+# Objectif : fenêtre de journée légère, tenue à travers les compactions
+# Cible : ~18% contexte max au boot
+
+session_type: navigate
+description: "Session navigate — conscience temporelle + orientation journée. Coach en boot-summary uniquement."
+tier_required: free
+
+# L0 — Invariant (~4%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~12%)
+# Coach : boot-summary uniquement — pas le fichier complet (~3000 tokens économisés)
+L1:
+  - now.md                          # bridge session précédente — état, fix en attente, décisions (G-1)
+  - agents/coach-boot.md            # garde comportemental + boot-summary (G-2)
+  - agents/time-anchor.md           # passerelle temporelle + fallback post-compaction
+  - focus.md                        # projets actifs + prochaine frontière
+  - BRAIN-INDEX.md                  # claims actifs + signaux
+  - todo/README.md                  # index intentions (warm — fichiers projet sur demande)
+  - agents/guide.md                  # presentation systeme — accueil fresh fork + on demand
+  - agents/catalogist.md             # exploration registres (agents, tiers, features)
+  - agents/pathfinder.md             # routage intentionnel — oriente vers la bonne session
+
+# L2 — Project scope (~2%) — déclenché si project déclaré dans le signal
+L2:
+  template: "projets/{project}.md"
+  extras: []
+  fallback: null
+
+# L3 — On demand
+# workspace/live-states.md si besoin de voir les sessions parallèles (G-3)
+# coach.md complet, projets/<X>.md, workspace/sprints/, progression/
+L3:
+  hint: "workspace/live-states.md, coach complet, projets/<X>.md, workspace/sprints/, progression/"
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~4%"
+  L1: "~12%"
+  L2: "~2%"
+  total_boot: "~18%"

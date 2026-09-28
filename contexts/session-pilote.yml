@@ -1,0 +1,111 @@
+# session-pilote.yml v2 — Sessions V2 (BRAIN-047)
+# Posture : j'orchestre (long, multi-scope)
+# Trigger : "brain boot pilote[/<project>]"
+# Cible : ~35% contexte max au boot (FULL — owner only)
+
+#
+# --- Ce que « L0 » veut dire, et ce qu'il ne veut pas dire -------------------
+#
+# L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
+# session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
+# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+#
+# L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
+# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
+# PATHS.md.
+#
+# Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
+# chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
+# pas la même chose, et personne ne pouvait dire si c'était un désaccord ou une
+# addition. C'en était une, mais rien ne l'écrivait.
+#
+# Les six L0 sont volontairement IDENTIQUES. `contextes_de_session.py` refuse
+# qu'ils divergent : un type qui charge autre chose que les autres au niveau
+# zéro n'est plus le même socle.
+
+session_type: pilote
+description: "Co-construction longue duree — humain decide les forks, brain copilote actif"
+
+# ── Duree de vie du claim, en heures — ─────────────────────────────
+#
+# Le TTL n'est PAS une limite de travail : `touch` le repousse a chaque commit.
+# C'est la duree au bout de laquelle une session SANS SIGNE DE VIE devient
+# suspecte — `close-stale` la ferme passe son propre seuil, 12 h de plus.
+#
+# Il vit ICI, a cote de la posture qui le justifie : c'est le manifest qui
+# declare la posture, donc c'est lui qui declare combien elle dure.
+#
+# statut : mesure
+#   59 sessions mesurees, moyenne 11,8 h
+#   16 sur 27 depassaient les 4 h du defaut
+ttl_hours: 12
+kerneluser_required: true   # axe identite, pas acces — le mode pilote suppose
+                            # qu'on est proprietaire du brain (BRAIN-072)
+
+# L0 — Invariant (~5%) — TOUJOURS charge
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%) — presence complete
+L1:
+  # ── La carte des chantiers —, le 17/09 ──────────────────────────
+  #
+  # `LATEST.md` ecrivait « lu par helloWorld au boot » depuis des semaines, et
+  # AUCUN manifest ne le chargeait : helloWorld ne lit un handoff que sur signal
+  # CHECKPOINT/HANDOFF explicite. Une affirmation qu'aucun mecanisme n'appliquait
+  # — une affirmation que rien ne verifiait, comme d'autres relevees la meme semaine.
+  #
+  # Son defaut n'etait donc pas son cout, c'etait son inutilite : il grossissait
+  # (343 lignes) et personne ne le consommait, donc rien ne forcait sa tenue.
+  # Il est passe en index — 51 lignes — et il entre ici.
+  #
+  # Ce qu'il apporte : savoir ou en est chaque chantier et ce qui attend l'owner
+  # SANS charger le contexte d'aucun backlog. La doctrine BHP appliquee a l'etat
+  # des projets — charger pour choisir, au lieu de charger pour savoir.
+  #
+  # Ce qui le tient a jour : `brain doctor`, controle « l etat annonce vs la
+  # forge ». Un index que rien ne verifie ne ferait que deplacer le defaut.
+  # cap servi par brain_focus() MCP — plus de lecture fichier directe
+  # focus.md genere depuis Dolt via API /focus — plus de fichier statique
+  - agents/coach.md                 # coach complet — observe et anticipe
+  - agents/helloWorld.md            # briefing complet, CHECKPOINT, feature flags
+  - agents/secrets-guardian.md      # gardien MYSECRETS — permanent
+
+# L2 — Scope session (~15%) — contexte de construction actif
+L2:
+  # YAML invalide jusqu'au 02/09 : une sequence et une cle de mapping au meme
+  # niveau. Jamais vu parce qu'aucun code ne parse ces manifests — seul l'agent
+  # les lit, en texte.
+  # `template_optional:` n'existait que dans ce manifest, et sous une forme de
+  # liste : deux noms et deux formes pour un seul concept. Ramene au contrat
+  # commun — `template` + `extras` + `fallback` — comme session-work.
+  template: "projets/{project}.md"
+  extras:
+    - agents/code-review.md         # validation avant tout commit kernel
+    - agents/security.md            # barriere securite — write kernel = gate
+    - "todo/{project}.md"           # todo du scope, s'il existe
+  fallback: null
+
+# L3 — On demand (0% au boot)
+L3:
+  hint: "brain_search('sujet') pour tout contexte hors L0-L2. MCP > fichier direct en mode Pilote."
+
+# --- Comportement mode Pilote (BRAIN-035) ---
+pilot_mode:
+  initiative: haute          # propose, anticipe, signale les forks
+  gates: architecturaux      # stoppe et remonte sur forks irreversibles
+  write: "all zones"         # autorise partout selon zone
+  parallelization: true      # taches independantes sans demande permission
+  doc_realtime: true         # ADR, wiki, vocabulary — documente en session, pas en fin
+
+# --- Metriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~15%"
+  L2: "~15%"
+  total_boot: "~35%"
+  note: "Reste ~65% libre pour co-construction — contexte maximal assume"
+
+adr: BRAIN-035

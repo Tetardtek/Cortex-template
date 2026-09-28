@@ -1,0 +1,45 @@
+# session-urgence.yml — Contexte BHP pour sessions incident/urgence
+# Trigger : "brain boot mode urgence"
+# Focus : incident prod, production down, hotfix critique
+# Mode conserve : automatique — cible context < 40%
+# Cible : ~15% contexte max au boot (mode conserve)
+
+session_type: urgence
+description: "Session urgence — incident prod, production down, hotfix critique"
+tier_required: pro    # vps, pm2, debug = agents pro
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~10%) — minimal, on va vite
+# Coach absent : urgence avant bilan pédagogique — invocation explicite si besoin
+L1:
+  - agents/vps.md                   # VPS, Apache — infra down              # tier: pro
+  - agents/pm2.md                   # process manager, restart, logs         # tier: pro
+  - agents/debug.md                 # diagnostic, crash, comportement inattendu
+
+# L2 — non applicable (urgence = focus immédiat, pas de scope projet)
+L2:
+  template: null
+  extras: []
+  fallback: null
+
+# L3 — On demand — déclenché après résolution
+L3:
+  hint: "Après résolution : scribe (post-mortem), security (si faille), monitoring (état alertes)"
+
+# --- Règles urgence ---
+conserve: auto          # mode conserve activé automatiquement — cible context < 40%
+coach: silent           # coach silencieux sauf invocation explicite après résolution
+# post-mortem : scribe déclenché sur signal "résolution confirmée" ou "c'est résolu"
+# secrets-guardian : actif en passif — rotation clés si compromis suspects
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~10%"
+  L2: "0%"
+  total_boot: "~15%"

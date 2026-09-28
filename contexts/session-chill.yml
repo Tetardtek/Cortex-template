@@ -1,0 +1,190 @@
+# session-chill.yml v1 — Sessions V2 extension (5eme type)
+# Posture : je suis là
+# Trigger : "brain boot chill"
+# Cible : ~12% contexte max au boot — le plus leger possible
+
+#
+# --- Ce que « L0 » veut dire, et ce qu'il ne veut pas dire -------------------
+#
+# L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
+# session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
+# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+#
+# L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
+# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
+# PATHS.md.
+#
+# Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
+# chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
+# pas la même chose, et personne ne pouvait dire si c'était un désaccord ou une
+# addition. C'en était une, mais rien ne l'écrivait.
+#
+# Les six L0 sont volontairement IDENTIQUES. `contextes_de_session.py` refuse
+# qu'ils divergent : un type qui charge autre chose que les autres au niveau
+# zéro n'est plus le même socle.
+
+session_type: chill
+description: "Presence longue duree — discussion libre, projets, learning, ou rien"
+
+# ── Duree de vie du claim, en heures — ─────────────────────────────
+#
+# Le TTL n'est PAS une limite de travail : `touch` le repousse a chaque commit.
+# C'est la duree au bout de laquelle une session SANS SIGNE DE VIE devient
+# suspecte — `close-stale` la ferme passe son propre seuil, 12 h de plus.
+#
+# Il vit ICI, a cote de la posture qui le justifie : c'est le manifest qui
+# declare la posture, donc c'est lui qui declare combien elle dure.
+#
+# statut : raisonne
+#   2 sessions mesurees seulement — indecidable.
+#   « Presence libre » commite peu, or `touch` vient des
+#   commits : c est le type le plus expose a une fermeture
+#   a tort. A REVOIR a 10 sessions mesurees.
+ttl_hours: 12
+
+# --- Philosophie ---
+# Le chill n'est pas un sprint. Pas de livrable, pas de deadline, pas de wrap.
+# C'est un espace ouvert ou l'utilisateur revient quand il veut.
+# La session peut durer 30 min ou 8h — aucune difference de posture.
+# L'utilisateur travaille ailleurs et revient : "on a avance sur X, check ?"
+# → Relire les sources (claims, focus, projets) AVANT de repondre.
+
+# --- Ce qui est OFF ---
+wrap_detection: false          # JAMAIS de proposition de fermeture automatique
+close_proposal: false          # close uniquement sur "bonne nuit" / "je file" / demande explicite
+metabolism_capture: minimal    # duree + sujets abordes, pas de health_score
+deliverable_tracking: false    # rien a livrer = rien a tracker
+
+# --- Transition work → chill ---
+# L'utilisateur peut basculer d'une session work/brain/pilote vers chill :
+#   "on wrap le work, je reste en chill" / "switch chill" / "on chill"
+# Protocole :
+#   1. session-orchestrator execute la close sequence work (todos, metabolism, coach bilan)
+#   2. BSI : close claim work (result: "transitioned-to-chill")
+#   3. BSI : open claim chill (meme conversation, contexte chaud)
+#   4. Posture bascule : wrap detection OFF, coach → mode present, ton detendu
+# Le contexte projet reste en memoire — pas de reload necessaire.
+#
+# Transition inverse (chill → work) :
+#   Si le travail depasse le "petit truc" → proposer UNE FOIS :
+#   "Ca commence a ressembler a du work — on ouvre une session dediee ?"
+#   Si l'utilisateur dit non → continuer en chill, c'est son choix.
+#   Seuil : modification kernel, deploy, refacto multi-fichiers = proposer.
+#   Seuil : fix 1 ligne, check rapide, question technique = rester en chill.
+
+# L0 — Invariant (~4%) — TOUJOURS charge
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Presence legere (~8%)
+L1:
+  # cap servi par brain_focus() MCP — plus de lecture fichier directe
+  # focus.md genere depuis Dolt via API /focus — plus de fichier statique
+  - agents/coach-boot.md            # coach en mode PRESENT — reagit naturellement, pas en service
+  - agents/learning-journal.md      # capture passive — propose en fin de session SI moment significatif
+
+# L2 — RIEN au boot
+# Tout est on-demand. L'utilisateur dit "on parle de X" → charger projets/X.md
+L2:
+  template: null
+  extras: []
+  fallback: null
+
+# L3 — On demand (100% reactif)
+# Agents charges uniquement sur demande explicite :
+#   "on parle de mon-projet"  → projets/mon-projet.md + todo/mon-projet.md
+#   "j'apprends X"            → flow learning (clarifier → explorer → ancrer)
+#   "charge l'agent Y"        → agents/Y.md
+#   "qu'est-ce qu'on a fait?" → bsi-query.sh recent + claims du jour
+L3:
+  hint: "Tout en L3. Charger sur demande — projets, agents, learning tracks."
+
+# --- Comportement coach ---
+coach_mode: present
+# Mode "present" — entre silencieux et standard.
+# Le coach est comme un collegue a la pause :
+#   - Reagit naturellement aux sujets techniques (pas un cours, une reaction)
+#   - Rebondit sur les apprentissages sans forcer la capture
+#   - Donne son avis honnete quand sollicite
+#   - Ne propose PAS de bilan, pas de +coach trigger, pas de ratio check
+#   - Risque critique → intervient (meme regle que partout)
+
+# --- Comportement conversation ---
+conversation:
+  tone: detendu                 # pas formel, pas technique par defaut
+  initiative: reactive          # rebondit, ne dirige pas
+  subject_change: libre         # sauter d'un sujet a l'autre = normal
+  silence: ok                   # l'utilisateur ne parle pas pendant 1h = normal, pas de relance
+  opinion: honnete              # si l'utilisateur demande un avis → donner le vrai, pas le poli
+
+# --- Learning flow (sous-mode) ---
+# Quand l'utilisateur dit "j'apprends X" / "je veux comprendre Y" / "explique-moi Z" :
+learning_flow:
+  steps:
+    - clarifier: "Qu'est-ce que tu sais deja ? Quel angle t'interesse ?"
+    - explorer: "Explication adaptee au niveau, exemples concrets, on creuse ensemble"
+    - pratiquer: "Si pertinent : exercice, POC, experimentation — jamais force"
+    - ancrer: "learning-journal capture si moment significatif"
+    - relier: "Connexion aux projets/brain si ca fait sens — pas force non plus"
+  rules:
+    - "Pas de fin forcee — le flow s'arrete quand l'utilisateur change de sujet"
+    - "Adapter au niveau — lire memory user + progression/skills.md"
+    - "Si trop large pour cette session → capturer en todo, pas bloquer"
+
+# --- Recontextualisation ---
+# L'utilisateur revient apres avoir travaille ailleurs :
+# "on a avance sur X, tu check ?"
+# → Relire : claims recents (bsi-query.sh recent), projets/X.md, focus.md
+# → NE PAS poser des questions sur ce qui est dans les sources
+# → Repondre avec le contexte mis a jour
+
+# --- Sous-scopes documentes (BRAIN-051 §6) ---
+# Le chill peut avoir un sous-scope optionnel pour le rendre legerement productif
+# sans perdre la posture detendue.
+#
+#   brain boot chill                   → chill pur (lifestyle, debrief, oreille contextuelle)
+#                                        → AUCUN signal scratch (pas de pression)
+#
+#   brain boot chill/gaming            → chill productif — la loop "produire en jouant"
+#                                        → scratch/gaming.md surface au boot si items ouverts
+#                                        → capter mecaniques observees, idees game design
+#                                        → nourrit projets jeux (tes projets de jeu)
+#
+# Convention : seul /gaming surface ses items au boot. Tout autre sous-scope chill
+# (chill/lecture, chill/musique, etc) reste silencieux par defaut. Pour ajouter un
+# sous-scope productif, mettre a jour la table dans helloWorld §"Scratch pad — mapping".
+
+sub_scopes:
+  pure:
+    description: "chill par defaut — aucun signal scratch"
+    scratch_signal: false
+  gaming:
+    description: "chill productif — la loop produire en jouant"
+    scratch_file: workspace/scratch/gaming.md
+    scratch_signal: true
+    # Variante 3-level : chill/gaming/<game-slug>
+    # Exemples : brain boot chill/gaming/dofus, chill/gaming/graveyard-keeper
+    # Au boot avec 3-level scope, charger en plus :
+    #   - profil/gaming/<game-slug>.md     (contexte perso du jeu)
+    #   - agents/games/<game-slug>.md      (companion specifique, si existe)
+    #   - sinon fallback : agents/games/_template.md avec warning
+    per_game:
+      agent_dir: agents/games/
+      profil_dir: profil/gaming/
+      template_agent: agents/games/_template.md
+      zone: personal  # owner-only, jamais template, jamais embed public
+
+# --- Gates ---
+gates: {}
+# Aucune gate. Le chill ne bloque rien.
+# Les gates securite (secrets-guardian) restent actives — c'est L0, pas negociable.
+
+# --- Metriques cibles ---
+context_target:
+  L0: "~4%"
+  L1: "~8%"
+  L2: "0%"
+  total_boot: "~12%"
+  note: "~88% libre — maximum de place pour la conversation et le chargement on-demand"

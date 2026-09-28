@@ -1,0 +1,54 @@
+# session-audit.yml — Contexte BHP pour sessions d'audit
+# Trigger : "brain boot mode audit[/<project>]"
+# Cible : ~25% contexte max au boot
+# IMPORTANT : mode lecture seule — aucun agent write actif
+
+session_type: audit
+description: "Session d'audit — lecture seule, analyse sécurité/qualité, rapport"
+tier_required: pro    # audit = agents security + code-review (pro minimum)
+
+# CONSTRAINT : audit = read-only
+# Aucune écriture en claims satellite, aucun agent write (scribe, todo-scribe, migration)
+# Le claim principal reste ouvert mais marque write_lock: true
+
+write_lock: true  # Signal au pre-flight : rejeter tout write satellite
+
+# L0 — Invariant (~5%)
+L0:
+  - PATHS.md
+  - brain-compose.local.yml
+  - KERNEL.md
+
+# L1 — Session type (~15%)
+L1:
+  - now.md                          # état dernière session — contexte pré-audit
+  - focus.md                        # projets actifs — savoir quoi auditer
+  - BRAIN-INDEX.md                  # vue globale claims + signaux
+  - agents/security.md              # failles, JWT, OAuth, OWASP          # tier: pro
+  - agents/code-review.md           # qualité, patterns, dette technique    # tier: pro
+  - agents/audit.md                 # agent audit si disponible             # tier: pro
+
+# L2 — Project scope (~10%) — prioritaire en audit : contexte complet du projet cible
+L2:
+  template: "projets/{project}.md"
+  extras:
+    - "todo/{project}.md"
+  fallback: null                    # BRAIN-INDEX.md déjà en L1
+
+# L3 — On demand
+# Exemples : agents/vps.md (infra audit), agents/mail.md (DNS/SMTP audit),
+#            wiki détaillé, config réseau, logs
+L3:
+  hint: "Charger à la demande : vps, mail/DNS, monitoring, logs, wiki technique"
+
+# --- Règle audit ---
+# Rapport final obligatoire avant close — même format que code-review.
+# write_lock bloqué en pre-flight pour tous les agents write.
+# Exception : écriture du rapport lui-même dans un fichier dédié est autorisée.
+
+# --- Métriques cibles ---
+context_target:
+  L0: "~5%"
+  L1: "~12%"
+  L2: "~8%"
+  total_boot: "~25%"
