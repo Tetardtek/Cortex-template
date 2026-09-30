@@ -66,7 +66,7 @@ La loi des zones : [KERNEL.md](KERNEL.md).
 
 ## Communauté
 
-[Discord — Le Brain](https://discord.gg/nqAVHMphXc) — support, showcase, discussions.
+[Discord — Le Brain](https://discord.gg/BsRqKhNgq6) — support, showcase, discussions.
 
 ## Licence
 
