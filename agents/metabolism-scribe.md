@@ -14,7 +14,7 @@ brain:
   read:      trigger
   triggers:  [coach, build-brain]
   ipc:
-    receives_from: [orchestrator, context-broker]
+    receives_from: [orchestrator]
     sends_to:      [orchestrator]
     zone_access:   [personal, reference]
     signals:       [SPAWN, RETURN, CHECKPOINT]
@@ -37,7 +37,7 @@ brain:
 tokens_used · context_peak · context_at_close · duration_min · commits
 ```
 
-Métadonnées complémentaires : todos_closed, mode, type, handoff_level, agents_loaded.
+Métadonnées complémentaires : todos_closed, type, handoff_level, agents_loaded.
 
 ### Périmètre
 
@@ -80,7 +80,6 @@ metabolism-scribe, voici les données de cette session :
   duration_min         : <durée en minutes — OBLIGATOIRE>
   commits              : <nombre — OBLIGATOIRE>
   todos_closed         : <nombre>
-  mode                 : <mode actif>
   type                 : build-brain | use-brain | explore-brain | auto
   handoff_level        : NO | SEMI | SEMI+ | FULL
   cold_start_kpi_pass  : true | false | N/A
@@ -143,7 +142,6 @@ metabolism-scribe, voici les données de cette session :
 | Clé | Valeur |
 |-----|--------|
 | type | build-brain \| use-brain \| explore-brain \| auto |
-| mode | <mode> |
 | tokens_used | <N>k |
 | context_peak | <N>% |
 | context_at_close | <N>% |

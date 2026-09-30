@@ -5,6 +5,7 @@
 #   1. la posture de l'instance (replica : pas de commit kernel), si le garde existe
 #   2. la zone d'écriture du type de session, si le garde existe
 #   3. docs-generer --check quand une source de la doc change
+#   4. pas de marqueur de conflit git dans ce que le commit AJOUTE
 #
 # Le Python, la base et la posture sont ceux du dépôt PRINCIPAL ; les fichiers,
 # ceux du commit. Voir _racines.sh.
@@ -44,4 +45,18 @@ if [[ -n "$triggers" && -f "$BRAIN_WT/scripts/docs-generer.py" ]]; then
         echo "$sortie" | tail -3 | sed 's/^/  /'
         exit 1
     fi
+fi
+
+# Un marqueur de conflit laissé dans un fichier se commite sans bruit : le
+# 27/09, `||||||| 5c73ba0` — la ligne de BASE d'une fusion diff3 — est entré
+# dans une fiche du backlog et y est resté deux jours. `git diff
+# --check` les connaît tous (<<<<<<<, |||||||, =======, >>>>>>>) ; on ne garde
+# que ce motif-là, pas les espaces de fin de ligne qu'il signale aussi. Seules
+# les lignes AJOUTÉES sont jugées : un fichier qui en porte déjà ne bloque pas
+# un commit qui n'y touche pas.
+marqueurs=$(git diff --cached --check 2>/dev/null | grep "leftover conflict marker" || true)
+if [[ -n "$marqueurs" ]]; then
+    echo "pre-commit : marqueur(s) de conflit git dans ce commit — résoudre avant de commiter."
+    echo "$marqueurs" | sed 's/^/  /'
+    exit 1
 fi

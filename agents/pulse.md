@@ -137,14 +137,10 @@ WHERE scope LIKE '%<projet>%'
 AND status = 'closed'
 ORDER BY opened_at DESC
 LIMIT 3;
-
--- Todos ouverts du projet
-SELECT ti.text, ts.title as section
-FROM todo_items ti
-JOIN todo_sections ts ON ti.section_id = ts.id
-WHERE ts.project = '<projet>' AND ti.done = 0
-ORDER BY ti.sort_order;
 ```
+
+Les todos ne sont pas en base : ce sont les fiches ouvertes du projet, dans
+`workspace/backlog/<projet>/backlog.md` (si présent) — colonne d'état `·`.
 
 ```bash
 # Derniers commits mentionnant le projet

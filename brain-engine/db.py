@@ -20,6 +20,7 @@ Convention :
 """
 
 import functools
+import re
 import os
 import logging
 import threading
@@ -40,15 +41,15 @@ if _env_local.exists():
             k, v = line.split('=', 1)
             os.environ.setdefault(k.strip(), v.strip())
 
-BACKEND     = os.getenv('BRAIN_DB_BACKEND', 'dolt')    # dolt | sqlite — dolt par défaut (BRAIN-074)
+BACKEND     = os.getenv('BRAIN_DB_BACKEND') or 'dolt'    # dolt | sqlite — dolt par défaut (BRAIN-074)
 
-DB_PATH     = Path(os.getenv('BRAIN_DB_PATH', str(BRAIN_ROOT / 'brain.db')))
-DOLT_DIR    = Path(os.getenv('BRAIN_DOLT_DIR', str(BRAIN_ROOT / 'brain-dolt')))
-DOLT_PORT   = int(os.getenv('BRAIN_DOLT_PORT', '3307'))
-DOLT_HOST   = os.getenv('BRAIN_DOLT_HOST', '127.0.0.1')
-DOLT_USER   = os.getenv('BRAIN_DOLT_USER', 'root')
+DB_PATH     = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
+DOLT_DIR    = Path(os.getenv('BRAIN_DOLT_DIR') or str(BRAIN_ROOT / 'brain-dolt'))
+DOLT_PORT   = int(os.getenv('BRAIN_DOLT_PORT') or '3307')
+DOLT_HOST   = os.getenv('BRAIN_DOLT_HOST') or '127.0.0.1'
+DOLT_USER   = os.getenv('BRAIN_DOLT_USER') or 'root'
 
-DOLT_DB     = os.getenv('BRAIN_DOLT_DB', 'brain-dolt')
+DOLT_DB     = os.getenv('BRAIN_DOLT_DB') or 'brain-dolt'
 
 # ⚠️ Placé ici, après les constantes, et pas à côté de `BACKEND` où il serait
 # plus lisible : il NOMME `DB_PATH`, donc il ne peut pas s'exécuter avant.
@@ -72,7 +73,7 @@ DOLT_DB     = os.getenv('BRAIN_DOLT_DB', 'brain-dolt')
 # chez un fork. SQLite reste possible, mais DÉCLARÉ : un fichier absent n'est plus
 # créé en silence par défaut. Et le défaut, quel qu'il soit, se déclare quand il
 # s'applique : il décide de la source de vérité.
-if 'BRAIN_DB_BACKEND' not in os.environ:
+if not os.environ.get('BRAIN_DB_BACKEND'):   # absent OU vide : même repli, même aveu
     log.warning(
         "BRAIN_DB_BACKEND non declare — repli sur `%s`. La base lue sera %s. "
         "Si ce n'est pas voulu, `.env.local` est absent ou n'a pas ete charge "
@@ -315,8 +316,8 @@ def _dolt_commit(message: str, tables: list[str] | None = None):
     justement ce qu'on veut capturer. Une table introuvable n'echoue pas
     l'ecriture, elle elargit le commit en le disant fort.
 
-    Quatre modules l'importent directement (`distill`, `embed`, `umap-edges`,
-    `umap-positions`) : le nom reste, le mecanisme part.
+    Deux modules l'importent directement (`distill`, `embed`) : le nom reste,
+    le mecanisme part.
     """
     _journal().commit(message, tables)
 
@@ -423,6 +424,59 @@ def count(table: str, where: str = '1=1') -> int:
     if row:
         return int(row['n'])
     return 0
+
+
+# ── Le réseau des branches — BRAIN-078 ───────────────────────────────────────
+#
+# Une machine satellite (le laptop) écrit sur SA branche de cette base, et ses
+# sessions portent le suffixe de sa machine : `sess-…-<slug>.laptop` sur la
+# branche `laptop`. Lue seule, `claims` ne montre donc que le fixe. Ici, chaque
+# machine fait foi pour ses lignes : les claims `.<branche>` viennent de leur
+# branche, tous les autres de `main` — une ligne du laptop déjà fusionnée dans
+# `main` n'y est pas lue en double, et c'est sa version sur la branche qui
+# compte. Sur SQLite, ou quand on est soi-même sur une branche (le laptop voit
+# `main` par son rafraîchissement), il n'y a pas de satellites.
+
+_NOM_DE_BRANCHE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+
+
+def branches_satellites() -> list[str]:
+    """Les branches autres que `main`, dont le nom peut servir de suffixe."""
+    if BACKEND != 'dolt' or '/' in DOLT_DB:
+        return []
+    noms = [r['name'] for r in query("SELECT name FROM dolt_branches")]
+    return sorted(n for n in noms if n != 'main' and _NOM_DE_BRANCHE.match(n))
+
+
+def claims_du_reseau(where: str = '1=1', params: tuple = (), colonnes: str = '*') -> list[dict]:
+    """Les claims de cette base, et ceux que chaque satellite a ouverts sur sa
+    branche. Chaque ligne porte `_branche` : None pour la base, sinon la branche."""
+    satellites = branches_satellites()
+    exclure = ''.join(" AND sess_id NOT LIKE %s" for _ in satellites)
+    lignes = query(f"SELECT {colonnes} FROM claims WHERE ({where}){exclure}",
+                   tuple(params) + tuple(f'%.{b}' for b in satellites))
+    for r in lignes:
+        r['_branche'] = None
+    for b in satellites:
+        venues = query(f"SELECT {colonnes} FROM `{DOLT_DB}/{b}`.claims "
+                       f"WHERE ({where}) AND sess_id LIKE %s", tuple(params) + (f'%.{b}',))
+        for r in venues:
+            r['_branche'] = b
+        lignes += venues
+    return lignes
+
+
+def ouverts_du_reseau() -> list[dict]:
+    """Les claims ouverts de tout le réseau, dans la forme que le verrou du CORE
+    attend — à passer à `BSI(depot(), ouverts_du_reseau=…)` (BRAIN-078).
+
+    Le verrou de scope (`conflit`, `recouvrements`, `ouvre`) voit alors aussi
+    les claims que chaque machine satellite a ouverts sur sa branche. La route
+    construit le `BSI` elle-même : c'est ce que `branchements_du_core.py`
+    vérifie — le CORE branché là où il décide.
+    """
+    return claims_du_reseau("status = 'open'",
+                            colonnes="sess_id, scope, type, zone, opened_at, expires_at, project")
 
 
 def table_exists(table: str) -> bool:

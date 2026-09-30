@@ -1,11 +1,12 @@
 <!-- Généré depuis docs/src/README.md par scripts/docs-generer.py — ne pas éditer ici. -->
 # La doc du brain
 
-> Kernel v2.3.2 — 74 agents, 6 types de session.
+> Kernel v2.4.2 — 67 agents, 6 types de session.
 
 | Page | Pour |
 |---|---|
 | [Démarrer](demarrer.md) | installer un fork, du clone au premier `brain boot` |
+| [Se mettre à jour](mettre-a-jour.md) | recevoir une nouvelle version du gabarit dans ton fork |
 | [Sessions](sessions.md) | les types de session, ce qu'ils chargent, où ils écrivent |
 | [Architecture](architecture.md) | le noyau, les satellites, l'instance, les zones |
 | [Agents](agents.md) | les agents, groupés par ce qu'ils font |

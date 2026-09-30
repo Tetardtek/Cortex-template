@@ -6,7 +6,7 @@ domain: <domaine-principal>
 status: <active | draft | retired>
 brain:
   version:   1
-  type:      metier          # protocol | scribe | metier | orchestrator
+  type:      metier          # metier | protocol | scribe | specialist | reader | orchestrator (utility, spec, game-companion : un agent chacun)
   scope:     project         # kernel (distributable) | project (défaut métier) | personal (privé)
   owner:     human
   lifecycle: stable          # permanent | stable | evolving

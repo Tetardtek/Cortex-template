@@ -34,10 +34,10 @@ Tout passe par `bash scripts/brain-engine.sh <commande>` :
 |---|---|
 | `start` | démarre le moteur **et** le serveur MCP, en arrière-plan. Lance aussi la base si rien ne la sert déjà. `--fg` : au premier plan |
 | `stop` | arrête ce que `start` a lancé — et seulement ça |
-| `status` | PID, mode, port, `/health`, MCP |
+| `status` | PID, mode, port, `/health`, MCP — et si les unités systemd installées sont celles de cette version |
 | `logs` | suit le journal |
 | `embed` | indexe le corpus une fois (demande Ollama) |
-| `install systemd` | deux unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp` |
+| `install systemd` | des unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp`, et le timer `brain-embed` (hors mode démo). Se rejoue sans risque : il réécrit les unités et les relance |
 | `install pm2` | l'API seule sous pm2, relancée si elle tombe — ni le MCP, ni au démarrage de la session |
 
 `stop` n'arrête jamais un moteur qu'il n'a pas lancé : si systemd ou pm2 le
@@ -85,14 +85,25 @@ Ce sont des **rôles**, pas des paliers : chacun ouvre une partie du brain.
 
 ## La recherche sémantique
 
-Elle demande **Ollama** et le modèle `nomic-embed-text` :
+Elle demande **Ollama** et le modèle `nomic-embed-text`. Le script vérifie
+l'un, tire l'autre, puis indexe — et dit ce qui manque, avec la commande :
 
 ```bash
-ollama pull nomic-embed-text
-bash scripts/brain-engine.sh embed
+bash scripts/ollama-setup.sh --indexer
 ```
 
+Sans Ollama, la recherche ne se tait pas : `brain_search` répond « Recherche
+indisponible » et dit quoi faire, au lieu de « Aucun résultat ».
+
 L'indexation est incrémentale : seuls les fichiers modifiés sont relus.
+Installé en service, le timer `brain-embed` la relance 5 minutes après
+l'ouverture de session, puis toutes les 2 heures. Un passage qui n'atteint pas
+Ollama **échoue**, et se lit :
+
+```bash
+systemctl --user list-timers brain-embed   # le prochain passage
+systemctl --user status brain-embed        # le dernier, et son échec éventuel
+```
 
 ---
 

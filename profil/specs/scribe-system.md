@@ -45,7 +45,8 @@ Le scribe est le seul responsable de la cohérence de son repo.
 |--------|----------|------|--------|------------|-------------|
 | `scribe` | `focus.md`, `projets/`, `infrastructure/`, `agents/AGENTS.md`, `profil/objectifs.md` | `brain/` | Universel | ✅ | Permanent |
 | `wiki-scribe` | `wiki/` (reference technique) + `docs/` (guides humains) | `brain/` | Universel | ✅ | Permanent |
-| `todo-scribe` | `todo/` | `brain-todo/` | Universel | ✅ structure | Stable quand todo en régime |
+| `todo-scribe` | les fiches `workspace/backlog/<projet>/<ID>.md` — **la liste** | `brain/` | Universel | ✅ | Permanent — une liste par projet actif ou désigné |
+| `kanban-scribe` | l'état des fiches, leur clôture sur preuve ; index et issues (`kanban.py tenir`) — **le mouvement** | `brain/` | Universel | ✅ | Permanent — paliers a / b / c (BRAIN-079) |
 | `toolkit-scribe` | `toolkit/` | `brain-toolkit/` | Universel | ✅ | Actif tant que nouveaux patterns |
 | `orchestrator-scribe` | signaux en base (`bsi-signal.sh`) + `handoffs/feedback-tech-lead-*.md` | `brain/` | Universel | ✅ protocole | Permanent — multi-instance actif |
 | `config-scribe` | `PATHS.md`, `infrastructure/` d'une instance | instance locale | Universel | ✅ structure | Invoqué sur `brain-compose new` |
@@ -65,7 +66,8 @@ Le scribe est le seul responsable de la cohérence de son repo.
 Quand plusieurs scribes écrivent dans la même session :
 
 ```
-1. todo-scribe         → commit brain-todo/       "todo(<domaine>): <intention>"
+1. todo-scribe         → commit brain/            "todo: <fiche>"                   ce qui reste devient une fiche
+   kanban-scribe       → commit brain/            "todo: <fiche> close"             clôture sur preuve, puis `kanban.py tenir`
 2. toolkit-scribe      → commit brain-toolkit/    "feat(toolkit): <pattern>"        si signal reçu
 3. coach-scribe        → commit brain-progression/ "feat(progression): <bilan>"     si session coach
 4. capital-scribe      → commit brain-profil/     "feat(capital): <milestone>"      si signal reçu
@@ -89,7 +91,7 @@ Format standard de signal en fin d'action :
   Ex: "Signal scribe : nouveau container mon-service ajouté — mettre à jour brain/infrastructure/vps.md"
 
 → Signal todo-scribe : <intention de session future>
-  Ex: "Signal todo-scribe : ⬜ configurer monitoring pour mon-service"
+  Ex: "Signal todo-scribe : configurer le monitoring de mon-service" — devient une fiche proposée
 
 → Signal toolkit-scribe : <pattern validé en prod>
   Ex: "Signal toolkit-scribe : pattern vhost reverse proxy validé — candidat toolkit/apache/"
@@ -149,7 +151,7 @@ Tout scribe qui produit du contenu documentaire :
 
 ```
 Template public (claude-brain-template) :
-  ✅ scribe, todo-scribe, toolkit-scribe, git-analyst
+  ✅ scribe, todo-scribe, kanban-scribe, toolkit-scribe, git-analyst
 
 Couche personnelle (strippée à l'export) :
   ❌ coach-scribe, capital-scribe

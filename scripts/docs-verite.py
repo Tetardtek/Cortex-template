@@ -28,6 +28,9 @@ avec le gabarit est un renvoi mort chez le fork.
     agent         `nom` d'agent : il part avec le gabarit
     retiré        le vocabulaire de ce que le brain a supprimé, avec sa raison
     gabarit       un {{PLACEHOLDER}} ou un ${var} resté tel quel
+    version       une version `vN.N.N` écrite en dur qui n'est pas celle du
+                  gabarit : juste le jour où on l'écrit, fausse à la suivante,
+                  sans erreur (Cortex-Template#7)
     renvoi        (dans agents/, pas la doc) un agent distribué qui renvoie à
                   un agent absent du gabarit le dit conditionnel —
                   « si présent » sur la ligne
@@ -36,8 +39,18 @@ Il ne juge pas la prose : une phrase fausse sans nom propre lui échappe. Ce
 qui se compte et ce qui se liste doit donc être GÉNÉRÉ depuis le code
 (`docs-generer.py`), pas écrit : le jugement ne couvre que ce qui reste nommé.
 
-Une ligne qui doit citer un nom retiré — pour dire qu'il l'est — le déclare :
-`<!-- docs-verite: permis -->` en fin de ligne. Déclaré, jamais deviné.
+Une ligne qui doit citer un nom retiré — pour dire qu'il l'est —, ou une
+version passée donnée en exemple, le déclare : `<!-- docs-verite: permis -->`
+en fin de ligne. Déclaré, jamais deviné.
+
+Une page ENTIÈRE qui raconte — un journal, un changelog, des archives — le
+déclare dans son frontmatter : `docs-verite: journal`. Elle cite par nature
+des versions passées et des mécanismes retirés ; seuls ses liens et ses
+variables restées telles quelles sont jugés.
+
+`--wiki` : les pages sont celles d'un wiki Gitea, qui lie une page SANS
+`.md` — `[texte](page)` mène à `page.md` à côté. Sans ce drapeau, un tel lien
+est mort : dans un dépôt, il l'est.
 """
 
 from __future__ import annotations
@@ -94,6 +107,12 @@ AGENTS_RETIRES = ("key-guardian", "feature-gate", "catalogist")
 # ── Lecture ────────────────────────────────────────────────────────────────
 
 PERMIS = "<!-- docs-verite: permis -->"
+#: Une page qui raconte le déclare dans son frontmatter (voir l'en-tête).
+RE_JOURNAL = re.compile(r"(?m)\A---\n(?:.*\n)*?docs-verite:\s*journal\s*\n(?:.*\n)*?---")
+#: Une version à trois nombres. Ni collée à un mot ou à un point devant (la fin
+#: d'une adresse `127.0.0.1`), ni suivie d'un chiffre (`1.2.3.4`) ; un point
+#: final de phrase reste permis (« Kernel v2.3.6. »).
+RE_VERSION = re.compile(r"(?<![\w.])v?(\d+\.\d+\.\d+)(?!\.?\d)(?!\w)")
 RE_CHEMIN = re.compile(r"(?<![\w./~-])((?:%s)/[\w./-]*[\w/])" % "|".join(RACINES))
 # Tout lien relatif — pas seulement vers un `.md`, et même avec un titre
 # `(page.md "titre")`. Les URL, les ancres seules et les chemins absolus
@@ -106,6 +125,16 @@ RE_BACKTICK = re.compile(r"`([a-z][a-z0-9]*(?:-[a-z0-9]+)*)`")
 # `genere:` que le générateur n'a pas pris) — jugé hors code : `${HOME}` dans un
 # bloc shell est du shell, pas un gabarit oublié.
 RE_GABARIT = re.compile(r"\{\{[^}]*\}\}|\$\{[a-zA-Z_]+\}|<!--\s*genere\s*:")
+
+
+def version_du_gabarit(gabarit: Path) -> str | None:
+    """`version:` de brain-compose.yml — None sans elle : la règle se tait."""
+    try:
+        texte = (gabarit / "brain-compose.yml").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r'^version:\s*"?([\d.]+)"?\s*$', texte, re.M)
+    return m.group(1) if m else None
 
 
 class Illisible(RuntimeError):
@@ -163,9 +192,19 @@ def ecrit_par_un_script(gabarit: Path, chemin: str) -> bool:
     for s in (gabarit / "scripts").glob("*"):
         # Le chemin EXACT, borné : `scripts/brain-eng` n'est pas écrit par un
         # script parce que `scripts/brain-engine.sh` y figure.
-        if s.is_file() and motif.search(s.read_text(encoding="utf-8", errors="replace")):
+        # Et dans le CODE seulement : un commentaire qui cite un fichier ne le
+        # crée pas. Mesuré le 28/09 — `brain-engine/modules.yml`, retiré d'un
+        # gabarit, passait parce qu'un commentaire de `schema-retraits.sh` le
+        # nommait.
+        if s.is_file() and motif.search(sans_commentaires(
+                s.read_text(encoding="utf-8", errors="replace"))):
             return True
     return False
+
+
+def sans_commentaires(texte: str) -> str:
+    """Le texte d'un script sans ses lignes de commentaire (`#` en tête)."""
+    return "\n".join(l for l in texte.splitlines() if not l.lstrip().startswith("#"))
 
 
 def connait(texte_script: str, sous: str) -> bool:
@@ -224,7 +263,7 @@ def renvois(gabarit: Path, brain: Path) -> list[tuple[str, int, str, str]]:
 
 
 def juger(gabarit: Path, brain: Path | None = None,
-          motifs: tuple[str, ...] = PAGES) -> list[tuple[str, int, str, str]]:
+          motifs: tuple[str, ...] = PAGES, wiki: bool = False) -> list[tuple[str, int, str, str]]:
     """(page, ligne, règle, message) pour chaque affirmation fausse. Pur sur le disque."""
     if not (gabarit / "agents").is_dir():
         raise Illisible(f"{gabarit} n'a pas de agents/ — ce n'est pas un gabarit")
@@ -232,14 +271,17 @@ def juger(gabarit: Path, brain: Path | None = None,
     publies = agents(gabarit)
     connus = publies | set(AGENTS_RETIRES) | (agents(brain) if brain else set())
     retires = [(re.compile(m, re.IGNORECASE), r) for m, r in RETIRES]
+    courante = version_du_gabarit(gabarit)
     faux: list[tuple[str, int, str, str]] = []
 
     for page in pages(gabarit, motifs):
         rel = str(page.relative_to(gabarit))
         try:
-            lignes = page.read_text(encoding="utf-8").splitlines()
+            texte = page.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError) as e:
             raise Illisible(f"{rel} : {e}") from e
+        lignes = texte.splitlines()
+        journal = RE_JOURNAL.match(texte) is not None
         dans_bloc = False
         for n, ligne in enumerate(lignes, 1):
             if ligne.lstrip().startswith(("```", "~~~")):
@@ -251,10 +293,17 @@ def juger(gabarit: Path, brain: Path | None = None,
             # le reste est de la prose. `brain boot` et `<script>.sh <mot>` ne
             # se jugent qu'en code : « Tape brain boot puis choisis » n'est pas
             # une commande dont « puis » serait le type (relecture du 28/09).
-            code = ligne if dans_bloc else " ".join(re.findall(r"`([^`]*)`", ligne))
+            # Chaque span de code se juge SEUL : recollés, deux noms voisins
+            # faisaient une commande — « `scripts/bsi-claim.sh` | lit
+            # `ttl_hours` » devenait `bsi-claim.sh ttl_hours` (wiki, 29/09).
+            codes = [ligne] if dans_bloc else re.findall(r"`([^`]*)`", ligne)
             prose = "" if dans_bloc else re.sub(r"`[^`]*`", " ", ligne)
 
             def dire(regle: str, msg: str) -> None:
+                # Un journal raconte : il ne répond que de ses liens et de ses
+                # variables restées telles quelles.
+                if journal and regle not in ("lien", "gabarit"):
+                    return
                 faux.append((rel, n, regle, msg))
 
             for m in RE_CHEMIN.finditer(ligne):
@@ -272,17 +321,20 @@ def juger(gabarit: Path, brain: Path | None = None,
                 cible = m.group(1)
                 if "://" in cible or cible.startswith(("/", "mailto:")):
                     continue
-                if not (page.parent / cible).exists():
-                    dire("lien", f"({cible}) ne mène à aucune page")
+                if (page.parent / cible).exists():
+                    continue
+                if wiki and not Path(cible).suffix and (page.parent / f"{cible}.md").exists():
+                    continue
+                dire("lien", f"({cible}) ne mène à aucune page")
 
-            for m in RE_BOOT.finditer(code):
+            for m in (m for c in codes for m in RE_BOOT.finditer(c)):
                 if m.group(1):
                     dire("boot", "`brain boot mode …` : la syntaxe est `brain boot <type>[/<scope>]`")
                 if m.group(2) not in types:
                     dire("boot", f"`{m.group(2)}` n'est pas un type de session "
                                  f"({', '.join(sorted(types))})")
 
-            for m in RE_COMMANDE.finditer(code):
+            for m in (m for c in codes for m in RE_COMMANDE.finditer(c)):
                 script, sous = m.group(1), m.group(2)
                 chemin = gabarit / "scripts" / script
                 if not chemin.is_file():
@@ -298,6 +350,16 @@ def juger(gabarit: Path, brain: Path | None = None,
             for motif, raison in retires:
                 if motif.search(ligne):
                     dire("retiré", raison)
+
+            # Une version écrite en dur est juste le jour où on l'écrit : la page
+            # « Se mettre à jour » disait `git merge v2.3.4`, fausse dès la
+            # v2.3.5 (Cortex-Template#7). Blocs de code COMPRIS — c'est là
+            # qu'était l'incident.
+            if courante:
+                for m in RE_VERSION.finditer(ligne):
+                    if m.group(1) != courante:
+                        dire("version", f"`{m.group(0)}` écrit en dur — le gabarit est en "
+                                        f"{courante} ; un exemple voulu se déclare : {PERMIS}")
 
             if RE_GABARIT.search(prose):
                 dire("gabarit", "variable restée telle quelle")
@@ -315,10 +377,13 @@ def main() -> int:
     ap.add_argument("--pages", nargs="+", metavar="MOTIF",
                     help="d'autres pages que celles du gabarit — ex. skills/brain/instance/*.md, "
                          "jugées contre le brain passé en --gabarit")
+    ap.add_argument("--wiki", action="store_true",
+                    help="les pages sont un wiki Gitea : [texte](page) mène à page.md")
     a = ap.parse_args()
     motifs = tuple(a.pages) if a.pages else PAGES
     try:
-        faux = juger(a.gabarit.resolve(), a.brain.resolve() if a.brain else None, motifs)
+        faux = juger(a.gabarit.resolve(), a.brain.resolve() if a.brain else None, motifs,
+                     wiki=a.wiki)
     except Illisible as e:
         print(f"docs-verite: illisible — {e}", file=sys.stderr)
         return 2

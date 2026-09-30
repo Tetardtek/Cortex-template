@@ -25,7 +25,10 @@ python3 scripts/docs-verite.py --gabarit <rendu>  # 0 vrai · 1 faux
 ```
 
 Une ligne qui doit citer un nom retiré — pour dire qu'il l'est — le déclare en
-fin de ligne : `<!-- docs-verite: permis -->`.
+fin de ligne : `<!-- docs-verite: permis -->`. Même chose pour une version
+passée donnée en exemple : une version `vN.N.N` écrite en dur qui n'est pas
+celle du gabarit rougit (règle `version`) — une commande qui la nomme est juste
+le jour où on l'écrit. Pour la version courante, laisser git la donner.
 
 Avec `--brain <brain>`, les agents du gabarit sont jugés aussi, sur une seule
 règle (`renvoi`) : un agent qui renvoie à un agent absent du gabarit l'écrit

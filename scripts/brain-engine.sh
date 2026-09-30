@@ -405,6 +405,7 @@ cmd_status() {
   info "mode : $mode"
   info "port : $port"
   info "root : $BRAIN_ROOT"
+  verifier_unites || true
 
   if [[ -z "$pid" ]]; then
     # Vérifier systemd
@@ -480,7 +481,18 @@ cmd_embed() {
   fi
 
   cd "$BRAIN_ROOT"
-  BRAIN_MODE="$mode" python3 "$embed_script"
+  # Le binaire présent ne dit pas que le SERVICE répond : embed.py sort en 2
+  # quand Ollama est injoignable — les chunks sont gardés sans vecteur.
+  local code=0
+  BRAIN_MODE="$mode" python3 "$embed_script" || code=$?
+  if (( code == 2 )); then
+    err "embedding incomplet — Ollama injoignable : les chunks sont gardés sans vecteur, la recherche ne les trouvera pas"
+    info "  vérifier : curl -s ${OLLAMA_URL:-http://localhost:11434}/api/tags · ollama pull ${EMBED_MODEL:-nomic-embed-text}"
+    exit 2
+  elif (( code != 0 )); then
+    err "embedding interrompu (code $code)"
+    exit "$code"
+  fi
   ok "embedding terminé"
 }
 
@@ -602,6 +614,195 @@ JSEOF
   info "Prochaine étape : brain-engine install systemd (quand tu es prêt)"
 }
 
+# La sauvegarde prise avant l'écriture d'une unité : gardée si l'unité a
+# changé (et dite), retirée si elle est identique.
+garder_si_changee() {
+  local unite="$1" avant="$1.avant-$2"
+  [[ -f "$avant" ]] || return 0
+  if cmp -s "$avant" "$unite"; then
+    rm -f "$avant"
+  else
+    info "$(basename "$unite") a changé — l'ancienne gardée à côté : $(basename "$avant")"
+  fi
+}
+
+# Le timer d'embed se pose-t-il ? Pas en démo, et pas sur une instance
+# `replica-nomad` : les vecteurs appartiennent au master, et la base refuse au
+# laptop d'écrire `embeddings` — le timer y échouerait toutes les deux heures
+# (BRAIN-078, point 5 ; trouvé en auditant le laptop le 29/09). La posture se
+# lit par posture-gate-check.sh ; un fork ne l'a pas, et reste `master`.
+pose_l_embed() {
+  local mode="$1" posture=master g="$BRAIN_ROOT/scripts/posture-gate-check.sh"
+  [[ "$mode" == "demo" ]] && return 1
+  [[ -f "$g" ]] && posture=$(bash "$g" --posture 2>/dev/null || echo master)
+  [[ "$posture" != "replica-nomad" ]]
+}
+
+# Le python que les unités lancent : celui du venv, sinon celui du système.
+py_des_unites() {
+  local py="$ENGINE_DIR/.venv/bin/python3"
+  [[ -x "$py" ]] || py=$(command -v python3)
+  echo "$py"
+}
+
+# Les unités qu'écrit `install systemd`, dans le dossier donné. Une SEULE
+# source : `install` les écrit dans ~/.config/systemd/user, `status` les rend
+# dans un dossier jetable pour les comparer aux installées — deux copies du
+# texte d'une unité finiraient par se contredire (Cortex-Template#10, piste 3).
+# Le service dont la base dépend, s'il y en a un. `dolt-server` quand ce brain
+# sert SA base (brain-dolt/.dolt) ; le tunnel quand la base est celle d'une
+# autre machine (BRAIN-078 : le laptop écrit sur sa branche de la base du
+# fixe) ; rien sinon (SQLite). Toujours lu dans le VRAI dossier des unités :
+# `status` rend les unités dans un dossier jetable, où le tunnel n'est pas.
+service_de_la_base() {
+  if [[ -d "$BRAIN_ROOT/brain-dolt/.dolt" ]]; then
+    echo dolt-server.service
+  elif [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/brain-tunnel-dolt.service" ]]; then
+    echo brain-tunnel-dolt.service
+  fi
+}
+
+ecrire_unites() {
+  local unites="$1" mode="$2" port="$3" py="$4"
+  # `-` : un fichier absent n'empêche pas le démarrage.
+  local env_file="EnvironmentFile=-$BRAIN_ROOT/brain-secrets/MYSECRETS"
+  # Le moteur attend le service de sa base — et aucun quand il n'y en a pas :
+  # sur le laptop, il attendait un dolt-server qui n'existe pas, et ne
+  # connaissait pas le tunnel dont il dépend (trouvé en l'y installant, 29/09).
+  local base_svc dependance=""
+  base_svc=$(service_de_la_base)
+  [[ -n "$base_svc" ]] && dependance=$'\n'"Wants=$base_svc"$'\n'"After=$base_svc"
+
+  cat > "$unites/brain-engine.service" << SVCEOF
+[Unit]
+Description=Brain — brain-engine ($mode)$dependance
+
+[Service]
+Type=simple
+WorkingDirectory=$BRAIN_ROOT
+$env_file
+Environment=BRAIN_PORT=$port
+Environment=BRAIN_MODE=$mode
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=$py $SERVER
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SVCEOF
+
+  # Le service LOCAL voit ce que le rôle `mcp` de server.py voit — public, work,
+  # instance, satellite — comme le brain-mcp-local de la prod. Sans cette ligne,
+  # le MCP d'un fork tombait sur le défaut ÉTROIT de mcp_server.py (prévu pour un
+  # MCP exposé) : ni projets, ni focus, ni todo, ni learning dans brain_search,
+  # sans aucun signal (Cortex-Template#9, tranché par Kevin le 28/09).
+  # MYSECRETS (EnvironmentFile) l'emporte s'il déclare BRAIN_MCP_SCOPES.
+  cat > "$unites/brain-mcp.service" << SVCEOF
+[Unit]
+Description=Brain — serveur MCP
+After=brain-engine.service
+
+[Service]
+Type=simple
+WorkingDirectory=$BRAIN_ROOT
+$env_file
+Environment=BRAIN_MCP_PORT=$MCP_PORT
+Environment=BRAIN_MCP_SCOPES=public,work,instance,satellite
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=$py $MCP_SERVER
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SVCEOF
+
+  # Le timer d'embed — ni en démo, ni sur une instance replica-nomad.
+  if pose_l_embed "$mode"; then
+    cat > "$unites/brain-embed.service" << SVCEOF
+[Unit]
+Description=Brain — indexation sémantique incrémentale (embed)
+After=brain-engine.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=$BRAIN_ROOT
+$env_file
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=/usr/bin/env bash $BRAIN_ROOT/scripts/brain-engine.sh embed
+Nice=10
+SVCEOF
+    cat > "$unites/brain-embed.timer" << SVCEOF
+[Unit]
+Description=Brain — embed 5 min après l'ouverture de session, puis toutes les 2 h
+
+[Timer]
+OnStartupSec=5min
+OnUnitActiveSec=2h
+
+[Install]
+WantedBy=timers.target
+SVCEOF
+  fi
+
+  # Une version plus récente chez l'amont ? Le timer lit les tags ; le briefing
+  # lit son état, sans réseau. Une information, jamais une injonction.
+  # Sans remote `upstream` (le brain source), il le dit dans son journal et le
+  # briefing se tait. Pas en démo.
+  if [[ "$mode" != "demo" ]]; then
+    cat > "$unites/brain-maj.service" << SVCEOF
+[Unit]
+Description=Brain — une version plus récente existe-t-elle chez l'amont ?
+
+[Service]
+Type=oneshot
+WorkingDirectory=$BRAIN_ROOT
+Environment=BRAIN_ROOT=$BRAIN_ROOT
+ExecStart=$py $BRAIN_ROOT/scripts/maj-disponible.py
+Nice=10
+SVCEOF
+    cat > "$unites/brain-maj.timer" << SVCEOF
+[Unit]
+Description=Brain — vérifier les versions de l'amont, une fois par jour
+
+[Timer]
+OnStartupSec=10min
+OnUnitActiveSec=1d
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+SVCEOF
+  fi
+}
+
+# Les unités installées sont-elles celles qu'écrirait `install systemd` ?
+# Une version peut changer une unité, et `systemctl restart` relance celle du
+# DISQUE : un fork qui saute l'étape « réinstaller les unités » garde l'unité
+# d'une version passée, sans signal (Cortex-Template#10, piste 3).
+verifier_unites() {
+  local unites="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  # Pas installées par `install systemd`, ou celles d'un AUTRE brain de la
+  # machine : rien à comparer.
+  [[ -f "$unites/brain-engine.service" ]] || return 0
+  grep -qxF "WorkingDirectory=$BRAIN_ROOT" "$unites/brain-engine.service" || return 0
+  local rendu u ecarts=()
+  rendu=$(mktemp -d)
+  ecrire_unites "$rendu" "$(detect_mode)" "$(detect_port)" "$(py_des_unites)"
+  for u in "$rendu"/*; do
+    u=$(basename "$u")
+    cmp -s "$rendu/$u" "$unites/$u" || ecarts+=("$u")
+  done
+  rm -rf "$rendu"
+  if (( ${#ecarts[@]} )); then
+    warn "unités d'une autre version, ou installées avec d'autres réglages : ${ecarts[*]}"
+    info "  les réécrire et les relancer : bash scripts/brain-engine.sh install systemd"
+    return 1
+  fi
+  info "unités : celles de cette version"
+}
+
 cmd_install_systemd() {
   # Des unités UTILISATEUR, comme dolt-server.service : ni sudo, ni unité
   # système. L'ancienne version écrivait /etc/systemd/system/brain-engine.service
@@ -614,11 +815,7 @@ cmd_install_systemd() {
   mode=$(detect_mode)
   port=$(detect_port)
   unites="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  py="$ENGINE_DIR/.venv/bin/python3"
-  [[ -x "$py" ]] || py=$(command -v python3)
-
-  # `-` : un fichier absent n'empêche pas le démarrage.
-  local env_file="EnvironmentFile=-$BRAIN_ROOT/brain-secrets/MYSECRETS"
+  py=$(py_des_unites)
 
   # Des ports tenus par un AUTRE processus que ce brain : les unités
   # redémarreraient sans fin (`Restart=on-failure`), puis se disputeraient les
@@ -644,63 +841,42 @@ cmd_install_systemd() {
   mkdir -p "$unites"
 
   # Une unité différente déjà là est SAUVEGARDÉE à côté, comme dolt-setup.sh le
-  # fait — jamais écrasée sans trace.
-  local u
-  for u in brain-engine brain-mcp; do
-    if [[ -f "$unites/$u.service" ]]; then
-      cp "$unites/$u.service" "$unites/$u.service.avant-$(date +%Y%m%d%H%M%S)"
-      info "$u.service existait — sauvegardé à côté"
-    fi
+  # fait — jamais écrasée sans trace. Copiée avant, gardée seulement si elle
+  # DIFFÈRE de la nouvelle (`garder_si_changee`, après l'écriture) : la page
+  # « Se mettre à jour » fait rejouer `install systemd` à chaque version, et une
+  # copie par passage empilerait des sauvegardes identiques.
+  local u horodate
+  horodate=$(date +%Y%m%d%H%M%S)
+  for u in brain-engine.service brain-mcp.service brain-embed.service brain-embed.timer brain-maj.service brain-maj.timer; do
+    [[ -f "$unites/$u" ]] && cp "$unites/$u" "$unites/$u.avant-$horodate"
   done
-  if ! systemctl --user cat dolt-server.service >/dev/null 2>&1; then
-    warn "pas de dolt-server.service : rien ne relancera la base au démarrage"
-    info "  bash scripts/dolt-setup.sh   (sans --sans-service) pour la servir"
-  fi
+  case "$(service_de_la_base)" in
+    dolt-server.service)
+      if ! systemctl --user cat dolt-server.service >/dev/null 2>&1; then
+        warn "pas de dolt-server.service : rien ne relancera la base au démarrage"
+        info "  bash scripts/dolt-setup.sh   (sans --sans-service) pour la servir"
+      fi ;;
+    brain-tunnel-dolt.service)
+      info "base : celle d'une autre machine, par brain-tunnel-dolt.service — pas de dolt-server ici" ;;
+    *)
+      info "pas de base Dolt locale (brain-dolt/) — pas de dolt-server à attendre" ;;
+  esac
 
-  cat > "$unites/brain-engine.service" << SVCEOF
-[Unit]
-Description=Brain — brain-engine ($mode)
-Wants=dolt-server.service
-After=dolt-server.service
+  ecrire_unites "$unites" "$mode" "$port" "$py"
 
-[Service]
-Type=simple
-WorkingDirectory=$BRAIN_ROOT
-$env_file
-Environment=BRAIN_PORT=$port
-Environment=BRAIN_MODE=$mode
-Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=$py $SERVER
-Restart=on-failure
-RestartSec=5
+  for u in brain-engine.service brain-mcp.service brain-embed.service brain-embed.timer brain-maj.service brain-maj.timer; do
+    garder_si_changee "$unites/$u" "$horodate"
+  done
 
-[Install]
-WantedBy=default.target
-SVCEOF
-
-  cat > "$unites/brain-mcp.service" << SVCEOF
-[Unit]
-Description=Brain — serveur MCP
-After=brain-engine.service
-
-[Service]
-Type=simple
-WorkingDirectory=$BRAIN_ROOT
-$env_file
-Environment=BRAIN_MCP_PORT=$MCP_PORT
-Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=$py $MCP_SERVER
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-SVCEOF
-
-  # Arrêter l'instance manuelle ou pm2 — celles de CE brain
-  if is_running; then
+  # Arrêter l'instance manuelle ou pm2 — celles de CE brain. « Manuelle » veut
+  # dire lancée par `start`, donc un fichier de PID : une instance de systemd
+  # n'en a pas, et `cmd_stop` répondait « pas lancé par ce script » juste après
+  # « Arrêt de l'instance manuelle » (Cortex-Template#10).
+  if [[ -n "$(get_pid)" ]]; then
     info "Arrêt de l'instance manuelle..."
     cmd_stop
+  elif is_running; then
+    info "brain-engine tourne déjà (systemd ?) — relancé plus bas sur les nouvelles unités"
   fi
   if command -v pm2 &>/dev/null && pm2 describe brain-engine &>/dev/null 2>&1; then
     info "Arrêt de l'instance pm2..."
@@ -709,7 +885,11 @@ SVCEOF
   fi
 
   systemctl --user daemon-reload
-  systemctl --user enable --now brain-engine.service brain-mcp.service
+  # `restart`, pas `enable --now` : sur une unité déjà active, `start` ne fait
+  # rien, et les processus gardaient l'environnement de l'ANCIENNE unité — les
+  # scopes du MCP d'une v2.3.5 n'arrivaient pas (Cortex-Template#10).
+  systemctl --user enable brain-engine.service brain-mcp.service
+  systemctl --user restart brain-engine.service brain-mcp.service
 
   sleep 2
   if curl -sf "http://localhost:$port/health" &>/dev/null; then
@@ -719,12 +899,24 @@ SVCEOF
   fi
   info "Survivre à la déconnexion : loginctl enable-linger \$USER"
 
-  # Proposer le cron embed si mode prod
-  if [[ "$mode" == "prod" ]]; then
-    echo ""
-    info "Mode prod détecté — activer le cron embed (toutes les 6h) ?"
-    info "  (crontab -l; echo '0 */6 * * * cd $BRAIN_ROOT && $py brain-engine/embed.py >> brain-engine/embed-cron.log 2>&1') | crontab -"
-    info "Copie-colle la commande ci-dessus si tu veux l'activer."
+  # L'embed périodique : un timer, plus une ligne `crontab` à copier. Arch n'a
+  # pas de cron par défaut, et un cron toutes les 6 h ne tourne presque jamais
+  # sur un poste rarement allumé 6 h d'affilée. Le timer rattrape au démarrage,
+  # et il passe par `embed` : un Ollama injoignable sort en 2, et l'échec se
+  # lit dans `systemctl --user status brain-embed` au lieu d'un journal que
+  # personne n'ouvre. Proposé par le premier fork (echanges, 28/09).
+  if pose_l_embed "$mode"; then
+    systemctl --user enable --now brain-embed.timer
+    ok "embed périodique : brain-embed.timer (5 min après l'ouverture, puis toutes les 2 h)"
+    info "  état : systemctl --user list-timers brain-embed · échec : systemctl --user status brain-embed"
+  elif [[ "$mode" != "demo" ]]; then
+    info "pas de timer d'embed : instance replica-nomad — les vecteurs appartiennent au master (BRAIN-078)"
+  fi
+
+  if [[ "$mode" != "demo" ]]; then
+    systemctl --user enable --now brain-maj.timer
+    ok "versions de l'amont : brain-maj.timer (une fois par jour) — le briefing dit quand une version plus récente existe"
+    info "  suivre l'amont : git remote add upstream <URL_DU_GABARIT> (voir docs/mettre-a-jour.md)"
   fi
 }
 

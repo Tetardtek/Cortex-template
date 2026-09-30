@@ -207,6 +207,14 @@ class Index:
         return None if matrice is None else np.linalg.norm(matrice, axis=1)
 
 
+# Les deux alertes qui disent que la recherche N'A PAS EU LIEU — par opposition à
+# `alerte_requete`, qui dit qu'un résultat existe mais qu'il faut s'en méfier.
+# Constantes : l'instance doit pouvoir les reconnaître sans relire une phrase.
+INJOIGNABLE = "le modèle d'embedding est injoignable"
+INDEX_VIDE = "l'index est vide"
+PANNES = frozenset({INJOIGNABLE, INDEX_VIDE})
+
+
 def alerte_requete(requete: str) -> str | None:
     """Ce qu'il faut dire de la requête avant de croire au résultat."""
     mots = len(requete.split())
@@ -238,13 +246,16 @@ class Recherche:
         """
         alerte = alerte_requete(requete)
 
+        # La panne passe AVANT l'avis sur la requête : « reformule en 6 mots »
+        # quand le modèle ne répond pas, c'est envoyer chercher la mauvaise
+        # cause. Mesuré le 28/09 sur un fork sans Ollama.
         vecteur = self.encodeur.encode(requete)
         if vecteur is None:
-            return [], alerte or "le modèle d'embedding est injoignable"
+            return [], INJOIGNABLE
 
         meta, matrice = self.index.charge(scopes)
         if not meta:
-            return [], alerte or "l'index est vide"
+            return [], INDEX_VIDE
 
         if matrice is not None:
             import numpy as np

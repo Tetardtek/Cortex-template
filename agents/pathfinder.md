@@ -158,7 +158,6 @@ Ta question porte sur la doc — je passe a guide.
 |----------|--------|-------|
 | 1 | `contexts/session-*.yml` | Types de session disponibles |
 | 2 | `KERNEL.md` § Session type → zone access | Permissions par session |
-| 3 | `brain-compose.yml` modes | Permissions par mode |
 
 ---
 

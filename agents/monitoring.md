@@ -244,7 +244,6 @@ Le signal persiste dans la base : le boot suivant le relève (`bsi-signal.sh inb
 | `vps` | Incident confirmé → action sur l'infra / audit → vérifier un service ou un port non documenté |
 | `debug` | Alerte applicative → investigation du code |
 | `ci-cd` | Ajouter une étape de smoke test post-deploy dans le pipeline |
-| `supervisor` | Incidents critiques → escalade SUPERVISOR (bureau + boîte BSI) |
 
 ---
 

@@ -10,7 +10,7 @@ Auth      : BRAIN_TOKEN_MCP dans MYSECRETS → passé via header x-api-key
 Outils exposés :
   brain_search(query, top)  → recherche sémantique (zones public + work)
   brain_boot()              → contexte de boot (3 queries ciblées)
-  brain_workflows()         → workflows actifs (claims BSI ouverts)
+  brain_workflows()         → ce qui avance en autonomie (palier b)
   brain_agents(name)        → liste des agents ou contenu d'un agent
   brain_decisions(last)     → dernières décisions architecturales (ADRs)
   brain_focus()             → focus actuel du brain (direction + projets + blockers)
@@ -49,21 +49,23 @@ from starlette.responses import JSONResponse
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rag import run_boot_queries, run_single_query, format_compact, format_full
-from search import requete_faible
+from search import requete_faible, RechercheIndisponible
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-BRAIN_MCP_PORT  = int(os.getenv('BRAIN_MCP_PORT', 7701))
+BRAIN_MCP_PORT  = int(os.getenv('BRAIN_MCP_PORT') or 7701)
 # Le moteur de CE brain : son port vient de BRAIN_PORT. Écrit 7700 en dur, un MCP
 # lancé sur un autre port (un second brain, un bac d'essai) appelait le moteur de
 # la PROD — `brain_write` y aurait écrit (relecture du 28/09).
-BRAIN_API       = f"http://127.0.0.1:{int(os.getenv('BRAIN_PORT', 7700))}"
+BRAIN_API       = f"http://127.0.0.1:{int(os.getenv('BRAIN_PORT') or 7700)}"
 BRAIN_TOKEN_MCP = os.getenv('BRAIN_TOKEN_MCP') or os.getenv('BRAIN_TOKEN')
 
 # Scopes autorisés pour le token MCP.
-# Défaut restreint = public+work (template public BaaS — ne jamais fuiter instance/satellite).
-# Le service LOCAL (7701) élargit via BRAIN_MCP_SCOPES (frontière local/template, cf. CLAUDE.md).
-MCP_SCOPES = [s.strip() for s in os.getenv('BRAIN_MCP_SCOPES', 'public,work').split(',') if s.strip()]
+# Défaut restreint = public+work : un MCP EXPOSÉ ne doit rien montrer d'autre.
+# Le service LOCAL (7701) élargit via BRAIN_MCP_SCOPES — posé par l'unité
+# `brain-mcp` que génère `brain-engine.sh install systemd` (le rôle `mcp` de
+# server.py), comme le brain-mcp-local de la prod (Cortex-Template#9).
+MCP_SCOPES = [s.strip() for s in (os.getenv('BRAIN_MCP_SCOPES') or 'public,work').split(',') if s.strip()]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('brain-mcp')
@@ -174,7 +176,11 @@ def brain_search(query: str, top: int = 5, full: bool = False) -> str:
         Chaque résultat indique le filepath source et un extrait du contenu.
     """
     log.info('brain_search query=%r top=%d full=%s', query, top, full)
-    results = run_single_query(query, top_k=top, allowed_scopes=MCP_SCOPES)
+    try:
+        results = run_single_query(query, top_k=top, allowed_scopes=MCP_SCOPES)
+    except RechercheIndisponible as panne:
+        # Pas « Aucun résultat » : la recherche n'a pas eu lieu.
+        return f"⚠️ Recherche indisponible — {panne}.\n{panne.conseil()}"
     if not results:
         return f'Aucun résultat pour : {query!r}'
     label = f'brain_search — {query}'
@@ -198,14 +204,14 @@ def brain_state() -> str:
     """
     Environnement fondamental du brain — dérivé en temps réel, jamais stocké.
 
-    Retourne les services actifs (pm2), la version brain (git), et les ports
-    configurés. Layer 2 uniquement (localhost).
+    Retourne les unités systemd du brain (et pm2 s'il sert), la version brain
+    (git), et les ports configurés. Layer 2 uniquement (localhost).
 
     À appeler en début de session pour connaître l'état de l'infrastructure
     sans avoir à demander "quel port ? quel service tourne ?".
 
     Returns:
-        Bloc markdown structuré avec hostname, version, pm2 status, ports.
+        Bloc markdown structuré avec hostname, version, services, ports.
         "Indisponible" si brain-engine hors ligne.
     """
     import json
@@ -217,6 +223,14 @@ def brain_state() -> str:
         lines = [f'## Environnement fondamental\n']
         lines.append(f"**Machine** : {data.get('hostname', '?')}")
         lines.append(f"**Brain** : {data.get('brain_version', '?')}\n")
+        unites = data.get('systemd', [])
+        if unites:
+            lines.append('**Services (systemd)**')
+            lines.append('| Unité | État |')
+            lines.append('|-------|------|')
+            for u in unites:
+                icon = '🔴' if u.get('active') == 'failed' else ('🟢' if u.get('active') == 'active' else '⚪')
+                lines.append(f"| {u['name']} | {icon} {u.get('active','?')} ({u.get('sub','?')}) |")
         pm2 = data.get('pm2', [])
         if pm2:
             lines.append('**Services (pm2)**')
@@ -227,7 +241,7 @@ def brain_state() -> str:
                 lines.append(f"| {p['name']} | {icon} {p.get('status','?')} | {p.get('restarts',0)} |")
         ports = data.get('ports', {})
         if ports:
-            lines.append(f"\n**Ports** : engine={ports.get('brain_engine','?')} · mcp={ports.get('brain_mcp','?')} · key={ports.get('brain_key','?')}")
+            lines.append(f"\n**Ports** : engine={ports.get('brain_engine','?')} · mcp={ports.get('brain_mcp','?')}")
         return '\n'.join(lines)
     except Exception as exc:
         log.warning('brain_state failed: %s', exc)
@@ -240,7 +254,7 @@ def brain_boot() -> str:
     Charge le contexte de boot du brain.
 
     Séquence :
-    1. brain_state() — environnement fondamental dérivé (pm2, ports)
+    1. brain_state() — environnement fondamental dérivé (services, ports)
     2. 3 queries RAG ciblées (décisions récentes, todos prioritaires, sprint actif)
 
     Le slot `brain/now.md` de BRAIN-016 a été retiré le 10/09 : il lisait un
@@ -248,7 +262,8 @@ def brain_boot() -> str:
     corps, et BRAIN-016, supersédée le même jour.
 
     À appeler en début de session pour enrichir le contexte sans saturer le
-    context window. Exit silencieux si Ollama indisponible.
+    context window. Si la recherche est indisponible (Ollama, index vide), la
+    section le DIT au lieu de disparaître.
 
     Returns:
         Bloc markdown additif avec contexte de boot complet.
@@ -277,7 +292,11 @@ def brain_boot() -> str:
         sections.append(env)
 
     # 2. RAG queries
-    results = run_boot_queries(allowed_scopes=MCP_SCOPES)
+    try:
+        results = run_boot_queries(allowed_scopes=MCP_SCOPES)
+    except RechercheIndisponible as panne:
+        results = []
+        sections.append(f"⚠️ Recherche sémantique indisponible — {panne}.\n{panne.conseil()}")
     if results:
         sections.append(format_compact(results, label='brain_boot'))
 
@@ -287,37 +306,46 @@ def brain_boot() -> str:
 @mcp.tool()
 def brain_workflows() -> str:
     """
-    Retourne les workflows actifs du brain (claims BSI ouverts).
+    Retourne ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079).
 
     Returns:
-        Bloc markdown avec les workflows en cours : nom, projet, étapes, statuts.
-        Utile en début de session pour connaître l'état des sprints actifs.
+        Bloc markdown : par projet au palier b ou c, ce que `dev/autonome`
+        porte et que le tronc n'a pas, et les PR d'agents qui attendent un
+        verdict. Utile en début de session : ce qui s'est fait sans vous.
     """
     import json
     import urllib.request
     log.info('brain_workflows')
     try:
         url = f'{BRAIN_API}/workflows'
-        with urllib.request.urlopen(url, timeout=3) as resp:
+        # La route interroge la forge (quelques secondes) : 70 s, au-delà de
+        # son propre délai (60 s), pour que ce soit elle qui dise pourquoi.
+        with urllib.request.urlopen(url, timeout=70) as resp:
             data = json.loads(resp.read())
-        # /workflows retourne une list directe ; tolere aussi un dict envelopant
-        workflows = data if isinstance(data, list) else data.get('workflows', [])
-        if not workflows:
-            return 'Aucun workflow actif.'
-        lines = ['## Workflows actifs\n']
-        for wf in workflows:
-            lines.append(f"### {wf.get('name', wf.get('id', '?'))} — {wf.get('project', '')}")
-            for step in wf.get('steps', []):
-                status = step.get('status', '?')
-                icon = {'done': '✅', 'in-progress': '🔄', 'pending': '⬜',
-                        'gate': '🔶', 'blocked': '🔴', 'fail': '❌'}.get(status, '•')
-                gate = ' [GATE]' if step.get('isGate') else ''
-                lines.append(f"  {icon} {step.get('label', step.get('id', '?'))}{gate}")
+        projets = data.get('projets', []) if isinstance(data, dict) else []
+        note = data.get('note') if isinstance(data, dict) else None
+        if not projets:
+            return f"Rien en autonomie — {note}." if note else 'Rien en autonomie.'
+        lines = ['## Ce qui avance en autonomie (palier b)\n']
+        for p in projets:
+            tete = f"### {p.get('projet', '?')} — palier {p.get('palier', '?')}"
+            etat = p.get('etat')
+            if etat != 'ok':
+                lines.append(f"{tete} — {etat}{' : ' + p['message'] if p.get('message') else ''}")
+                continue
+            lines.append(f"{tete} — `dev/autonome` : {p.get('en_avance', 0)} commit(s) "
+                         f"que `{p.get('tronc', '?')}` n'a pas")
+            for titre in p.get('titres', []):
+                lines.append(f"  · {titre}")
+            for pr in p.get('attendent', []):
+                lines.append(f"  ⏳ attend un verdict : {pr}")
+            if p.get('en_avance'):
+                lines.append(f"  → à relire d'un bloc : une PR `dev/autonome` → `{p.get('tronc')}`")
             lines.append('')
         return '\n'.join(lines)
     except Exception as exc:
         log.warning('brain_workflows failed: %s', exc)
-        return f'Workflows indisponibles : {exc}'
+        return f'Autonomie indisponible : {exc}'
 
 
 @mcp.tool()
@@ -405,8 +433,10 @@ def brain_decisions(last: int = 5) -> str:
     """
     Retourne les dernières décisions architecturales (ADRs).
 
-    Lit les fichiers profil/decisions/*.md, triés par nom décroissant
-    (numérotation → plus récent en premier).
+    Lit les fichiers profil/decisions/BRAIN-*.md, triés par nom décroissant
+    (numérotation → plus récent en premier). Le motif était `*.md` : le
+    gabarit `_template-adr.md` et l'index `README.md` passaient devant les
+    ADR, et `last=5` n'en rendait que trois (audit du wiki, 29/09).
 
     Args:
         last : Nombre d'ADRs à retourner (défaut: 5).
@@ -419,7 +449,7 @@ def brain_decisions(last: int = 5) -> str:
     decisions_dir = BRAIN_ROOT / 'profil' / 'decisions'
     if not decisions_dir.exists():
         return 'Aucune décision trouvée.'
-    files = sorted(decisions_dir.glob('*.md'), reverse=True)[:last]
+    files = sorted(decisions_dir.glob('BRAIN-*.md'), reverse=True)[:last]
     if not files:
         return 'Aucune décision trouvée.'
     lines = ['## Décisions architecturales récentes\n']

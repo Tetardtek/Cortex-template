@@ -199,9 +199,18 @@ def projet_depuis_scope(scope: str, projet: str | None = None) -> str | None:
 class BSI:
     """Les claims, posés sur un dépôt."""
 
-    def __init__(self, depot: Depot) -> None:
+    def __init__(self, depot: Depot, ouverts_du_reseau=None) -> None:
+        """`ouverts_du_reseau` : une fonction sans argument qui rend les lignes
+        des claims ouverts de TOUT le réseau (mêmes colonnes que `ouverts()`),
+        quand l'instance en connaît plusieurs — BRAIN-078 : le laptop écrit sur
+        sa branche de la base du fixe. Le CORE ne sait rien des branches ;
+        l'instance lui dit où regarder. Elle ne sert qu'au VERROU
+        (`recouvrements`, `conflit`, donc `ouvre`) : `ouverts()` et ce qui en
+        dépend (la fermeture de ses propres claims) restent sur ce dépôt.
+        """
         self.depot = depot
         self._porte_identite: bool | None = None
+        self._ouverts_du_reseau = ouverts_du_reseau
 
     @property
     def porte_identite(self) -> bool:
@@ -218,14 +227,26 @@ class BSI:
 
     # ── lecture ─────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _claim(r: dict) -> Claim:
+        return Claim(r["sess_id"], r["scope"], r["type"], r.get("zone") or "project",
+                     r.get("opened_at"), r.get("expires_at"), r.get("project"),
+                     r.get("agent_session"))
+
     def ouverts(self) -> list[Claim]:
         identite = ", agent_session" if self.porte_identite else ""
-        return [Claim(r["sess_id"], r["scope"], r["type"], r.get("zone") or "project",
-                      r.get("opened_at"), r.get("expires_at"), r.get("project"),
-                      r.get("agent_session"))
+        return [self._claim(r)
                 for r in self.depot.query(
                     "SELECT sess_id, scope, type, zone, opened_at, expires_at, project"
                     f"{identite} FROM claims WHERE status = 'open' ORDER BY opened_at")]
+
+    def _ouverts_pour_le_verrou(self) -> list[Claim]:
+        """Les claims qui peuvent bloquer : ceux du réseau si l'instance le
+        connaît, sinon ceux de ce dépôt. Deux machines ne doivent pas ouvrir le
+        même scope noyau parce que chacune ne regardait que sa base."""
+        if self._ouverts_du_reseau is None:
+            return self.ouverts()
+        return [self._claim(r) for r in self._ouverts_du_reseau()]
 
     def de_la_session(self, agent_session: str) -> list[Claim]:
         """Les claims ouverts que CETTE session d'agent porte — BRAIN-077.
@@ -306,7 +327,7 @@ class BSI:
         Le CORE dit ce qui se recouvre ; l'appelant décide s'il bloque, avertit
         ou se tait. C'est la même frontière que partout ailleurs.
         """
-        return [claim for claim in self.ouverts()
+        return [claim for claim in self._ouverts_pour_le_verrou()
                 if scope.startswith(claim.scope) or claim.scope.startswith(scope)]
 
     def conflit(self, scope: str, zone: str = "project") -> Claim | None:

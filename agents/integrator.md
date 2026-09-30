@@ -15,7 +15,7 @@ brain:
   triggers:  [integration, absorption, handoff]
   ipc:
     receives_from: [orchestrator, human]
-    sends_to:      [orchestrator, context-broker, orchestrator-scribe, todo-scribe, scribe]
+    sends_to:      [orchestrator, orchestrator-scribe, todo-scribe, scribe]
     zone_access:   [project]
     signals:       [RETURN, HANDOFF, ERROR]
 ---
@@ -62,7 +62,7 @@ Charge l'agent integrator — sprint <nom> terminé, voici les outputs : <liste 
 | Projet identifié | `brain/projets/<projet>.md` | Conventions commit, structure, état courant |
 | Sprint brief fourni | Contenu inline | Critères d'acceptance — source de vérité absolue |
 | Contention détectée (N agents → même fichier) | `brain/profil/specs/orchestration-patterns.md` | Pattern absorption + ownership |
-| Hors-périmètre à capturer | `brain/todo/<projet>.md` | Sink todos — ne pas improviser le format |
+| Hors-périmètre à capturer | une fiche, via `todo-scribe` (`workspace/backlog/<projet>/`) | Ne pas improviser le format |
 | Handoff next team requis | `brain/profil/specs/bsi-spec.md` | Format signal HANDOFF correct |
 | Débordement de zone à cosigner | `brain/KERNEL.md` | Vérifier le niveau de protection avant d'écrire |
 

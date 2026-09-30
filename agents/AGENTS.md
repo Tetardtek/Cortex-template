@@ -19,7 +19,6 @@ context_tier: cold
 | Agent | Domaine | Statut |
 |-------|---------|--------|
 | `coach` | Progression — tutorat, suivi, coaching code + agents | 🔄 permanent |
-| `time-anchor` | Conscience temporelle — live-states + git log, recontextualisation post-compaction | 🧪 forgé 2026-03-15 |
 | `secrets-guardian` | Cycle de vie des secrets — MYSECRETS → .env, jamais dans le chat | 🧪 forgé 2026-03-14 |
 | `secrets-injector` | Injection credentials dans prompts subagents — coach only, jamais affiché | 🧪 forgé 2026-03-17 |
 | `infra-scribe` | Registre infra — DB, deploy paths, runtime — chargé au boot après helloWorld | 🧪 forgé 2026-03-17 |
@@ -63,15 +62,15 @@ context_tier: cold
 
 | Agent | Domaine | Statut |
 |-------|---------|--------|
-| `orchestrator` | Coordination — diagnostic et délégation multi-agents | ✅ 2026-03-12 |
+| `orchestrator` | Coordination — aiguiller, composer une fiche prête (critères de fin), juger le rendu (BRAIN-079) | ✅ 2026-03-12 |
 | `scribe` | Maintenance du brain | ✅ 2026-03-12 |
 | `mentor` | Pédagogie — explication, garde-fou | ✅ 2026-03-12 |
 | `agent-review` | Audit du système d'agents — gaps, patches, vue système | ✅ 2026-03-13 |
 | `interprete` | Clarification d'intention — demandes ambiguës, scope drift | 🧪 forgé 2026-03-13 |
 | `brainstorm` | Exploration et structuration de décisions — avocat du diable | 🧪 forgé 2026-03-13 |
 | `toolkit-scribe` | Persistance patterns — gardien du toolkit/ | 🧪 forgé 2026-03-13 |
-| `todo-scribe` | Persistance intentions — gardien de brain/todo/ | 🧪 forgé 2026-03-13 |
-| `kanban-scribe` | Pipeline kanban — transitions d'état au wrap, détection autonomie | 🧪 forgé 2026-03-15 |
+| `todo-scribe` | La liste — une fiche par tâche, proposée à l'humain, créée seule en mode kanban (BRAIN-079) | 🧪 forgé 2026-03-13 |
+| `kanban-scribe` | Le mouvement — fait avancer les fiches, clôt sur preuve, tient le backlog (BRAIN-079) | 🧪 forgé 2026-03-15 |
 | `helloWorld` | Bootstrap intelligent — briefing + chargement sélectif | 🧪 forgé 2026-03-13 |
 | `decision-scribe` | Registre connaissance structurelle — stack, capacités, politiques constantes — gate:human.DEFINE | 🧪 forgé 2026-03-17 |
 | `content-strategist` | Stratégie contenu YouTube — angle, audience, arc narratif, titres A/B | 🧪 forgé 2026-03-17 |
@@ -82,14 +81,11 @@ context_tier: cold
 | `brain-compose` | Multi-instances brain — symlinks kernel, registre machine | 🧪 forgé 2026-03-13 |
 | `orchestrator-scribe` | Bus inter-sessions — Signals BSI, cycles coworking, HANDOFF | 🧪 forgé 2026-03-14 |
 | `session-orchestrator` | Lifecycle de session — boot 4 couches, close séquencé, rapport coach | 🧪 forgé 2026-03-14 |
-| `supervisor` | Multi-sessions — coordination dual-agent, CHECKPOINT, escalade humain | 🧪 forgé 2026-03-14 |
 | `metabolism-scribe` | Métriques session — health_score, agents_loaded, prix par agent | 🧪 forgé 2026-03-14 |
 | `content-scribe` | Persistance content layer — drafts, captures, content-logs | 🧪 forgé 2026-03-14 |
 | `architecture-scribe` | Mémoire architecturale — git-analyst → ADR → profil/decisions/ | 🧪 forgé 2026-03-15 |
 | `integrator` | Intégration multi-agents — absorption, validation critères, handoff next team | 🧪 forgé 2026-03-14 |
-| `context-broker` | Cycle respiratoire de contexte — inhale source map + expire release map + breath metrics | 🧪 forgé 2026-03-15 |
 | `product-strategist` | Stratégie produit — business model, SaaS, monétisation, positionnement | 🧪 forgé 2026-03-15 |
-| `satellite-boot` | Boot loader satellite — Pattern 10, scope unique, zéro overhead, signal retour pilote | 🧪 forgé 2026-03-16 |
 | `conciergerie` | Chirurgie donnée cognitive — archivage par tier, nettoyage, audit embeddings | ✅ 2026-03-25 |
 | `content-writer` | Création de contenu — blog, social media, copywriting, communication | ✅ active |
 | `french-teacher` | Langue française — orthographe, grammaire, syntaxe, style | ✅ active |
@@ -105,14 +101,11 @@ context_tier: cold
 ## ⚙️ Agents kernel — protocole & supervision
 
 > Agents de protocole système — scope:kernel, distribués dans brain-template.
-> Invocation explicite ou via brain-hypervisor. Ne se chargent pas automatiquement.
+> Invocation explicite. Ne se chargent pas automatiquement.
 
 | Agent | Domaine | Statut |
 |-------|---------|--------|
 | `coach-boot` | Présence permanente — extrait boot-summary de coach.md, chargé L0 CLAUDE.md toutes sessions | 🧪 forgé 2026-03-12 |
-| `brain-hypervisor` | Supervision séquence multi-phase, drift detection, BACT hook | 🧪 forgé 2026-03-17 |
-| `kernel-orchestrator` | Exécution mécanique workflows BSI v3-9, exit triggers, circuit breaker | 🧪 forgé 2026-03-17 |
-| `workflow-auditor` | Rétrospective workflow, KPIs actionnables, capture toolkit | 🧪 forgé 2026-03-17 |
 
 ---
 
@@ -125,13 +118,16 @@ context_tier: cold
 
 ---
 
-## 📚 Références — specs & schémas
+## 🗄️ Archivés — dans `agents/archive/`
 
-> Documents de référence technique — pas des agents. Chargés sur besoin.
+> La machinerie de mars (workflows, satellites, supervision) : **jamais exercée
+> en base** — 0 claim `workflow`, 0 `satellite_type`, 0 `parent_sess` sur 627
+> (mesuré le 27/09). Archivée le 30/09 (BRAIN-079) : le lancement
+> d'agents passe désormais par le palier c — l'`orchestrator` compose et juge,
+> un worker (sous-agent) travaille dans son worktree, `dev/autonome` accueille.
 
-| Référence | Contenu | Statut |
-|-----------|---------|--------|
-| `bsi-schema` | Spec BSI v1.3 — schema claim, champs obligatoires, lifecycle | 🧪 forgé 2026-03-16 |
+| Agent | Ce qu'il était |
+|---|---|
 
 ---
 
@@ -162,13 +158,12 @@ context_tier: cold
 | Exploration / décision archi | `brainstorm` → `recruiter` (si présent) ou agent métier | Explorer + challenger → construire |
 | Question hors-scope en session | `aside` (si présent) | /btw → 2-3 lignes → retour session |
 | Coordination multi-instances | `orchestrator-scribe` | Signals BSI + cycles coworking inter-brains |
-| Session dual-agent supervisée | `supervisor` + `session-orchestrator` + `orchestrator-scribe` | Planification scopes → exécution → CHECKPOINT → escalade humain |
 | Fin de session complète | `session-orchestrator` → `metabolism-scribe` + `scribe` + `coach` | Séquence close : métriques → brain → rapport coach → BSI |
 | Feature livrée en prod | `git-analyst` + `capital-scribe` (si présent) | Commits synthétisés + capital CV mis à jour |
 | Projet multi-langue | `i18n` + `frontend-stack` | Audit traductions + intégration lib |
 | Release / PR importante | `doc` + `code-review` | Doc à jour + code validé |
 | Fin de session content-worthy | `content-orchestrator` (si présent) → `storyteller` + `content-scribe` | Signal détecté → draft produit → persisté |
-| Sprint multi-agents complet | `context-broker` inhale → `tech-lead` → `orchestrator` → build agents → `integrator` → `context-broker` expire | Cycle respiratoire complet : source map → gate → build → merge → release map + breath metrics |
+| Passe du palier c (BRAIN-079) | `orchestrator` (composer) → worker → `orchestrator` (juger) → `kanban-scribe` | Fiche prête → worker dans son worktree → PR vers `dev/autonome` → verdict, preuves rejouées, mutant → clôture 🤖 à la fusion humaine |
 | Débordement de zone requis | agent demandeur → `tech-lead` | Overflow request validé par use case concret avant écriture hors zone |
 | Activation content-logs | `content-orchestrator` (si présent) → `content-scribe` | Session capturée exhaustivement |
 | Audit complet avant prod | `security` + `code-review` + `testing` | Validation complète feature sensible |

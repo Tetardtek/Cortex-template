@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import * as THREE from 'three'
 
   let container = $state<HTMLDivElement | null>(null)
@@ -10,27 +10,34 @@
   let totalPoints = $state(0)
   let loading = $state(true)
 
-  // Zone → color mapping
+  // Zone → couleur. Les zones sont celles que l'indexation écrit dans
+  // `embeddings.scope` (brain-engine/embed.py, PATH_SCOPES) : kernel, instance,
+  // satellite, public. `personal`, `reference`, `project`, `config` étaient des
+  // zones d'avant, qu'aucun chunk ne porte plus ; `instance` n'avait pas de
+  // couleur et tombait en gris.
   const ZONE_COLORS: Record<string, string> = {
     kernel: '#f25c7a',
-    public: '#c9a0ff',
-    personal: '#9adba8',
-    reference: '#a4b4ff',
-    project: '#89dceb',
+    instance: '#89dceb',
     satellite: '#e8c87a',
-    config: '#fb923c',
+    public: '#c9a0ff',
   }
 
   function getZoneColor(zone: string): string {
     return ZONE_COLORS[zone] || '#6b7280'
   }
 
-  onMount(async () => {
+  const API = import.meta.env.VITE_BRAIN_API ?? ''
+
+  // Le chargement est asynchrone ; `onMount` ne l'est pas. Une fonction
+  // `async` passée à `onMount` rend une promesse, et Svelte n'en tire pas le
+  // nettoyage : quitter la vue laissait tourner l'animation, l'observateur et
+  // le renderer. `construire` rend le nettoyage, `onMount` le branche.
+  async function construire(): Promise<(() => void) | undefined> {
     // Fetch real data from brain-engine
     let points: { id: string; path: string; zone: string; label: string; excerpt: string; x: number; y: number; z: number }[] = []
 
     try {
-      const res = await fetch('/visualize')
+      const res = await fetch(`${API}/visualize`)
       if (res.ok) {
         const data = await res.json()
         points = data.points || []
@@ -41,8 +48,13 @@
 
     totalPoints = points.length
     loading = false
+    // La div du dessin n'existe qu'une fois `loading` retombé, et Svelte met le
+    // DOM à jour APRÈS ce code : sans attendre, `container` était toujours vide
+    // et la vue s'arrêtait là — la légende s'affichait, jamais les points.
+    await tick()
 
     if (points.length === 0 || !container) return
+    const el: HTMLDivElement = container
 
     // Compute bounds for normalization
     let minX = Infinity, maxX = -Infinity
@@ -65,14 +77,14 @@
     scene.background = new THREE.Color('#120a1e')
     scene.fog = new THREE.FogExp2('#120a1e', 0.015)
 
-    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 200)
+    const camera = new THREE.PerspectiveCamera(60, el.clientWidth / el.clientHeight, 0.1, 200)
     camera.position.set(0, 5, 30)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(container.clientWidth, container.clientHeight)
+    renderer.setSize(el.clientWidth, el.clientHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    container.appendChild(renderer.domElement)
+    el.appendChild(renderer.domElement)
 
     // Lights
     scene.add(new THREE.AmbientLight('#404060', 0.4))
@@ -136,8 +148,8 @@
     let rotY = 0
     let rotX = 0.15
 
-    container.addEventListener('mousemove', (e) => {
-      const rect = container.getBoundingClientRect()
+    el.addEventListener('mousemove', (e) => {
+      const rect = el.getBoundingClientRect()
       tooltipX = e.clientX - rect.left
       tooltipY = e.clientY - rect.top
 
@@ -148,17 +160,17 @@
       }
     })
 
-    container.addEventListener('mousedown', () => isDragging = true)
-    container.addEventListener('mouseup', () => isDragging = false)
-    container.addEventListener('mouseleave', () => isDragging = false)
+    el.addEventListener('mousedown', () => isDragging = true)
+    el.addEventListener('mouseup', () => isDragging = false)
+    el.addEventListener('mouseleave', () => isDragging = false)
 
     // Raycaster for hover/click
     const raycaster = new THREE.Raycaster()
     raycaster.params.Points = { threshold: 0.3 }
     const mouse = new THREE.Vector2()
 
-    container.addEventListener('mousemove', (e) => {
-      const rect = container.getBoundingClientRect()
+    el.addEventListener('mousemove', (e) => {
+      const rect = el.getBoundingClientRect()
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
@@ -179,7 +191,7 @@
       hoveredNode = nearest >= 0 ? points[nearest].path : null
     })
 
-    container.addEventListener('click', () => {
+    el.addEventListener('click', () => {
       if (hoveredNode) {
         const p = points.find(pt => pt.path === hoveredNode)
         if (p) {
@@ -190,8 +202,9 @@
       }
     })
 
+    let image = 0
     function animate() {
-      requestAnimationFrame(animate)
+      image = requestAnimationFrame(animate)
       time += 0.003
 
       const targetY = rotY + time * 0.2
@@ -209,15 +222,30 @@
 
     // Resize
     const resizeObserver = new ResizeObserver(() => {
-      camera.aspect = container.clientWidth / container.clientHeight
+      camera.aspect = el.clientWidth / el.clientHeight
       camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
+      renderer.setSize(el.clientWidth, el.clientHeight)
     })
-    resizeObserver.observe(container)
+    resizeObserver.observe(el)
 
     return () => {
+      cancelAnimationFrame(image)
       resizeObserver.disconnect()
       renderer.dispose()
+    }
+  }
+
+  onMount(() => {
+    let quitte = false
+    let nettoyer: (() => void) | undefined
+    construire().then((n) => {
+      // La vue a pu être quittée pendant le chargement : nettoyer tout de suite.
+      if (quitte) n?.()
+      else nettoyer = n
+    })
+    return () => {
+      quitte = true
+      nettoyer?.()
     }
   })
 </script>

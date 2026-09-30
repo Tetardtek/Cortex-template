@@ -14,34 +14,6 @@
 
 SET FOREIGN_KEY_CHECKS=0;
 SET UNIQUE_CHECKS=0;
-DROP TABLE IF EXISTS `agent_loads`;
-CREATE TABLE `agent_loads` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `sess_id` varchar(128) NOT NULL,
-  `agent` varchar(128) NOT NULL,
-  `tokens_estimated` int,
-  `loaded_at` datetime NOT NULL,
-  `reason` text,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `agent_memory`;
-CREATE TABLE `agent_memory` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `agent` varchar(128) NOT NULL,
-  `projet` varchar(128) NOT NULL,
-  `stack` varchar(128) NOT NULL,
-  `pattern_id` varchar(128) NOT NULL,
-  `validations` int NOT NULL DEFAULT '0',
-  `kpi_score` double NOT NULL DEFAULT '0',
-  `graduated` tinyint NOT NULL DEFAULT '0',
-  `seuil_graduation` int NOT NULL DEFAULT '3',
-  `last_validated` datetime,
-  `notes` text,
-  `created_at` datetime NOT NULL,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `agent` (`agent`,`projet`,`stack`,`pattern_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 DROP TABLE IF EXISTS `agents`;
 CREATE TABLE `agents` (
   `id` varchar(128) NOT NULL,
@@ -63,20 +35,6 @@ CREATE TABLE `agents` (
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `backlog_visions`;
-CREATE TABLE `backlog_visions` (
-  `id` varchar(128) NOT NULL,
-  `project` varchar(128),
-  `title` varchar(255) NOT NULL,
-  `status` enum('seed','conception','ready','promoted','archived') DEFAULT 'seed',
-  `filename` varchar(255),
-  `description` text,
-  `created_at` datetime NOT NULL,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `project` (`project`),
-  CONSTRAINT `backlog_visions_ibfk_1` FOREIGN KEY (`project`) REFERENCES `projects` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 DROP TABLE IF EXISTS `chantiers`;
 CREATE TABLE `chantiers` (
@@ -170,20 +128,6 @@ CREATE TABLE `claims_archive` (
   `agent_session` text,
   `archived_at` datetime NOT NULL,
   PRIMARY KEY (`sess_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `cosmos_edges`;
-CREATE TABLE `cosmos_edges` (
-  `source_id` varchar(255) NOT NULL,
-  `target_id` varchar(255) NOT NULL,
-  `similarity` double NOT NULL,
-  PRIMARY KEY (`source_id`,`target_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `decision_chantiers`;
-CREATE TABLE `decision_chantiers` (
-  `decision_id` varchar(64) NOT NULL,
-  `chantier_id` varchar(64) NOT NULL,
-  `linked_at` datetime NOT NULL,
-  PRIMARY KEY (`decision_id`,`chantier_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 DROP TABLE IF EXISTS `decisions`;
 CREATE TABLE `decisions` (
@@ -301,33 +245,6 @@ CREATE TABLE `intentions` (
   `updated_at` datetime NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `learning_modules`;
-CREATE TABLE `learning_modules` (
-  `id` varchar(128) NOT NULL,
-  `track_id` varchar(128) NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `status` enum('locked','exploring','acquired','a-faire','in-progress','paused') DEFAULT 'locked',
-  `sort_order` int DEFAULT '0',
-  `description` text,
-  `created_at` datetime NOT NULL,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`track_id`,`id`),
-  CONSTRAINT `learning_modules_ibfk_1` FOREIGN KEY (`track_id`) REFERENCES `learning_tracks` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `learning_tracks`;
-CREATE TABLE `learning_tracks` (
-  `id` varchar(128) NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `status` enum('exploring','paused','acquired') DEFAULT 'exploring',
-  `domain` json,
-  `feeds` json,
-  `module_count` int DEFAULT '0',
-  `modules_done` int DEFAULT '0',
-  `description` text,
-  `created_at` datetime NOT NULL,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 DROP TABLE IF EXISTS `locks`;
 CREATE TABLE `locks` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -419,32 +336,4 @@ CREATE TABLE `signals_archive` (
   `delivered_at` datetime,
   `archived_at` datetime NOT NULL,
   PRIMARY KEY (`sig_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `todo_items`;
-CREATE TABLE `todo_items` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `section_id` int NOT NULL,
-  `text` text NOT NULL,
-  `done` tinyint DEFAULT '0',
-  `sort_order` int DEFAULT '0',
-  `created_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `section_id` (`section_id`),
-  CONSTRAINT `todo_items_ibfk_1` FOREIGN KEY (`section_id`) REFERENCES `todo_sections` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `todo_sections`;
-CREATE TABLE `todo_sections` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `project` varchar(128) NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `intention_id` varchar(128),
-  `status` enum('open','done','cancelled') DEFAULT 'open',
-  `sort_order` int DEFAULT '0',
-  `created_at` datetime NOT NULL,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `intention_id` (`intention_id`),
-  KEY `project` (`project`),
-  CONSTRAINT `todo_sections_ibfk_1` FOREIGN KEY (`project`) REFERENCES `projects` (`id`),
-  CONSTRAINT `todo_sections_ibfk_2` FOREIGN KEY (`intention_id`) REFERENCES `intentions` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;

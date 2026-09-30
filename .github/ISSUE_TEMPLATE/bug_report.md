@@ -27,6 +27,10 @@ Ce qui devrait se passer.
 
 ## Logs (si applicable)
 
+> ⚠️ **Avant de coller** : masque les jetons, mots de passe et clés — ceux de
+> `.env`, `brain-compose.local.yml`, d'une sortie de `env` ou d'une URL de
+> remote. Tout le monde qui a accès au dépôt lit cette issue.
+
 ```
 Collez les logs ici
 ```

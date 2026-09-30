@@ -74,13 +74,13 @@ fichiers, retirés le 27/09. Ne pas la chercher.
 ### API locale (backend brain)
 ```
 GET  /workflows              → liste workflows + statuts
-POST /gate/:wfId/:stepId/approve|reject
+POST /gate/…/approve         → retirée le 30/09 (machinerie archivée)
 GET  /logs/:project          → logs pm2 (polling 2s)
 GET  /health                 → statut services (pm2, MySQL, Apache)
 ```
 
 ### Prochaines priorités
-1. Brancher `onGateApprove` sur l'API gate réelle
+1. ~~Brancher `onGateApprove` sur l'API gate réelle~~ — la route est retirée (30/09)
 2. `StatusDot` — indicateur pulsant live kernel/services
 3. Cosmos heatmap mode nébuleuse → déjà livré ✅
 

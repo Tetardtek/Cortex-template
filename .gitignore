@@ -22,6 +22,9 @@ reviews/*
 !reviews/README.md
 todo/*
 !todo/README.md
+# Ce qu'écrit une session `learning` : un satellite comme les autres.
+learning/*
+!learning/README.md
 
 # Instance-specific (never committed)
 brain-compose.local.yml

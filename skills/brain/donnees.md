@@ -16,9 +16,9 @@ Dans un script bash, le python à utiliser est celui du venv :
 
 ## Ce qu'elle contient
 
-**Tables (29)** — `agent_loads`, `agent_memory`, `agents`, `backlog_visions`, `chantiers`, `circuit_breaker`, `claims`, `claims_archive`, `cosmos_edges`, `decision_chantiers`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `learning_modules`, `learning_tracks`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`, `todo_items`, `todo_sections`
+**Tables (20)** — `agents`, `chantiers`, `circuit_breaker`, `claims`, `claims_archive`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`
 
-**Vues (6)** — `v_open_claims`, `v_stale_claims`, `v_active_locks`, `v_cold_start_kpi`, `v_graduation_candidates`, `v_metabolism_`
+**Vues (5)** — `v_open_claims`, `v_stale_claims`, `v_active_locks`, `v_cold_start_kpi`, `v_metabolism_`
 
 *Depuis `brain-engine/schema-dolt.sql` (généré — ne pas l'éditer à la main :
 modifier la base, puis régénérer) et `brain-engine/views-dolt.sql`.*

@@ -1,25 +1,25 @@
-# toolkit/ — Satellite Cortex-Template-Toolkit
+# toolkit/ — ton satellite
 
-> Ce dossier est un **placeholder**. Il sera remplace par votre propre clone du satellite.
+> Ce dossier est **à toi**. Le noyau ne suit que ce README : tout ce que tu y
+> écris est ignoré par son git, et ne se mélange jamais à son historique.
 
-## Qu'est-ce que c'est ?
+## Ce qu'il garde
 
-Le toolkit contient vos **templates reutilisables** — configs Docker, Apache, CI/CD, SQL, snippets. Tout pattern valide en prod finit ici.
+Les patterns que tu as validés en production, réutilisables.
 
-## Setup
+## Le versionner à part — si tu veux
 
-Le script `brain-setup.sh` clone automatiquement ce satellite :
+Rien ne l'exige. Pour garder son historique, ou le partager entre tes machines,
+fais-en **ton** dépôt :
 
 ```bash
-# Automatique via setup
-bash scripts/brain-setup.sh
-
-# Ou manuellement
-git clone https://github.com/Tetardtek-Cortex/Cortex-Template-Toolkit.git toolkit
+cd <BRAIN_ROOT>/toolkit
+git init
+git add .
+git commit -m "toolkit : premier état"
+git remote add origin <URL_DE_TON_DEPOT>
+git push -u origin main
 ```
 
-> Forkez [Cortex-Template-Toolkit](https://github.com/Tetardtek-Cortex/Cortex-Template-Toolkit) pour avoir votre propre version.
-
-## Apres le clone
-
-Ce README sera remplace par le contenu du satellite. Le dossier est gitignore dans le brain — chaque satellite a son propre remote.
+Sur plusieurs machines, déclare-le dans `satellites.yml` : voir
+`docs/satellites.md`.

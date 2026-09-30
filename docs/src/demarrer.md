@@ -21,7 +21,9 @@ ordre: 1
   lui : `--sans-service`, et tu lances la base à la main.
 
 Facultatif : **Ollama** et le modèle `nomic-embed-text`, pour la recherche
-sémantique dans le brain.
+sémantique dans le brain. Sans eux, le brain tourne, mais ne retrouve rien par
+le sens : le setup le vérifie (étape 10) et le dit, et
+`bash scripts/ollama-setup.sh` tire le modèle quand Ollama est installé.
 
 ---
 
@@ -41,7 +43,7 @@ bash scripts/brain-setup.sh <nom-de-ton-brain>
 ```
 
 Il installe le brain **où il est cloné** (un second argument choisit un autre
-dossier). Le script est idempotent : relance-le si une étape a échoué. Ses huit étapes :
+dossier). Le script est idempotent : relance-le si une étape a échoué. Ses dix étapes :
 
 | Étape | Ce qu'elle fait |
 |---|---|
@@ -53,6 +55,8 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses hu
 | 6. brain-engine | crée `brain-engine/.venv` et y installe les dépendances |
 | 7. Dolt | installe Dolt si besoin (sans root), crée la base `brain-dolt/` et le service utilisateur `dolt-server.service` |
 | 8. brain-ui | installe et **construit** le dashboard |
+| 9. Le moteur | installe le moteur et le serveur MCP en **services utilisateur** (`brain-engine`, `brain-mcp`) : ils survivent au reboot |
+| 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |
 
 > ⚠️ **L'étape 2 remplace ton `~/.claude/CLAUDE.md`.** Si tu en avais un à toi,
 > il est dans `~/.claude/CLAUDE.md.bak-<date>` : fusionne à la main ce que tu veux garder.
@@ -67,15 +71,25 @@ Sans systemd utilisateur (conteneur, machine partagée) :
 bash scripts/brain-setup.sh <nom-de-ton-brain> --sans-service
 ```
 
-## 3. Démarrer le moteur
+## 3. Vérifier le moteur
+
+```bash
+bash scripts/brain-engine.sh status
+```
+
+L'étape 9 du setup a installé l'API et le dashboard (port 7700) et le serveur
+MCP (port 7701) en services : ils tournent déjà, et repartent à chaque
+démarrage.
+
+Installé avec `--sans-service`, ou sans systemd : lance-les à la main, à
+refaire après chaque reboot.
 
 ```bash
 bash scripts/brain-engine.sh start
 ```
 
-Lance l'API et le dashboard (port 7700) et le serveur MCP (port 7701). Si la
-base n'est pas servie par son service, `start` la lance aussi. Le détail, les
-modes et l'installation permanente : la page **Brain-engine**.
+Si la base n'est pas servie par son service, `start` la lance aussi. Le
+détail et les modes : la page **Brain-engine**.
 
 Le dashboard : `http://localhost:7700/ui/`
 
@@ -113,11 +127,8 @@ intentions. Il se remplit en travaillant.
 
 ## Mettre à jour depuis le gabarit
 
-```bash
-git remote add upstream <URL_DU_GABARIT>
-git fetch upstream
-git merge upstream/main
-```
+Une nouvelle version se fusionne dans ton fork, puis le moteur se relance et la
+base suit le schéma : la page **Se mettre à jour** donne les sept étapes.
 
 ## MYSECRETS absent — c'est grave ?
 

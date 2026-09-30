@@ -9,15 +9,18 @@ description: >
   CATALOG.yml), the kernel and its gates (KERNEL.md, brain-constitution.md,
   profil/), brain-engine (API routes, MCP server, embeddings, brain-engine.sh),
   the Dolt base or db.py, the brain's docs (docs/, docs/src/), satellites
-  (satellites.yml), or publishing the template (sync-template.sh).
+  (satellites.yml), publishing the template (sync-template.sh), or the daily
+  work gestures inside a brain: committing, opening or merging a PR, testing
+  in a worktree, running the doctor, keeping the backlog (fiches, kanban).
   Triggers: brain boot, claim, BSI, kernel, KERNEL.md, agent, brain-engine, MCP,
-  Dolt, db.py, docs-generer, docs-verite, satellite, template, gabarit.
+  Dolt, db.py, docs-generer, docs-verite, satellite, template, gabarit, commit,
+  PR, merge, fusionner, worktree, doctor, backlog, fiche, kanban, tenir.
 ---
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v2.3.2 — 74 agents, 6 types de session,
-30 routes d'API, 11 outils MCP.
+Kernel v2.4.2 — 67 agents, 6 types de session,
+26 routes d'API, 11 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
 qui persistent, des types de session qui chargent ce qu'ils déclarent, et une
@@ -52,8 +55,9 @@ tort — et c'est un défaut à signaler, pas à contourner.*
    → [`doc.md`](doc.md)
 5. **Les secrets ne se lisent pas.** `brain-secrets/MYSECRETS` n'est jamais
    affiché, ni cité, ni copié dans une commande.
-6. **Chaque commit porte un type** (`feat:`, `fix:`, `scribe:`, `config:`…) : il dit
-   quel scribe possède le changement. Le tableau : `KERNEL.md`, « Commit types ».
+6. **Chaque commit porte un type**, parmi `kernel:`, `feat:`, `fix:`, `bsi:`, `integrator:`, `scribe:`, `metabolism:`, `todo:`, `toolkit:`, `config:` — et aucun autre :
+   le hook `commit-msg` refuse le reste. Il dit quel scribe possède le
+   changement. Le tableau : `KERNEL.md`, « Commit types ».
 7. **Ce qui tourne n'est pas une cible d'essai.** Le moteur, la base, les
    services de la machine : on les lit dans le code, on ne les sonde pas pour
    voir. Un essai se fait dans un bac à sable : HOME jetable, ports décalés, rien

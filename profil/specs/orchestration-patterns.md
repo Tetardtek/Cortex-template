@@ -197,6 +197,11 @@ orchestrator-scribe, capture ce pattern dans orchestration-patterns.md
 
 ## Pattern 6 — HumanSupervisor — décision minimale
 
+> 🗄️ **Archivé le 30/09 (BRAIN-079)** : ce pattern repose sur l'agent `supervisor`,
+> archivé avec l'ancienne machinerie (`agents/archive/`) — elle n'a jamais tourné en base.
+> Le lancement et la supervision d'agents passent par le palier c : l'`orchestrator`
+> compose et juge, un worker travaille dans son worktree, `dev/autonome` accueille.
+
 > Validé en prod : sess-20260314-1920-supervisor — 2026-03-14
 > Contexte : sprint dual-agent d'un projet (back + front) supervisé depuis une fenêtre dédiée
 
@@ -251,6 +256,11 @@ Si une décision change la direction du projet ou l'architecture → humain
 ---
 
 ## Pattern 7 — Todo → KANBAN Sprint Setup
+
+> 🗄️ **Archivé le 30/09 (BRAIN-079)** : ce pattern repose sur l'agent `supervisor`,
+> archivé avec l'ancienne machinerie (`agents/archive/`) — elle n'a jamais tourné en base.
+> Le lancement et la supervision d'agents passent par le palier c : l'`orchestrator`
+> compose et juge, un worker travaille dans son worktree, `dev/autonome` accueille.
 
 > Forgé : 2026-03-15
 > Contexte : audit d'un projet — première application
@@ -333,7 +343,7 @@ Close sprint     → integrator consolide les outputs → rapport final
 > Problème : bootstrap complet (~1000 lignes) requis après compactage ou reprise.
 > Spec complète : `toolkit/brain/checkpoint-pattern.md`
 
-**Commande :** l'humain dit `/checkpoint` → Claude écrit `workspace/<sprint>/checkpoint.md`
+**Commande :** l'humain dit `/checkpoint` → Claude écrit `handoffs/<fichier>.md` (depuis `handoffs/_template.md`) et envoie un signal `CHECKPOINT` qui pointe ce fichier — corrigé le 30/09 : l'ancienne adresse, `workspace/<sprint>/checkpoint.md`, est morte avec les sprints
 
 ```
 Cold bootstrap  →  5 fichiers + brain complet  →  ~1000 lignes  →  2-3 min
@@ -351,11 +361,11 @@ Warm restart    →  1 fichier checkpoint         →  ~30-50 lignes →  < 30 s
 
 **Warm restart prompt :**
 ```
-Lis brain/workspace/<sprint>/checkpoint.md et reprends — pas de bootstrap complet.
+Lis brain/handoffs/<fichier>.md et reprends — pas de bootstrap complet.
 ```
 
 **Règles :**
-- Un checkpoint par sprint actif (écrasé à chaque `/checkpoint`)
+- Un point de reprise par travail en cours (mis à jour à chaque `/checkpoint`)
 - Prochain step doit être assez précis pour agir sans relire
 - Contexte compact ≤ 8 lignes — si ça dépasse, c'est trop
 - Le checkpoint ne remplace pas le claim BSI (locking ≠ contenu)

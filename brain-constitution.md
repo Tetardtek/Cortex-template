@@ -3,7 +3,7 @@ name: brain-constitution
 type: invariant
 context_tier: always
 status: immutable
-version: "1.0.0"
+version: "1.1.1"
 kernel_zone: protected
 modified_by: ADR + kernel commit uniquement
 ---
@@ -91,7 +91,7 @@ NO    (L0 seul)
 |-----|-------|------|----------------|
 | NO HANDOFF productif | < 2 min | > 2 min | Layer 0 insuffisant → enrichir brain-constitution.md |
 | always-tier total | < 1 500 lignes | > 2 000 lignes | context-tier-split requis |
-| Drift manifest vs agents | 0 | ≥ 1 | warn avant session (boot_warn_on_drift) |
+| Drift frontmatter vs catalogue des agents | 0 | ≥ 1 | visible avant session : veille des registres (briefing) et doctor |
 
 ```
 [ORCHESTRATOR_RULE] Session handoff_level: NO → mesurer et loguer cold_start_kpi_pass.
@@ -113,7 +113,7 @@ multi_agent: disabled          # enabled requiert déclaration explicite en sess
 degradation: auto              # auto = silencieux / manual = confirmation utilisateur
 cold_start_kpi: 2min           # NO HANDOFF productif en < 2min — non-négociable
 layer0_halt: true              # non-overridable — jamais désactivé
-boot_warn_on_drift: true       # manifest.yml vs frontmatter → warn avant session
+boot_warn_on_drift: true       # frontmatter vs catalogue → visible avant session (veille des registres)
 ```
 
 ---
@@ -129,8 +129,8 @@ boot_warn_on_drift: true       # manifest.yml vs frontmatter → warn avant sess
 ### Syntaxe autorisée
 
 ```
-Fichier complet   : ./layer1/manifest.yml
-Section ciblée    : ./layer1/agents/helloworld.md#boot-summary
+Fichier complet   : agents/debug.md
+Section ciblée    : agents/coach.md#boot-summary
 ```
 
 ### Convention ancres
@@ -138,36 +138,44 @@ Section ciblée    : ./layer1/agents/helloworld.md#boot-summary
 Les ancres suivent le standard Markdown : `#nom-de-section` (lowercase, tirets, sans accents).
 Exemple : `helloWorld.md#boot-summary`, `coach.md#regles-critiques`
 
-### Exemple manifest.yml (Layer 1)
+### Où vivent les pointeurs
+
+Un manifeste par type de session, `contexts/session-<type>.yml`, liste ce qui se
+charge par couche : L0 (le socle, toutes sessions), L1 (au boot du type), L2 (à
+la demande). Exemple réel, `session-work.yml` :
 
 ```yaml
-helloWorld:
-  version: "0.5.0"
-  boot_summary: agents/helloWorld.md#boot-summary      # always — charge au boot
-  detail: agents/helloWorld.md#detail                  # warm — charge sur invocation
-coach:
-  version: "1.0.0"
-  boot_summary: agents/coach.md#boot-summary           # always
-  detail: agents/coach.md#detail                       # warm
+L0: [PATHS.md, brain-compose.local.yml, KERNEL.md]
+L1: [handoffs/LATEST.md, agents/coach-boot.md, agents/debug.md, …]
 ```
+
+Une section ciblée se matérialise aujourd'hui en fichier extrait :
+`agents/coach-boot.md` est la section `## boot-summary` de `agents/coach.md`,
+chargée en L0 par CLAUDE.md.
 
 ---
 
-## 6. VERSIONING & MANIFEST
+## 6. VERSIONING & REGISTRE
 
 ```
-[ORCHESTRATOR_RULE] Au boot : comparer les versions du manifest.yml avec le frontmatter des fichiers cibles.
-[ORCHESTRATOR_RULE] Drift détecté → warn utilisateur AVANT ouverture de session. Jamais silencieux.
-[ORCHESTRATOR_RULE] Layer 0 ne contient aucune donnée projet. L'état du monde est dans manifest.yml (Layer 1).
+[ORCHESTRATOR_RULE] Le frontmatter d'un agent est la seule source de sa déclaration ;
+                    agents/CATALOG.yml et la table `agents` en sont dérivés, jamais écrits à la main.
+[ORCHESTRATOR_RULE] Drift détecté → visible AVANT la session (veille des registres au briefing,
+                    contrôle « registre des agents » du doctor). Jamais silencieux.
+[ORCHESTRATOR_RULE] Layer 0 ne contient aucune donnée projet. L'état des projets vit dans leurs
+                    fiches (projets/, workspace/backlog/) et dans la base.
 ```
 
 ### Granularité
 
 ```
 Niveau kernel  →  brain-compose.yml          (déjà actif)
-Niveau agent   →  manifest.yml               (granularité maximale autorisée)
+Niveau agent   →  frontmatter de l'agent     (le catalogue en dérive)
 Niveau section →  interdit — coût > valeur
 ```
+
+> Réécrit le 30/09 : ce paragraphe décrivait un `manifest.yml` (Layer 1)
+> qui n'a jamais existé dans le dépôt. Aucun outil ne compare des versions d'agents.
 
 ---
 
@@ -251,3 +259,4 @@ Niveau de protection : identique à KERNEL.md lui-même.
 |---------|------|------------|
 | 1.0.0 | 2026-03-15 | Création — 5 levers (pointeurs, dégradation, versioning, contrat boot, immutabilité) + identity invariants + boot mode toggles + multi-agent coordination |
 | 1.1.0 | 2026-03-15 | Section 9 — North Star + invariants autonomie + auto-amélioration (BRAIN-011) |
+| 1.1.1 | 2026-09-30 | §§ 3 à 6 — le `manifest.yml` (Layer 1), qui n'a jamais existé, remplacé par ce qui existe : les manifestes `contexts/session-<type>.yml` et le frontmatter des agents, dont le catalogue dérive |

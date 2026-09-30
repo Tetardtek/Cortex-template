@@ -1,27 +1,24 @@
 # brain-compose.local.yml — Registre machine
 # NON VERSIONNÉ — gitignored. Spécifique à cette machine.
-# Copier depuis brain-compose.local.yml.example, remplir, NE PAS commiter.
+# `brain-setup.sh` l'écrit pour toi ; cet exemple montre la même forme.
 
 kernel_path: <BRAIN_ROOT>
-kernel_version: "0.9.2"
+# La version du gabarit INSTALLÉE — écrite par le setup. À la fin d'une mise à
+# jour, passe-la à la nouvelle version : c'est ce qui dit que les étapes après
+# la fusion ont été faites (page de doc « Se mettre à jour »).
+kernel_version: "<VERSION>"
 last_kernel_sync: "<YYYY-MM-DD>"
 machine: <MACHINE>          # identifiant court : desktop / laptop / vps / etc.
+# write_mode: readonly_kernel   # seulement une machine DE PLUS d'une instance (satellites.yml)
 
 instances:
-  prod:
+  <BRAIN_NAME>:
     path: <BRAIN_ROOT>
-    brain_name: prod
-    feature_set: full
+    brain_name: <BRAIN_NAME>
+    mode: prod
+    docs_fetch: ask
     config_status: hydrated   # hydrated / partial / empty
     active: true
-
-  # Exemple — instance client ou template-test :
-  # template-test:
-  #   path: <BRAIN_ROOT>-test
-  #   brain_name: template-test
-  #   feature_set: full
-  #   config_status: partial
-  #   active: false
 
 # ── Peers — les autres machines de CETTE instance (optionnel) ─────────────────
 # `bsi-query.sh peers`, `bsi-signal.sh` et `bsi-peer-poll.sh` les joignent en SSH.

@@ -59,15 +59,6 @@ CREATE VIEW v_cold_start_kpi AS
     FROM sessions
     WHERE handoff_level = 'NO';
 
-DROP VIEW IF EXISTS v_graduation_candidates;
-CREATE VIEW v_graduation_candidates AS
-    SELECT agent, projet, stack, pattern_id, validations, kpi_score,
-           ROUND(validations / NULLIF(seuil_graduation, 0), 2) AS progress
-    FROM agent_memory
-    WHERE graduated = 0
-      AND validations >= seuil_graduation
-    ORDER BY validations DESC;
-
 DROP VIEW IF EXISTS v_metabolism_7d;
 CREATE VIEW v_metabolism_7d AS
     SELECT date, type,

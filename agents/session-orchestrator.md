@@ -15,7 +15,7 @@ brain:
   triggers:  [session, boot, close]
   ipc:
     receives_from: [human, helloWorld]
-    sends_to:      [metabolism-scribe, todo-scribe, wiki-scribe, scribe, coach, human]
+    sends_to:      [metabolism-scribe, todo-scribe, kanban-scribe, wiki-scribe, scribe, coach, human]
     zone_access:   [kernel, project]
     signals:       [SPAWN, CHECKPOINT, HANDOFF]
 ---
@@ -35,16 +35,18 @@ Propriétaire du cycle de vie de chaque session. Décide ce qui est chargé au b
 
 ```
 close(session_type, sess_id):
-  # 0 — checkpoint [si sprint actif]
+  # 0 — checkpoint [si le travail s'arrête en cours] : handoff dans handoffs/ + signal CHECKPOINT (scribe.md)
 
-  # 1 — metabolism-scribe (TOUJOURS — 4 types, BRAIN-047)
+  # 1 — metabolism-scribe (TOUJOURS — les 6 types, BRAIN-047 + BRAIN-049)
   → metabolism-scribe(tokens, context, duration, agents, commits, todos)
 
-  # 2 — todo-scribe
-  IF session_type IN [work, brain, pilote]:
-    → items complétés → [x], métriques recalculées
-  IF todos_emerged:
-    → capturer ⬜ émergés (tous types)
+  # 2 — les fiches (BRAIN-079 : la liste et le mouvement)
+  IF fiches touchées livrées:
+    → kanban-scribe : clôture SUR PREUVE (mesuré · tenu par) ; sans preuve, la fiche reste ouverte
+  IF reste à faire (intention non réalisée, défaut trouvé, dette) — tous types:
+    → todo-scribe : propose une fiche (avec l'humain) ou la crée (mode kanban)
+  IF une fiche a changé:
+    → kanban-scribe : tenir le backlog (index, clôtures, issues — une commande)
 
   # 3 — wiki-scribe (si présent)
   IF new_pattern OR new_command OR new_agent OR new_term:
@@ -61,7 +63,7 @@ close(session_type, sess_id):
   # 4.6/4.7/4.8 — data alignment (convention 4 couches — wiki/cognitive-layers.md)
   IF session_type IN [work, brain, pilote] AND project_touched:
     → 4.6 projet-update  : projets/X.md état courant + table intentions alignée
-    → 4.7 todo-promotion : todo/X.md sections 100% [x] → promues ✅
+    → 4.7 retiré (29/09) : les fiches closes passent par l'étape 2
     → 4.8 vision-sync    : workspace/backlog/X/vision.md jalons livrés marqués done
   # Silencieux si aucun projet touché
 
@@ -126,7 +128,7 @@ close(session_type, sess_id):
 |------|-----------|
 | `helloWorld` | Câblé — reçoit handoff après briefing |
 | `metabolism-scribe` | Close : métriques + agents_loaded |
-| `todo-scribe` | Close : todos à jour |
+| `todo-scribe`, `kanban-scribe` | Close, étape 2 : ce qui reste devient une fiche, ce qui est livré se clôt sur preuve |
 | `scribe` | Close : brain à jour |
 | `profile-scribe` (si présent) | Close : couche cognitive interprétation personnelle — insights identitaires vers profil/identity/ (BRAIN-056, owner-only Phase 1) |
 | `coach` | Close : rapport de session (si gate non silencieux) |
@@ -229,30 +231,20 @@ fin
    b. Croiser avec handoff-matrix.md → niveau spécifique session_type × scope
    c. [Gap 4] Timing check continuation :
       → `bash scripts/bsi-query.sh` — scope identique fermé depuis < 4h
-        (`claims/` est vide depuis le 19/03 : brain.db est la source)
+        (les claims sont en base — BRAIN-042 ; il n'y a plus de `claims/`)
       → OU message contient "je reprends" / "continuation"
       → Si oui : élever au niveau FULL (silencieux)
 
-4. Charger les couches depuis contexts/session-<type>.yml (L0 / L1 / L2)
-   → Trouver la position dont le trigger matche session_type
-   → [Gap 1] Si handoff_level = NO → charger position mais IGNORER promote/suppress
-   → Sinon → appliquer promote/suppress normalement
+4. Charger les couches du manifeste contexts/session-<type>.yml — L0, L1
+   intégralement, L2 si un projet est déclaré. helloWorld (étapes 3 à 7 du BHP)
+   fait foi ; session-orchestrator ne recharge rien par-dessus.
+   → Les « positions » (promote / suppress, layer1_semi_plus) qu'annonçait
+     cette étape ne sont déclarées dans aucun manifeste : mécanisme retiré.
+   → handoff_level n'aiguille plus le chargement : c'est une colonne du claim,
+     dérivée à l'ouverture par bsi-claim.sh.
 
-5. Charger les couches selon handoff_level :
-
-   NO    → Layer 0 uniquement (KERNEL + constitution + PATHS + collaboration + boot-summaries)
-
-   SEMI  → Layer 0
-           + position (promote/suppress actifs)
-           + load_conditional si scope détecté dans le message [Gap 2]
-
-   SEMI+ → Layer 0
-           + position (promote/suppress actifs)
-           + layer1_semi_plus : focus.md + projets/<scope>.md + todo/<scope>.md
-           + load_conditional si scope détecté dans le message [Gap 2]
-
-   FULL  → Layer 0 + SEMI+ complet
-           + Layer 2 : handoffs/ (scope pertinent) + workspace/<sess-id>-<slug>/ [Gap 5]
+5. Continuation (étape 3c) → charger en plus le handoff du scope
+   (handoffs/, ou celui relevé par `bsi-signal.sh inbox`).
 
 6. MYSECRETS — règle non négociable :
    → Confirmer présence : [[ -f "$BRAIN_ROOT/MYSECRETS" ]] → ✓ disponible
@@ -260,7 +252,7 @@ fin
    → Chargement réel sur trigger (.env / mysql / deploy / JWT / token / API key)
 
    ⚠️ session-role + PID + claim BSI : propriété de helloWorld
-   → session-orchestrator reçoit le handoff APRÈS que helloWorld a ouvert et pushé le claim
+   → session-orchestrator reçoit le handoff APRÈS que helloWorld a ouvert le claim (en base, sans commit ni push)
 
 6.5. live-states.md : RIEN à écrire.
    → Le fichier est GÉNÉRÉ par bsi-peer-poll.sh (cron */5) depuis les claims,
@@ -275,9 +267,10 @@ fin
 **Déclencheurs :** `fin` | `on wrappe` | `c'est bon` | `je ferme` | invocation explicite
 
 ```
-0. checkpoint  [si sprint actif dans workspace/]
-   → Écrire workspace/<sprint>/checkpoint.md
-   → Warm restart garanti à la prochaine session
+0. checkpoint  [si le travail s'arrête en cours — sinon rien]
+   → Écrire le point de reprise dans handoffs/<fichier>.md (depuis handoffs/_template.md)
+   → Signal CHECKPOINT : bsi-signal.sh send <sess-id> --type CHECKPOINT --payload "→ handoffs/<fichier>.md"
+   → Warm restart garanti à la prochaine session (voir scribe.md, « Checkpoint »)
 
 1. metabolism-scribe
    → tokens_used, context_peak, context_at_close, duration
@@ -287,12 +280,15 @@ fin
    → handoff_level : NO | SEMI | SEMI+ | FULL  ← obligatoire depuis Phase 1
    → cold_start_kpi_pass : true | false | N/A  ← obligatoire si handoff_level = NO
 
-2. todo-scribe  [si type = work | sprint | debug | brainstorm avec todos émergés]
-   → mettre à jour todos fermés ✅
-   → capturer todos ⬜ émergés pendant la session
-   → [si sprint actif] vérifier workspace/<sprint>/backlog.md si présent :
-      Tout item complété → [ ] → [x]
-      Commit : "backlog: close <item-id> — <titre court>"
+2. Les fiches — `workspace/backlog/<projet>/` (BRAIN-079)
+   → kanban-scribe : chaque fiche livrée pendant la session est close SUR PREUVE
+      (rapport de clôture : mesuré · tenu par) — sans preuve, elle reste ouverte
+      et dit ce qui manque
+   → todo-scribe : ce qui reste à faire devient une fiche — proposée à
+      l'humain, une à une ; créée seule en mode kanban
+   → kanban-scribe : tenir le backlog si une fiche a changé (index, clôtures,
+      issues — une seule commande ; arrêt avant la forge si une clôture n'a pas
+      de preuve)
 
 3. wiki-scribe (si présent)  [si nouveau pattern / commande / agent / terme forgé]
    → Ajouter terme dans wiki/vocabulary.md
@@ -313,14 +309,20 @@ fin
    → projets/X.md : état courant + table intentions alignée
    → Silencieux si aucun projet touché
 
-4.7. todo-promotion
-   → todo/X.md : sections 100% [x] → promues ✅
-   → Items isolés [x] non promus (la section reste ouverte)
+4.7. (retiré le 29/09 — `todo/` ne porte plus de tâches ; les fiches closes
+   passent par l'étape 2)
 
 4.8. vision-sync
    → workspace/backlog/X/vision.md : jalons livrés marqués done
    → Questions ouvertes résolues supprimées ou archivées
    → Ref : profil/specs/collaboration.md § Convention données + wiki/cognitive-layers.md
+
+4b. rapport spécialisé  [si tags BSI de la session — BRAIN-047]
+   → audit : rapport d'audit · urgence : post-mortem · capital : capital-scribe (si présent) · coach : coach-scribe (si présent)
+
+4.85. profile-scribe  [si présent — BRAIN-056, owner seulement]
+   → scan de la session, 3 à 5 insights au plus, validés un par un par l'humain
+   → écrits dans profil/identity/<theme>.md ; silencieux si rien
 
 4.9. wrap check-in  [Pattern 12 — métriques humaines]
    → Proposer : "On a livré <deliverables résumé>. On wrap ?"
@@ -399,7 +401,7 @@ L'objectif n'est pas la précision au token — c'est la tendance sur 10 session
 | `context-orchestrator` | Futur — déléguera la résolution des couches (quand data métabolisme disponible) |
 | `secrets-guardian` | Boot : confirme présence MYSECRETS, passive listening permanent |
 | `metabolism-scribe` | Close : métriques + agents_loaded + prix_par_agent |
-| `todo-scribe` | Close (si work/sprint/debug) : todos à jour |
+| `todo-scribe`, `kanban-scribe` | Close, étape 2 : fiches créées ou proposées, closes sur preuve, backlog tenu |
 | `scribe` | Close (si significatif) : brain à jour |
 | `coach` | Close : rapport de session avant fermeture |
 

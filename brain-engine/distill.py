@@ -31,7 +31,7 @@ from embed import upsert_chunk, get_embedding, chunk_id, OLLAMA_URL
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 BRAIN_ROOT    = Path(__file__).parent.parent
-DISTILL_MODEL = os.getenv('DISTILL_MODEL', 'mistral:7b')  # LLM local pour résumé
+DISTILL_MODEL = os.getenv('DISTILL_MODEL') or 'mistral:7b'  # LLM local pour résumé
 SCOPE         = 'work'
 
 # Sessions Claude — chemin par défaut

@@ -405,6 +405,37 @@ def regle_partagee() -> None:
     verifie("demandeur vide : comme absent", autre_session("claude-a", ""), False)
 
 
+def reseau() -> None:
+    """Le verrou regarde le RÉSEAU quand l'instance le lui donne — BRAIN-078.
+
+    Le laptop ouvre ses claims sur sa branche de la base du fixe. Sans la
+    source du réseau, chaque machine ne voyait que sa base : les deux pouvaient
+    ouvrir le même scope noyau en même temps."""
+    print("\nLE VERROU DU RÉSEAU\n")
+    with tempfile.TemporaryDirectory(prefix="core-bsi-reseau-") as tmp:
+        depot = Depot(Config(backend=SQLITE, chemin=Path(tmp) / "b.db"))
+        depot.execute(SCHEMA)
+        # Le claim noyau que le LAPTOP a ouvert, vu sur sa branche.
+        laptop = {"sess_id": "sess-20260929-1500-brain-kernel.laptop", "scope": "brain",
+                  "type": "brain", "zone": "kernel", "opened_at": None,
+                  "expires_at": None, "project": "brain"}
+        seul = BSI(depot)
+        verifie("sans la source du réseau, le scope paraît libre",
+                seul.conflit("brain/kernel", zone="kernel"), None)
+        bsi = BSI(depot, ouverts_du_reseau=lambda: [laptop])
+        verifie("avec elle, le claim du laptop BLOQUE le scope noyau",
+                getattr(bsi.conflit("brain/kernel", zone="kernel"), "sess_id", None),
+                laptop["sess_id"])
+        refuse("et `ouvre` refuse — la même garde que sur une seule machine",
+               lambda: bsi.ouvre("sess-20260929-1501-brain-kernel", scope="brain/kernel",
+                                 type="brain", zone="kernel"),
+               ConflitDeScope)
+        verifie("hors noyau, le recouvrement se VOIT sans bloquer",
+                [c.sess_id for c in bsi.recouvrements("brain")], [laptop["sess_id"]])
+        verifie("`ouverts()` reste ce dépôt — la fermeture n'en dépend pas",
+                bsi.ouverts(), [])
+
+
 def main() -> int:
     identifiants()
     projets()
@@ -415,6 +446,7 @@ def main() -> int:
     rattachement()
     horloge_utc()
     regle_partagee()
+    reseau()
     print(f"\n  {_ok} garantie(s) tenue(s), {_ko} manquée(s)\n")
     return 1 if _ko else 0
 

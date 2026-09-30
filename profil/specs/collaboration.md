@@ -179,12 +179,12 @@ Le brain structure l'information projet en **4 couches complémentaires**. Chaqu
 ```
 vision   (workspace/backlog/X/vision.md)  → POURQUOI + OÙ   — north star, jalons sans deadline
 intention (Dolt table `intentions`)       → QUOI             — objectif mesurable, status, dépendances
-todo     (todo/X.md)                      → COMMENT          — checkboxes concrètes, items actionnables
+fiche    (workspace/backlog/X/<PFX>-n.md) → COMMENT          — une tâche par fichier, critères de fin, ouverte · ⏸️ · ✅
 projet   (projets/X.md)                   → ÉTAT             — snapshot live, table intentions, blockers
 ```
 
 **Règles non négociables :**
-- Pas de checkboxes dans une intention — c'est le rôle du todo
+- Pas de checkboxes dans une intention — c'est le rôle de la fiche
 - Pas de design détaillé dans une intention — c'est le rôle de la vision
 - Le projet reflète l'état réel — jamais un objectif ou un souhait
 - Chaque couche pointe vers les autres, jamais ne les duplique
@@ -212,9 +212,9 @@ projet   (projets/X.md)                   → ÉTAT             — snapshot liv
 `/btw <question>` → parenthèse courte, jamais de dérive.
 
 - Réponse : **2-3 lignes max**
-- Si actionnable → `todo-scribe` capture en ⬜
+- Si actionnable → `todo-scribe` propose une fiche ⬜
 - Clôture explicite : `→ on reprend.`
-- Si la question est trop large → "nécessite une session dédiée" + capture en todo
+- Si la question est trop large → "nécessite une session dédiée" + une fiche proposée
 
 Agent : `brain/agents/aside.md` — déclenché automatiquement sur le préfixe `/btw`.
 

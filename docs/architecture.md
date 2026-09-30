@@ -17,8 +17,8 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 2.3.2, modes)
-- `agents/` — les 74 agents
+- `brain-compose.yml` — la configuration du programme (version 2.4.2, kerneluser, postures)
+- `agents/` — les 67 agents
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
 - `brain-engine/` — le moteur : API, recherche, serveur MCP
@@ -45,7 +45,7 @@ partagées, `profil/specs/`.
 
 Tout ce qui est structuré — claims, intentions, todos, décisions, index de
 recherche — vit dans **Dolt**, une base SQL versionnée comme git :
-29 tables et 6 vues. Le narratif reste en Markdown.
+20 tables et 5 vues. Le narratif reste en Markdown.
 
 La base écoute sur `127.0.0.1` seulement : elle n'est jamais exposée. Le
 détail est sur la page **Données**.

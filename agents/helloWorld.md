@@ -81,6 +81,15 @@ Un briefing court. Ce qui compte :
 - **ce qui est en cours** — les chantiers ouverts, pas la liste complète ;
 - **ce qui bloque** — un blocage tu n'est pas un blocage résolu ;
 - **ce qui a changé depuis la dernière fois**, s'il y a une trace de reprise.
+- **une mise à jour pas terminée** : si `kernel_version` de
+  `brain-compose.local.yml` diffère de `version` dans `brain-compose.yml`, le
+  gabarit a été fusionné sans que les étapes d'après soient faites. Le dire en
+  une ligne, avec le renvoi à la page de doc « Se mettre à jour ».
+- **une version plus récente chez l'amont** : `python3 scripts/maj-disponible.py
+  --lire` (il ne touche pas au réseau, il lit ce que le timer `brain-maj` a
+  relevé). S'il sort en 0, ne rien dire ; s'il sort en 1, recopier sa ligne telle
+  quelle. Une information, jamais une injonction : chacun reste libre de mettre
+  à jour, ou non.
 
 Trois lignes valent mieux qu'une page. La personne en face sait ce qu'elle
 faisait ; elle a besoin de retrouver le fil, pas de relire son propre brain.

@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.3.2"
+version: "2.4.2"
 
 # ---
 # Ownership — kerneluser
@@ -39,221 +39,10 @@ postures:
 
 
 # ---
-# Modes — comportement de session (permissions BSI + agents autorisés)
-# Priorité : déclaration explicite > detectmode > brain-compose.local.yml > prod (safe default)
-# ---
-
-# Sessions V2 (BRAIN-047) : le TYPE de session (work/brain/explore/pilote) determine
-# la posture et les agents charges. Le MODE ci-dessous determine les permissions
-# d'ecriture. Les deux sont orthogonaux :
-#   type = ce que je fais (routing, agents, metriques)
-#   mode = ce que j'ai le droit de modifier (permissions)
-# brain-compose.local.yml declare le mode actif. Par defaut : prod.
-modes:
-
-  prod:
-    description: "Session normale — Invariants protégés, écriture confirmée"
-    permissions:
-      invariant: confirm
-      contexte: confirm
-      reference: write
-      personnel: write
-      brain_write: false
-      forge: false
-    agents: "*"
-
-  dev:
-    description: "Forge — pleine puissance, écriture libre sur le brain"
-    permissions:
-      invariant: confirm          # même en dev, les Invariants demandent confirmation
-      contexte: write
-      reference: write
-      personnel: write
-      brain_write: true
-      forge: true
-    agents: "*"
-
-  toolkit-only:
-    description: "Croissance autonome — toolkit source unique, docs officielles si inconnu"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: toolkit-scribe-only
-      forge: false
-    docs_fetch: ask               # always | ask | never
-    agents: [toolkit-scribe, debug, code-review]
-    behavior: |
-      Pattern connu dans toolkit → agit seul
-      Pattern inconnu → docs officielles (selon docs_fetch) → toolkit-scribe écrit
-      Jamais d'invention
-
-  brainstorm:
-    description: "Réflexion scopée — pas d'écriture système"
-    permissions:
-      invariant: false
-      contexte: scope-only
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [brainstorm, coach]
-
-  coach:
-    description: "Mentorat — progression en écriture, brain en lecture"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: write
-      brain_write: progression-only
-      forge: false
-    agents: [coach, coach-scribe, scribe]
-
-  deploy:
-    description: "Déploiement — agents infra uniquement"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [vps, ci-cd, pm2, secrets-guardian]
-
-  debug:
-    description: "Debug — lecture + agents debug"
-    permissions:
-      invariant: false
-      contexte: scope-only
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [debug, code-review]
-
-  projet-audit:
-    description: "Audit lecture seule — todo-scribe uniquement en écriture"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: todo-scribe-only
-      forge: false
-    agents: [coach, agent-review]
-
-  review-front:
-    description: "Review frontend"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [code-review, frontend-stack, testing]
-
-  review-back:
-    description: "Review backend/sécu"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [code-review, security, testing]
-
-  conserve:
-    description: "Économie context — proposé auto si seuil métabolisme dépassé"
-    permissions:
-      invariant: confirm
-      contexte: confirm
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: [debug, code-review, todo-scribe, metabolism-scribe]
-    behavior: |
-      Cible context < 40%. Pas de chargement de sources non essentielles.
-      metabolism-scribe en fin de session obligatoire.
-
-  HANDOFF:
-    description: "Reprise propre depuis une session précédente"
-    permissions:
-      invariant: false
-      contexte: scope-only
-      reference: read
-      personnel: false
-      brain_write: false
-      forge: false
-    agents: "*"
-
-  rendering:
-    description: "Instance autonome sur projet — scope strict, zéro drift kernel"
-    permissions:
-      invariant: false
-      contexte: false
-      reference: read
-      personnel: false
-      brain_write: false      # pas d'écriture brain/ — uniquement le repo projet
-      forge: false
-    scope_lock: true          # BLOQUÉ hors du scope déclaré dans le claim
-    zone_lock: project        # zone:kernel → BLOCKED_ON immédiat, pas de négociation
-    circuit_breaker:
-      max_consecutive_fails: 3   # 3 échecs → arrêt + signal BLOCKED_ON vers pilote
-      on_trigger: "signal → BLOCKED_ON pilote"
-    agents: [code-review, security, testing, debug, vps, ci-cd, pm2, migration]
-    behavior: |
-      Instance travaille sur zone:project uniquement.
-      Toute tentative d'accès zone:kernel → BLOCKED_ON immédiat, signal pilote.
-      Fichier hors scope déclaré → vérifier mutex (BSI-v3-7) avant d'écrire.
-      3 on_fail consécutifs → circuit breaker → arrêt complet + signal pilote.
-      Jamais de décision architecturale — signal pilote si ambiguïté.
-
-  cockpit:
-    description: "Mode assisté — coach proactif, routing automatique, pipeline kanban"
-    permissions:
-      invariant: confirm
-      contexte: write
-      reference: write
-      personnel: write
-      brain_write: true
-      forge: false
-    agents: [coach, kanban-scribe, interprete, brainstorm, orchestrator]
-    behavior: |
-      Coach proactif : route avant qu'on cherche, anticipe, propose
-      kanban-scribe  : actif automatiquement au wrap
-      interprete     : écoute en continu — pas besoin d'invocation explicite
-      Human nodes    : décision de valeur uniquement, jamais de mécanique
-
-# ---
-# detectmode — helloWorld détecte le mode selon les signaux de session
-# ---
-
-detectmode:
-  signals:
-    - match: [vps, ci-cd, pm2]
-      mode: deploy
-    - match: [code-review, frontend-stack]
-      mode: review-front
-    - match: [code-review, security]
-      mode: review-back
-    - match: [debug]
-      mode: debug
-    - match: [brainstorm]
-      mode: brainstorm
-    - match: [coach, progression]
-      mode: coach
-    - bsi_claim: HANDOFF
-      mode: HANDOFF
-  default: prod    # mode permissions par défaut — session type par défaut = navigate (BRAIN-044)
-
-# ---
-# Feature sets — contrôlent les agents invocables par instance
-# Les agents "bloqués" existent dans le kernel, brain-compose contrôle l'accès.
+# Modes — retirés le 30/09. BRAIN-047 les dépréciait (« le type suffit ») ;
+# rien ne lisait `modes:` ni `detectmode:`, et leurs permissions (`brain_write`)
+# n'étaient appliquées nulle part. Les permissions réelles : le hook
+# pre-commit-zone, les gardes du moteur, la forge (tronc protégé).
 # ---
 
 # Le changelog part avec le gabarit : il décrit le PROGRAMME. Les jalons de
@@ -310,7 +99,7 @@ changelog:
     notes: "Intentions V2 completes — GET /intentions API + brain_intentions() MCP ; chrome-pilot agent forgé"
   - version: "2.1.0"
     date: "2026-04-07"
-    notes: "Modele de donnees complet — 26 tables Dolt (~19 500 rows). Intentions YAML supprimes (source unique Dolt). Tables projects, agents, decisions, todo_sections, todo_items, learning_tracks, learning_modules, backlog_visions. 19 fichiers refs corrigees. Le brain passe de fichiers avec conventions a systeme de donnees versionne."
+    notes: "[Numero d'avant le realignement du 24/04 (2.0.0) — la 2.1.0 du programme est celle du 02/09, tag programme/v2.1.0.] Modele de donnees complet — 26 tables Dolt (~19 500 rows). Intentions YAML supprimes (source unique Dolt). Tables projects, agents, decisions, todo_sections, todo_items, learning_tracks, learning_modules, backlog_visions. 19 fichiers refs corrigees. Le brain passe de fichiers avec conventions a systeme de donnees versionne."
   - version: "2.0.0"
     date: "2026-04-24"
     notes: "Realignement versioning single-axis — convention 1 projet = 1 CHANGELOG posee (wiki/versioning.md). Brain stack unifie (brain + brain-ui + brain-engine). 19 ADRs BRAIN-049 a BRAIN-067 livrees (Sessions V2, BSI enrichi, Metabolism V2, Scratch pad, Profile pipeline, ADR system rework, Couches cognitives, Per-game companion, Identity loading at boot, Doctrine agents triplet). chrome-pilot + profile-scribe + pulse + forge watch agents forges. secrets-guardian Surface 5 Config MCP. Conciergerie v1 + docs single-source pipeline. Cortex Template v1.0 publie."
@@ -335,3 +124,24 @@ changelog:
   - version: "2.3.2"
     date: "2026-09-28"
     notes: "Les douze specs du programme (profil/specs/) partent enfin avec le gabarit : le .gitignore du gabarit les ecartait depuis le 04/09, alors que la doc et les agents les citent. La synchro juge desormais ce que git publie, pas ce qu'elle ecrit sur le disque : un fichier ecrit et ignore est un refus."
+  - version: "2.3.3"
+    date: "2026-09-28"
+    notes: "Premiere version nee des retours d'un vrai fork. Le setup installe le moteur et le MCP en services utilisateur (etape 9) : ils survivent au reboot, et le repli du claim dit quoi faire s'ils ne tournent pas. CLAUDE.md.example renvoie a une section qui existe. Huit tables en doublon de fichiers ou jamais ecrites quittent le schema (29 -> 21) ; scripts/schema-retraits.sh les retire de la base d'une instance, a blanc par defaut, et refuse tout si une seule porte des lignes. Les modeles d'issue demandent de masquer les secrets avant de coller."
+  - version: "2.3.4"
+    date: "2026-09-28"
+    notes: "Le moteur tient le reboot : l'unite dolt-server ne s'ordonne plus apres default.target, un cycle que systemd cassait en supprimant le demarrage du moteur. Une cle d'environnement vide vaut sa valeur par defaut dans tout le moteur (un port vide faisait planter moteur et MCP, des scopes vides n'en donnaient aucun). MYSECRETS.example ne laisse vides que les jetons ; les reglages y sont commentes avec leur vraie valeur par defaut, tenue par un test. Chaque table de la base appartient a un module (brain-engine/modules.yml). Une page Se mettre a jour ; kernel-update-check.sh, mort chez tous les forks, est retire."
+  - version: "2.3.5"
+    date: "2026-09-28"
+    notes: "La recherche semantique dit ce qui lui manque. Sans Ollama, brain_search repond Recherche indisponible au lieu de Aucun resultat, brain_boot le dit, les routes rendent 503, embed sort en erreur ; le setup declare Ollama (etape 10) et scripts/ollama-setup.sh tire le modele et donne la commande du systeme. Le MCP local d'un fork voit ce que le role mcp voit (projets, focus, learning), comme la prod. Le setup ne dit plus le push verrouille a un fork dont le push est ouvert ; l'exemple de config locale a la forme du setup ; kernel_version devient le marqueur d'une mise a jour terminee, que helloWorld signale ; la page Se mettre a jour laisse git donner la version."
+  - version: "2.3.6"
+    date: "2026-09-28"
+    notes: "Une mise a jour arrive vraiment. install systemd relance les unites au lieu de les demarrer (enable --now ne relancait pas une unite active : les scopes MCP de la v2.3.5 n'arrivaient pas), et la page Se mettre a jour le demande a la place d'un simple restart ; il ne parle plus d'instance manuelle a un moteur de systemd. L'embed periodique passe par un timer utilisateur (brain-embed.timer : 5 min apres l'ouverture, puis toutes les 2 h) au lieu d'une ligne crontab : pas de cron sur Arch, et un echec d'Ollama se lit dans systemctl status. learning/ devient un satellite comme les autres : ignore par le noyau, un README d'amorce, une ligne dans PATHS.md. Mise a jour depuis la v2.3.5 : relancer bash scripts/brain-engine.sh install systemd."
+  - version: "2.4.0"
+    date: "2026-09-29"
+    notes: "Le verrou entre machines, un moteur qui voit ses services, et Cosmos qui se dessine. Le verrou de scope voit les sessions des machines satellites (une replica ouvre ses claims sous .<machine>, le fixe les lit sur leur branche) ; sans satellite, rien ne change. GET /state et brain_state lisent les unites systemd (pm2 seulement s'il sert) ; GET /infra et GET /logs sont retires (pm2 seul, et une liste de services ecrite en dur). Sans jeton, la machine elle-meme voit ses cinq zones (search n'en voyait que trois) ; brain_decisions ne rend que des ADR ; un claim ouvert sans --type est un explore. Cosmos se dessine enfin (Svelte 5 : la vue cherchait son conteneur avant qu'il existe) et s'arrete quand on la quitte ; brain-ui/.env.example ne dit que VITE_BRAIN_API. Les agents enseignent brain boot <type>[/<scope>] ; docs-verite sait juger un wiki (--wiki, pages journal) ; bsi-claim.sh annonce ses dix sous-commandes ; le pre-commit refuse les marqueurs de conflit ; brain-state-bot.sh retire. Les satellites sont les tiens : leurs README ne renvoient plus a un depot d'exemple. Mise a jour depuis la v2.3.6 : relancer bash scripts/brain-engine.sh install systemd, puis npm run build dans brain-ui."
+  - version: "2.4.1"
+    date: "2026-09-30"
+    notes: "L'autonomie par paliers, et la machinerie de mars rangee. /workflows et brain_workflows disent ce qui avance en autonomie (la commande que la config locale declare dans BRAIN_RESUME_AUTONOMIE_CMD ; sans elle, une liste vide qui le dit) ; POST /workflows/create et POST /gate/.../approve sont retires. Les agents d'une machinerie qui n'a jamais tourne (kernel-orchestrator, supervisor, brain-hypervisor, context-broker, bsi-schema, satellite-boot, workflow-auditor, bact-scribe, time-anchor) ne partent plus, et les modes de brain-compose.yml avec le Mode rendering de KERNEL.md sont retires : le type de session suffit. todo-scribe tient la liste et kanban-scribe le mouvement, sur les fiches de chaque projet ; l'orchestrator compose une passe et la juge. /ws exige un jeton hors de la boucle locale (il rediffusait les evenements de session a tout le reseau). La table cosmos_edges, umap-positions.py et umap-edges.py sont retires : rien ne les lancait ni ne les lisait. bsi-claim.sh plantes voit les sessions coupees par un reboot ; l'energie d'un claim tient en trois niveaux (high, medium, low). La skill liste les types de commit que le hook applique ; la constitution passe en 1.1.1 et decrit les manifestes de session et le frontmatter des agents ; le checkpoint n'a plus qu'une adresse (handoffs/ et un signal CHECKPOINT). La suite de tests tourne en entier : 92 tests definis apres unittest.main() ne tournaient pas. Mise a jour depuis la v2.4.0 : relancer bash scripts/brain-engine.sh install systemd, puis bash scripts/schema-retraits.sh --appliquer (cosmos_edges ne part que si elle est vide)."
+  - version: "2.4.2"
+    date: "2026-09-30"
+    notes: "Le boot dit qu'une version plus recente existe, sans insister. scripts/maj-disponible.py lit les tags vX.Y.Z de ton remote upstream (git ls-remote : aucun jeton, rien d'ecrit dans le depot) et les compare a ta version ; le timer brain-maj le fait une fois par jour, et le briefing ne lit que son etat : le demarrage ne touche jamais au reseau. Une ligne quand une version plus recente existe, rien sinon ; sans remote upstream, rien ; un amont injoignable ne passe pas pour a jour, et le briefing le dit apres sept jours sans nouvelles. Une information, jamais une injonction : tu restes libre de mettre a jour, ou non. Mise a jour depuis la v2.4.1 : relancer bash scripts/brain-engine.sh install systemd (il pose brain-maj.timer), et declarer l'amont s'il ne l'est pas : git remote add upstream <URL_DU_GABARIT>."

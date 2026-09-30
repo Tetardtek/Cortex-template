@@ -109,10 +109,15 @@ if $SERVICE; then
   command -v systemctl >/dev/null 2>&1 || ko "systemctl absent — relancer avec --sans-service et démarrer le serveur à la main"
   mkdir -p "$UNITES"
   unite="$UNITES/dolt-server.service"
+  # Pas de `After=default.target` : une unité que `default.target` réclame
+  # (WantedBy) passe AVANT elle — la target s'ordonne après ce qu'elle réclame.
+  # Les deux ensemble font un cycle, et systemd le casse au boot en SUPPRIMANT
+  # le démarrage de l'unité qui s'ordonne après la base : le moteur (étape 9
+  # du setup) restait arrêté à chaque reboot, `enabled` pourtant
+  # (Cortex-Template#5, éprouvé par un vrai reboot chez le premier fork).
   attendu=$(cat <<EOF
 [Unit]
 Description=Dolt SQL Server — la base du brain
-After=default.target
 
 [Service]
 Type=simple

@@ -43,7 +43,7 @@ Charge l'agent audit — lis brain/agents/audit.md et applique son contexte.
 Typiquement en session-audit :
 
 ```
-brain boot mode audit
+brain boot explore/audit
 ```
 
 ---

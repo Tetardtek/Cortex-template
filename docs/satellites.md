@@ -21,6 +21,7 @@ ordre: 5
 | `toolkit/` | les patterns que tu as validés en production, réutilisables |
 | `progression/` | ton parcours, tes compétences, ton métabolisme de sessions |
 | `reviews/` | les revues d'agents |
+| `learning/` | tes pistes d'apprentissage — ce qu'écrit une session `learning` |
 
 Le gabarit les livre comme des **dossiers**, chacun avec un `README.md`. Le
 `.gitignore` du noyau ignore leur contenu, README mis à part : ce que tu y

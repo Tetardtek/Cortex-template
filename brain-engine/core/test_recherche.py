@@ -101,6 +101,15 @@ def index_jetable() -> None:
         verifie("un index vide rend des métadonnées vides",
                 Index(depot).charge()[0], [])
 
+        # Un modèle qui RÉPOND, sur un index vide : la raison est l'index, pas
+        # le modèle — et, là non plus, une requête courte ne la masque pas.
+        class Repond(Encodeur):
+            def encode(self, texte):
+                return [1.0, 0.0]
+        from core.recherche import INDEX_VIDE
+        _, alerte_vide = Recherche(depot, Repond()).cherche("sessions")
+        verifie("un index vide se dit, même sous une requête courte", alerte_vide, INDEX_VIDE)
+
         for i, v in enumerate([(1.0, 0.0), (0.0, 1.0)]):
             depot.execute(
                 "INSERT INTO embeddings VALUES (%s,%s,%s,%s,%s,1,'public')",
@@ -118,6 +127,13 @@ def index_jetable() -> None:
         verifie("sans modèle, aucun résultat", resultats, [])
         verifie("et la raison est dite",
                 alerte is not None and "injoignable" in alerte, True)
+
+        # Une requête COURTE ne masque pas la panne : l'avis « reformule » était
+        # rendu à la place, et la panne passait pour une question mal posée
+        #.
+        from core.recherche import INJOIGNABLE, INDEX_VIDE
+        _, alerte_courte = Recherche(depot, muet).cherche("sessions")
+        verifie("une requête courte ne masque pas la panne", alerte_courte, INJOIGNABLE)
 
 
 def normes_gardees() -> None:

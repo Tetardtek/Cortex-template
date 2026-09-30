@@ -29,18 +29,15 @@ Level 2 localhost trust (_is_localhost) :
 
 Endpoints :
   GET  /health                       → statut + uptime + version
-  GET  /state                        → env fondamental dérivé (pm2+git)
+  GET  /state                        → env fondamental dérivé (systemd, pm2, git)
   GET  /boot                         → zones brain + queries initiales
   GET  /search?q=                    → RAG sémantique
   GET  /agents                       → liste agents disponibles
   GET  /teams                        → liste team presets
-  GET  /workflows                    → claims ouverts
-  POST /workflows/create             → créer un claim BSI
+  GET  /workflows                    → ce qui avance en autonomie (palier b)
   GET  /visualize                    → coordonnées 3D UMAP
-  GET  /infra                        → services pm2 registry
   PUT  /brain/{path}                 → écriture fichier brain + reindex
   POST /ambient/notify               → broadcast event daemon Ambient
-  POST /gate/{wf}/{step}/approve     → approuver un gate workflow
   GET  /bsi/claims                    → liste claims BSI (liste plate)
   GET  /bsi/claims?include_peers=true  → {claims, peers_injoignables} — un OBJET
   POST /bsi/claims                    → créer un claim BSI dans la base
@@ -49,7 +46,6 @@ Endpoints :
   POST /bsi/locks                     → acquérir un lock fichier
   DELETE /bsi/locks/{filepath}        → libérer un lock fichier
   GET  /bsi/network                   → vue réseau BSI (peers + claims agrégés)
-  GET  /logs/{project}               → logs projet
   WS   /ws                           → WebSocket temps réel
 
 L'autorisation se lit dans chaque route : `check_auth` → scopes du RÔLE du porteur
@@ -83,10 +79,11 @@ except ImportError:
 # Import moteur RAG depuis le même répertoire
 sys.path.insert(0, str(Path(__file__).parent))
 from rag import run_boot_queries, run_single_query
+from search import RechercheIndisponible
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-BRAIN_PORT = int(os.getenv('BRAIN_PORT', 7700))
+BRAIN_PORT = int(os.getenv('BRAIN_PORT') or 7700)
 
 # Zones accessibles par rôle
 _SCOPE_ACCESS: dict[str, list[str]] = {
@@ -145,8 +142,8 @@ _ws_clients: list[WebSocket] = []
 
 # Racine du brain (un niveau au-dessus de brain-engine/)
 BRAIN_ROOT = Path(__file__).parent.parent
-DB_PATH    = Path(os.getenv('BRAIN_DB_PATH', str(BRAIN_ROOT / 'brain.db')))
-BRAIN_MODE = os.getenv('BRAIN_MODE', 'owner')  # 'owner' (full) | 'prod' | 'template' (read-only) | 'demo' (vitrine)
+DB_PATH    = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
+BRAIN_MODE = os.getenv('BRAIN_MODE') or 'owner'  # 'owner' (full) | 'prod' | 'template' (read-only) | 'demo' (vitrine)
 
 
 def _readonly_guard():
@@ -225,9 +222,16 @@ def check_auth(authorization: str | None) -> list[str]:
     Vérifie le header Authorization: Bearer <token>.
     Retourne la liste des scopes autorisés pour ce token.
     Si aucun token configuré : auth désactivée (dev local) → accès total.
+
+    « Accès total » rendait `['public', 'work', 'kernel']` — la même liste
+    recopiée que `/boot` portait avant d'être corrigée, et qui avait dérivé de
+    la même façon : ni `instance` (projets/, focus.md) ni `satellite` (workspace/,
+    handoffs/, learning/). `/search` sans jeton ne les voyait pas (audit du
+    wiki, 29/09). Sans jeton, le middleware ne laisse passer que la machine
+    elle-même : c'est l'owner, et il voit ce que `_SCOPE_ACCESS` lui déclare.
     """
     if not _TOKEN_MAP:
-        return ['public', 'work', 'kernel']  # dev local — accès total
+        return list(_SCOPE_ACCESS['owner'])  # dev local — accès total
     if not authorization or not authorization.startswith('Bearer '):
         raise HTTPException(status_code=401, detail='Authorization header requis')
     token = authorization.removeprefix('Bearer ').strip()
@@ -336,7 +340,11 @@ def search(
     scopes = check_auth(authorization)
     log.info('search q=%r top=%d full=%s scopes=%s', q, top, full, scopes)
 
-    results = run_single_query(q, top_k=top, allowed_scopes=scopes)
+    try:
+        results = run_single_query(q, top_k=top, allowed_scopes=scopes)
+    except RechercheIndisponible as panne:
+        # 503, pas 200 vide : la recherche n'a pas eu lieu.
+        raise HTTPException(status_code=503, detail=f"recherche indisponible — {panne}. {panne.conseil()}")
 
     return _format_results(results, full=full, mode=mode)
 
@@ -367,7 +375,10 @@ def boot(
         scopes = check_auth(authorization)
     log.info('boot full=%s scopes=%s', full, scopes)
 
-    results = run_boot_queries(allowed_scopes=scopes)
+    try:
+        results = run_boot_queries(allowed_scopes=scopes)
+    except RechercheIndisponible as panne:
+        raise HTTPException(status_code=503, detail=f"recherche indisponible — {panne}. {panne.conseil()}")
 
     return _format_results(results, full=full, mode=mode)
 
@@ -495,7 +506,21 @@ def workflows_list(
     authorization: str | None = Header(None),
     request: Request = None,
 ):
-    """Retourne les workflows BSI depuis la base (BRAIN-042)."""
+    """Ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079).
+
+    Réaffectée le 30/09 : elle rendait les claims portant
+    un `workflow` ou un `satellite_type`, colonnes que rien n'écrit (0 sur 627,
+    mesuré le 27/09) — donc toujours `[]`, alors que `brain_workflows` est un
+    réflexe de début de session. Les « workflows actifs », depuis BRAIN-079, ce
+    sont les passes du palier c : ce que `dev/autonome` porte, les PR qui
+    attendent un verdict.
+
+    Le moteur reste NEUTRE : la commande qui produit ce résumé se déclare dans
+    la config locale (`BRAIN_RESUME_AUTONOMIE_CMD`, `.env.local`) et rend du
+    JSON `{"projets": [...], "note": ...}`. Sans déclaration, ou si elle
+    échoue, la route répond quand même — 200, `projets` vide, et la `note` dit
+    pourquoi : un vide qui se tait se confond avec « rien n'avance ».
+    """
     if _is_localhost(request):
         scopes = ['work', 'kernel', 'public']
     else:
@@ -503,66 +528,32 @@ def workflows_list(
     if 'work' not in scopes:
         raise HTTPException(status_code=403, detail='Zone work requise')
     log.info('workflows_list scopes=%s', scopes)
-
-    import db as brain_db
-    rows = brain_db.query(
-        "SELECT * FROM claims WHERE satellite_type IS NOT NULL OR workflow IS NOT NULL "
-        "ORDER BY opened_at DESC"
-    )
-
-    result = []
-    for r in rows:
-        result.append({
-            'id':             r['sess_id'],
-            'name':           r['story_angle'] or r['workflow'] or r['sess_id'],
-            'project':        r['workflow'] or r['scope'] or r['sess_id'],
-            'status':         r['status'] or 'open',
-            'opened_at':      r['opened_at'] or '',
-            'workflow_step':  r['workflow_step'],
-            'satellite_type': r['satellite_type'],
-            'steps':          [],
-        })
-
-    return result
+    return _resume_autonomie()
 
 
-@app.post('/workflows/create')
-def workflows_create(
-    body:          dict       = Body(...),
-    authorization: str | None = Header(None),
-    request:       Request    = None,
-):
-    """Crée un claim BSI dans la base (BRAIN-042). Requiert zone kernel (owner uniquement)."""
-    _readonly_guard()
-    if not _is_localhost(request):
-        scopes = check_auth(authorization)
-        if 'kernel' not in scopes:
-            raise HTTPException(status_code=403, detail='Zone kernel requise (owner only)')
+def _resume_autonomie() -> dict:
+    import shlex
+    commande = (os.environ.get('BRAIN_RESUME_AUTONOMIE_CMD') or '').strip()
+    if not commande:
+        return {'projets': [], 'note': 'aucune source déclarée (BRAIN_RESUME_AUTONOMIE_CMD)'}
+    try:
+        r = subprocess.run(shlex.split(commande), capture_output=True, text=True, timeout=60)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {'projets': [], 'note': f'la source ne répond pas ({type(exc).__name__})'}
+    if r.returncode != 0:
+        return {'projets': [], 'note': f'la source a échoué (sortie {r.returncode})'}
+    try:
+        donnees = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {'projets': [], 'note': 'la source ne rend pas de JSON lisible'}
+    if not isinstance(donnees, dict) or not isinstance(donnees.get('projets'), list):
+        return {'projets': [], 'note': 'la source ne rend pas {"projets": [...]}'}
+    return {'projets': donnees['projets'], 'note': donnees.get('note')}
 
-    title        = body.get('title', '')
-    team_id      = body.get('teamId', '')
 
-    if not title:
-        raise HTTPException(status_code=422, detail='title requis')
-
-    now      = datetime.now(timezone.utc)
-    date_str = now.strftime('%Y%m%d-%H%M')
-    slug     = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:40]
-    sess_id  = f'sess-{date_str}-{slug}'
-    now_str  = now.strftime('%Y-%m-%dT%H:%M')
-
-    import db as brain_db
-    brain_db.execute(
-        "REPLACE INTO claims "
-        "(sess_id, type, scope, status, opened_at, story_angle, workflow, zone, mode, "
-        " handoff_level, ttl_hours, expires_at) "
-        "VALUES (%s, 'work', %s, 'open', %s, %s, %s, 'project', %s, '0', 4.0, DATE_ADD(%s, INTERVAL 4 HOUR))",
-        (sess_id, f'work/{slug}', now_str, title, title, team_id or 'build', now_str),
-        commit_msg=f'claim ouvert (workflow) : {sess_id}',
-    )
-    log.info('workflows_create sess_id=%s', sess_id)
-
-    return {'ok': True, 'claimId': sess_id}
+# `POST /workflows/create` — retirée le 30/09 (BRAIN-079) : elle ouvrait un claim
+# portant la colonne `workflow`, que plus rien ne lit, et aucune interface ne
+# l'appelait. Le lancement d'agents passe par le palier c.
 
 
 def _as_utc(valeur):
@@ -728,11 +719,37 @@ def visualize(
     return reponse
 
 
+def _unites_systemd(run=subprocess.run) -> list[dict]:
+    """Les unités utilisateur du brain (`brain-*`, `dolt-*`) et leur état.
+
+    Le moteur, le MCP, la base, l'indexation et les sauvegardes tournent sous
+    systemd (`brain-engine.sh install systemd`) : `/state` ne lisait que pm2,
+    absent, et ne montrait donc aucun service (audit du wiki, 29/09).
+    Lecture seule. Sans systemd utilisateur, une liste vide.
+    """
+    try:
+        r = run(['systemctl', '--user', 'list-units', '--all', '--plain', '--no-legend',
+                 'brain-*', 'dolt-*'], capture_output=True, text=True, timeout=5)
+    except Exception as exc:
+        log.warning('state systemd error: %s', exc)
+        return []
+    if r.returncode != 0:
+        return []
+    unites = []
+    for ligne in r.stdout.splitlines():
+        champs = ligne.split(None, 4)
+        if len(champs) < 4 or champs[1] != 'loaded':
+            continue
+        unites.append({'name': champs[0], 'active': champs[2], 'sub': champs[3]})
+    return unites
+
+
 @app.get('/state')
 def state_get(request: Request = None):
     """
     Environnement fondamental dérivé — Layer 2 uniquement.
-    pm2 status + git version + ports. Jamais mis en cache, toujours frais.
+    Unités systemd + pm2 s'il y en a + git version + ports. Jamais mis en
+    cache, toujours frais.
     """
     if not _is_localhost(request):
         raise HTTPException(status_code=403, detail='Layer 2 only — localhost requis')
@@ -769,60 +786,25 @@ def state_get(request: Request = None):
     return {
         'hostname':      socket.gethostname(),
         'brain_version': brain_version,
+        'systemd':       _unites_systemd(),
         'pm2':           pm2_procs,
         'ports': {
             'brain_engine': BRAIN_PORT,
-            'brain_mcp':    int(os.getenv('BRAIN_MCP_PORT', 7701)),
-            'brain_key':    int(os.getenv('BRAIN_KEY_PORT', 7432)),
+            'brain_mcp':    int(os.getenv('BRAIN_MCP_PORT') or 7701),
         },
     }
 
 
-@app.get('/infra')
-def infra_list(request: Request, authorization: str | None = Header(None)):
-    """Retourne l'état des services infrastructure depuis pm2 + config statique."""
-    check_auth(authorization)
-    log.info('infra_list')
-
-    services = []
-
-    # Services pm2
-    try:
-        result = subprocess.run(
-            ['pm2', 'jlist'],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            import json as _json
-            pm2_list = _json.loads(result.stdout)
-            for proc in pm2_list:
-                env = proc.get('pm2_env', {})
-                services.append({
-                    'id':      f"pm2-{proc.get('name', proc.get('pm_id', '?'))}",
-                    'name':    proc.get('name', '?'),
-                    'type':    'pm2',
-                    'status':  env.get('status', 'unknown'),
-                    'port':    env.get('PORT') or env.get('port') or None,
-                    'uptime':  env.get('pm_uptime', None),
-                    'restarts': proc.get('pm2_env', {}).get('restart_time', 0),
-                    'memory':  proc.get('monit', {}).get('memory', 0),
-                    'cpu':     proc.get('monit', {}).get('cpu', 0),
-                })
-    except Exception as exc:
-        log.warning('infra pm2 error: %s', exc)
-
-    # Services statiques (Apache vhosts connus)
-    static_services = [
-        {'id': 'apache',      'name': 'Apache2',       'type': 'system', 'status': 'online', 'port': 443},
-        {'id': 'brain-engine','name': 'brain-engine',  'type': 'info',   'status': 'online', 'port': 7700},
-        {'id': 'gitea',       'name': 'Gitea',         'type': 'info',   'status': 'online', 'port': 3000},
-    ]
-
-    return {'services': services + static_services, 'total': len(services) + len(static_services)}
+# `GET /infra` et `GET /logs/{project}` sont retirés (29/09) : ils ne lisaient
+# que pm2, absent quand le moteur tourne sous systemd, et `/infra` renvoyait une
+# liste de services écrite en dur — Apache, Gitea — qui ne tournent pas chez un
+# fork. Personne ne les appelait (ni brain-ui, ni le MCP, ni un script). L'état
+# des services : `GET /state`, qui lit systemd.
 
 
 # ── Zones d'écriture ───────────────────────────────────────────────────────────
-# Synchronisé avec KERNEL.md et scripts/preflight-check.sh (KERNEL_SCOPES).
+# Synchronisé avec KERNEL.md (`scripts/archive/preflight-check.sh`, qui en
+# portait une copie, est archivé depuis le 30/09).
 
 # Invariants : jamais écrits par l'API. CLAUDE.md exige une confirmation humaine
 # explicite pour ces fichiers — une requête HTTP ne peut pas la fournir.
@@ -1133,7 +1115,18 @@ async def ambient_notify(
 
 @app.websocket('/ws')
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket temps réel — broadcasts workflow:update, gate:pending, gate:resolved."""
+    """WebSocket temps réel — les événements BSI (claims, verrous) et ambient.
+
+    La boucle locale passe ; le réseau montre un jeton, comme sur les autres
+    routes. Mesuré le 30/09 : la route acceptait n'importe qui et lui
+    rediffusait identifiants de session, scopes, chemins verrouillés et corps
+    des `PATCH` de claims — à tout appareil du réseau local."""
+    if not _is_localhost(websocket):
+        try:
+            check_auth(websocket.headers.get('authorization'))
+        except HTTPException:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     _ws_clients.append(websocket)
     try:
@@ -1155,114 +1148,6 @@ async def _broadcast(payload: dict) -> None:
     for ws in dead:
         if ws in _ws_clients:
             _ws_clients.remove(ws)
-
-
-# ── GET /logs/{project} ─────────────────────────────────────────────────────────
-
-_LOG_LINE_RE = re.compile(
-    r'(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.\d]*Z?)?'
-    r'\s*(?P<level>ERROR|WARN(?:ING)?|INFO|DEBUG)?\s*(?P<msg>.+)',
-    re.IGNORECASE,
-)
-
-def _parse_log_line(raw: str) -> dict | None:
-    """Parse une ligne pm2 brute en {ts, level, msg}."""
-    raw = raw.strip()
-    if not raw or raw.startswith('> Log tailing'):
-        return None
-
-    # Essai extraction ts ISO
-    ts_now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-    m = _LOG_LINE_RE.match(raw)
-    if not m:
-        return {'ts': ts_now, 'level': 'info', 'msg': raw}
-
-    ts    = m.group('ts') or ts_now
-    raw_level = (m.group('level') or 'info').lower()
-    level = 'warn' if raw_level.startswith('warn') else raw_level if raw_level in ('error', 'debug') else 'info'
-    msg   = m.group('msg').strip() or raw
-
-    return {'ts': ts, 'level': level, 'msg': msg}
-
-
-@app.get('/logs/{project}')
-def logs_get(
-    project:       str,
-    since:         str | None = Query(None, description='ISO8601 — exclure les lignes antérieures'),
-    authorization: str | None = Header(None),
-):
-    """Lit les 50 dernières lignes pm2 pour un projet. Requiert zone work."""
-    scopes = check_auth(authorization)
-    if 'work' not in scopes:
-        raise HTTPException(status_code=403, detail='Zone work requise')
-
-    log.info('logs_get project=%s since=%s', project, since)
-
-    try:
-        result = subprocess.run(
-            ['pm2', 'logs', project, '--lines', '50', '--nostream'],
-            capture_output=True, text=True, timeout=10,
-        )
-        raw_lines = (result.stdout + result.stderr).splitlines()
-    except FileNotFoundError:
-        raw_lines = [f'[mock] pm2 non disponible — project={project}']
-    except subprocess.TimeoutExpired:
-        raw_lines = ['[error] pm2 timeout']
-
-    lines = [_parse_log_line(l) for l in raw_lines]
-    lines = [l for l in lines if l is not None]
-
-    if since:
-        lines = [l for l in lines if l['ts'] > since]
-
-    return {'lines': lines}
-
-
-# ── POST /gate/{workflow_id}/{step_id}/approve ──────────────────────────────────
-
-@app.post('/gate/{workflow_id}/{step_id}/approve')
-async def gate_approve(
-    workflow_id:   str,
-    step_id:       str,
-    body:          dict       = Body(...),
-    authorization: str | None = Header(None),
-):
-    """Résout une gate (approve / abort / skip). Requiert zone kernel (owner)."""
-    _readonly_guard()
-    scopes = check_auth(authorization)
-    if 'kernel' not in scopes:
-        raise HTTPException(status_code=403, detail='Zone kernel requise (owner only)')
-
-    action = body.get('action', 'approve')
-    if action not in ('approve', 'abort', 'skip'):
-        raise HTTPException(status_code=422, detail='action doit être approve | abort | skip')
-
-    now         = datetime.now(timezone.utc)
-    resolved_at = now.strftime('%Y-%m-%dT%H:%M:%SZ')
-    ack = {
-        'workflow_id': workflow_id,
-        'step_id':     step_id,
-        'action':      action,
-        'resolved_at': resolved_at,
-    }
-
-    # Écriture du fichier gate-ack YAML
-    claims_dir = BRAIN_ROOT / 'claims'
-    claims_dir.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r'[^a-z0-9]+', '-', f'{workflow_id}-{step_id}'.lower()).strip('-')
-    ack_path = claims_dir / f'gate-ack-{slug}.yml'
-    _write_yaml_file(ack_path, ack)
-
-    log.info('gate_approve workflow=%s step=%s action=%s', workflow_id, step_id, action)
-
-    # Broadcast WebSocket
-    await _broadcast({
-        'type':    'gate:resolved',
-        'payload': {'workflowId': workflow_id, 'stepId': step_id, 'result': action},
-    })
-
-    return {'ok': True}
 
 
 # ── BSI endpoints (BRAIN-036) ────────────────────────────────────────────────
@@ -1601,15 +1486,13 @@ def bsi_claims_list(
         if 'work' not in scopes:
             raise HTTPException(status_code=403, detail='Zone work requise')
 
-    # Local claims
+    # Local claims — ceux de cette base, et ceux que chaque machine satellite a
+    # ouverts sur SA branche (BRAIN-078) : chaque machine fait foi pour ses lignes.
     if status:
-        local_claims = brain_db.query(
-            "SELECT * FROM claims WHERE status = %s ORDER BY opened_at DESC", (status,)
-        )
+        local_claims = brain_db.claims_du_reseau("status = %s", (status,))
     else:
-        local_claims = brain_db.query(
-            "SELECT * FROM claims ORDER BY opened_at DESC"
-        )
+        local_claims = brain_db.claims_du_reseau()
+    local_claims.sort(key=lambda c: c.get('opened_at') or '', reverse=True)
 
     # Tag local claims with instance
     compose_local = BRAIN_ROOT / 'brain-compose.local.yml'
@@ -1623,7 +1506,7 @@ def bsi_claims_list(
             pass
 
     for c in local_claims:
-        c['_source'] = machine_name
+        c['_source'] = c.pop('_branche', None) or machine_name
 
     if not include_peers:
         return local_claims
@@ -1912,7 +1795,8 @@ async def bsi_claims_create(
     scope = body.get('scope', '')
     zone  = body.get('zone')
 
-    bsi = BSI(brain_db.depot())
+    # Le verrou voit aussi les machines satellites (BRAIN-078).
+    bsi = BSI(brain_db.depot(), ouverts_du_reseau=brain_db.ouverts_du_reseau)
     bloquant = bsi.conflit(scope, zone or 'project')
     if bloquant is not None:
         raise HTTPException(
@@ -2074,6 +1958,30 @@ def _duree_du_claim(opened_at) -> int | None:
         return None
 
 
+# L'énergie de clôture a TROIS niveaux (BRAIN-046) — tranché par Kevin le
+# 29/09. Rien ne le vérifiait : mesuré le même jour, une vingtaine de valeurs en
+# base (« 5 », « high », « 4 », « haute », « 9 », « energized »…), aucune série
+# comparable. `bsi-claim.sh` normalise de la même façon ; la route est l'autorité,
+# pour tout écrivain qui ne passerait pas par le script.
+_ENERGIES = {
+    'high': 'high', 'h': 'high', 'haute': 'high', 'haut': 'high',
+    'medium': 'medium', 'm': 'medium', 'moyenne': 'medium', 'moyen': 'medium',
+    'low': 'low', 'l': 'low', 'basse': 'low', 'bas': 'low',
+}
+
+
+def _energie(valeur):
+    """`high` / `medium` / `low`, ou None si absente — sinon 422."""
+    if valeur is None:
+        return None
+    n = _ENERGIES.get(str(valeur).strip().lower())
+    if n is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"energy « {valeur} » refusée — trois niveaux : high / medium / low")
+    return n
+
+
 @app.patch('/bsi/claims/{sess_id}')
 async def bsi_claims_update(
     sess_id:       str,
@@ -2108,6 +2016,9 @@ async def bsi_claims_update(
         scopes = check_auth(authorization)
         if 'kernel' not in scopes:
             raise HTTPException(status_code=403, detail='Zone kernel requise (owner only)')
+
+    if 'energy' in body:
+        body['energy'] = _energie(body['energy'])
 
     from core.bsi import BSI, autre_session
     porte_identite = BSI(brain_db.depot()).porte_identite
@@ -2160,8 +2071,8 @@ async def bsi_claims_update(
     # les trois colonnes coexistent dans le schéma. Mesuré le 15/09 sur les
     # 599 claims des deux tables — `result` 598 remplis, `result_status` 109
     # dont AUCUN hors de l'archive, `result_json` 0 partout. Aucun écrivain de
-    # `result_status` ne subsiste dans le code ; `scripts/workflow-launch.sh`
-    # l'affiche encore, et affiche donc toujours `-`.
+    # `result_status` ne subsiste dans le code ; le seul lecteur,
+    # `scripts/archive/workflow-launch.sh`, est archivé depuis le 30/09.
     # Trancher laquelle survit est une décision de schéma, pas un effet de
     # bord de cette route : voir.
     for field in ('status', 'closed_at', 'health_score', 'context_at_close',
@@ -2674,29 +2585,6 @@ def _load_yaml_file(path: Path) -> dict:
             else:
                 result[k] = v.strip('"\'') or None
     return result
-
-
-def _write_yaml_file(path: Path, data: dict) -> None:
-    """Écrit un dict en YAML (ou format clé: valeur si yaml indisponible)."""
-    if _YAML_AVAILABLE:
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False), encoding='utf-8')
-        return
-
-    # Fallback minimal
-    lines = []
-    for k, v in data.items():
-        if isinstance(v, list):
-            lines.append(f'{k}: [{", ".join(str(i) for i in v)}]')
-        elif isinstance(v, bool):
-            lines.append(f'{k}: {"true" if v else "false"}')
-        elif v is None:
-            lines.append(f'{k}:')
-        else:
-            val = str(v)
-            if any(c in val for c in (':', '#', '[', ']', '{', '}')):
-                val = f'"{val}"'
-            lines.append(f'{k}: {val}')
-    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def _parse_agents_tier_map(agents_md: Path) -> dict:

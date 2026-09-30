@@ -9,7 +9,8 @@
 #
 # L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
 # session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
-# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+# profil/forge-locale.md, agents/coach-boot.md, agents/secrets-guardian.md et
+# agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
 # s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
@@ -72,7 +73,8 @@ L1:
   - agents/coach.md                 # coach complet — mentorat, bilan, structure
   - agents/pulse.md                 # snapshot live brain — 3 modes
   - BRAIN-INDEX.md                  # aiguillage BSI — les claims et signaux sont en base
-  - todo/README.md                  # index intentions
+  # les tâches : les fiches du backlog (workspace/backlog/<projet>/) — todo/ n'en porte
+  # plus, son README ne disait que ça [BRAIN-079]
 
 # L2 — Scope conditionnel (~4%)
 L2:

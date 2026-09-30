@@ -1,0 +1,58 @@
+# modules.yml — à quel module appartient chaque table de la base
+#
+# Toute table de `schema-dolt.sql` est rangée dans EXACTEMENT un module. C'est
+# ce qui permet, le jour où un module part, de savoir quelles tables partent
+# avec lui — et de les ajouter à `scripts/schema-retraits.sh` dans la même PR.
+#
+# `core:` nomme les briques du CORE (myeline) qui déclarent une partie de ces
+# tables dans leur `TABLES`. Le CORE reste la source de SES tables ; ce fichier
+# ne les recopie pas pour les décrire, il les range — et le test vérifie que les
+# deux disent la même chose.
+#
+# Tenu par : `TestModulesDesTables` (brain-engine/test_brain_engine.py).
+# Ajouter une table au schéma sans la ranger ici fait rougir la suite.
+
+modules:
+
+  bsi:
+    pour: les sessions — qui travaille, sur quoi, ce qui se passe entre elles
+    core: [bsi]
+    tables:
+      - claims
+      - locks
+      - sessions
+      - signals
+      - handoffs
+      - circuit_breaker
+      - claims_archive
+      - sessions_archive
+      - signals_archive
+      - handoffs_archive
+
+  catalogue:
+    pour: ce que le brain connaît — ses agents, ses projets, ses décisions
+    tables:
+      - agents
+      - projects
+      - decisions
+
+  recherche:
+    pour: l'index sémantique, et ce que les recherches en retrouvent
+    core: [indexation, recherche]
+    tables:
+      - embeddings
+      - embedding_hits
+
+  intentions:
+    pour: les objectifs qui durent plusieurs sessions
+    tables:
+      - intentions
+      - intention_edges
+      - intention_sessions
+      - intention_tags
+
+  chantiers:
+    pour: les chantiers qui regroupent des décisions
+    tables:
+      - chantiers
+

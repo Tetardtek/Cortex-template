@@ -5,6 +5,7 @@
 | Page | Pour |
 |---|---|
 | [Démarrer](demarrer.md) | installer un fork, du clone au premier `brain boot` |
+| [Se mettre à jour](mettre-a-jour.md) | recevoir une nouvelle version du gabarit dans ton fork |
 | [Sessions](sessions.md) | les types de session, ce qu'ils chargent, où ils écrivent |
 | [Architecture](architecture.md) | le noyau, les satellites, l'instance, les zones |
 | [Agents](agents.md) | les agents, groupés par ce qu'ils font |

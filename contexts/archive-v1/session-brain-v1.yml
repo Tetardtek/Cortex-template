@@ -35,7 +35,7 @@ L2:
   fallback: null
 
 # L3 — On demand
-# agents/orchestrator.md, agents/bsi-schema.md, wiki/multi-instance.md,
+# agents/orchestrator.md, agents/archive/bsi-schema.md, wiki/multi-instance.md,
 # wiki/context-loading.md, scripts détaillés, brain-template/README.md
 L3:
   hint: "Charger à la demande : orchestrator, bsi-schema, multi-instance, context-loading, scripts"

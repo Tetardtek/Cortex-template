@@ -41,11 +41,11 @@ from datetime import datetime
 from pathlib import Path
 
 BRAIN_ROOT   = Path(__file__).parent.parent
-DB_PATH      = Path(os.getenv('BRAIN_DB_PATH', str(BRAIN_ROOT / 'brain.db')))
+DB_PATH      = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
 
 import db as brain_db
-OLLAMA_URL   = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-EMBED_MODEL  = os.getenv('EMBED_MODEL', 'nomic-embed-text')
+OLLAMA_URL   = os.getenv('OLLAMA_URL') or 'http://localhost:11434'
+EMBED_MODEL  = os.getenv('EMBED_MODEL') or 'nomic-embed-text'
 
 # Guardrail — LLMs génériques interdits : freeze machine garanti sur corpus entier
 # (validé empiriquement : mistral:7b + qwen3:8b → freeze total ~20min, 2026-03-16)
@@ -325,9 +325,40 @@ EXCLUDE_PATTERNS = [
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def dans_un_brain_imbrique(filepath: Path) -> bool:
+    """Vrai si le fichier vit dans une COPIE de brain posée dans celui-ci.
+
+    `workspace/**/*.md` est du corpus, `workspace/scratch/` compris : les notes
+    de travail s'y cherchent. Mais un worktree du brain ou du gabarit, un banc
+    d'essai de fork, se posent aussi là — une copie entière, fraîche, que le
+    TTL laisse passer. Mesuré le 28/09 : 14 751 chunks sur 30 453, presque la
+    moitié de l'index, étaient trois worktrees.
+
+    Le critère : un dossier, sous la racine, qui porte son propre `KERNEL.md`.
+    Pas « `.git` est un fichier » : un sous-module (`wiki/`) en a un aussi.
+    """
+    p = filepath if filepath.is_absolute() else BRAIN_ROOT / filepath
+    try:
+        parts = p.relative_to(BRAIN_ROOT).parts
+    except ValueError:
+        return False
+    return any(_porte_un_kernel(BRAIN_ROOT.joinpath(*parts[:i])) for i in range(1, len(parts)))
+
+
+_KERNELS: dict[Path, bool] = {}
+
+
+def _porte_un_kernel(dossier: Path) -> bool:
+    if dossier not in _KERNELS:
+        _KERNELS[dossier] = (dossier / 'KERNEL.md').is_file()
+    return _KERNELS[dossier]
+
+
 def should_exclude(filepath: Path) -> bool:
     s = str(filepath)
     if any(p in s for p in EXCLUDE_PATTERNS):
+        return True
+    if dans_un_brain_imbrique(filepath):
         return True
     # Zone 0 — privé absolu, jamais indexé
     if filepath.is_absolute():
@@ -936,6 +967,13 @@ def run(dry_run: bool = False, target_file: str | None = None,
     if conn:
         conn.close()
 
+    # Sans Ollama, les chunks sont gardés SANS vecteur : la recherche ne les
+    # trouvera pas. Le dire par le code de sortie, pas seulement en passant —
+    # `brain-engine.sh embed` concluait « ✅ embedding terminé ».
+    if not dry_run and not ollama_ok:
+        return 2
+    return 0
+
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -950,7 +988,7 @@ def main():
     if args.template:
         run_template(args.template)
     else:
-        run(dry_run=args.dry_run, target_file=args.file, stats_only=args.stats)
+        sys.exit(run(dry_run=args.dry_run, target_file=args.file, stats_only=args.stats) or 0)
 
 
 if __name__ == '__main__':

@@ -32,7 +32,7 @@ BRAIN_ROOT="${POSITIONNELS[1]:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # le nom de l'instance, et un laptop se déclarait `prod-laptop` quand la liste
 # attendait `laptop`.
 BRAIN_MACHINE="${BRAIN_MACHINE:-$BRAIN_NAME}"
-ETAPES=8
+ETAPES=10
 
 # ── Couleurs ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -67,10 +67,10 @@ echo "[ 1/$ETAPES ] Satellites..."
 if [[ -f "$BRAIN_ROOT/satellites.yml" ]]; then
   info "satellites.yml présent — clonage à l'étape 3, par machine"
 else
-  for d in profil todo toolkit progression reviews; do
+  for d in profil todo toolkit progression reviews learning; do
     mkdir -p "$BRAIN_ROOT/$d"
   done
-  ok "satellites : les dossiers du gabarit (profil/ todo/ toolkit/ progression/ reviews/)"
+  ok "satellites : les dossiers du gabarit (profil/ todo/ toolkit/ progression/ reviews/ learning/)"
   info "à versionner à part quand tu veux — docs/satellites.md"
 fi
 
@@ -115,6 +115,11 @@ echo ""
 echo "[ 3/$ETAPES ] brain-compose.local.yml..."
 LOCAL_COMPOSE="$BRAIN_ROOT/brain-compose.local.yml"
 KERNEL_VERSION=$(grep '^version:' "$BRAIN_ROOT/brain-compose.yml" | awk '{print $2}' | tr -d '"')
+# `write_mode: readonly_kernel` ne se déclare que là où le push sera VRAIMENT
+# verrouillé — une machine de plus d'une instance, qui a un `satellites.yml`
+# (voir le verrou plus bas). Écrit partout, il mentait à chaque fork.
+WRITE_MODE=""
+[[ -f "$BRAIN_ROOT/satellites.yml" ]] && WRITE_MODE="write_mode: readonly_kernel   # machine de plus d'une instance : son noyau se lit, il ne se pousse pas"
 
 if [[ -f "$LOCAL_COMPOSE" ]]; then
   warn "brain-compose.local.yml existe déjà — skip"
@@ -127,7 +132,7 @@ kernel_path: $BRAIN_ROOT
 kernel_version: "$KERNEL_VERSION"
 last_kernel_sync: "$(date +%Y-%m-%d)"
 machine: $BRAIN_MACHINE
-write_mode: readonly_kernel   # nouvelle machine = jamais kernel writer
+${WRITE_MODE}
 
 instances:
   $BRAIN_NAME:
@@ -162,10 +167,12 @@ fi
 # SON dépôt ne pouvait plus pousser son propre brain. Une instance à plusieurs
 # machines se reconnaît à son `satellites.yml` ; un fork neuf n'en a pas.
 # Tranché par Kevin le 28/09.
+PUSH_VERROUILLE=false
 if [[ ! -f "$BRAIN_ROOT/satellites.yml" ]]; then
   info "pas de satellites.yml — brain autonome, push laissé ouvert"
 elif git -C "$BRAIN_ROOT" remote get-url origin >/dev/null 2>&1; then
   git -C "$BRAIN_ROOT" remote set-url --push origin no_push
+  PUSH_VERROUILLE=true
   ok "Kernel push lockée (write_mode: readonly_kernel)"
 else
   warn "pas de remote origin — rien à verrouiller"
@@ -247,7 +254,7 @@ fi
 # ── Étape 6 — brain-engine, dans son venv ───────────────────────────────────
 #
 # Un venv, pas `pip3 install --break-system-packages` : c'est lui que les
-# scripts cherchent (`lib/python.sh`), et lui que le cron d'indexation appelle.
+# scripts cherchent (`lib/python.sh`), et lui que le timer d'indexation appelle.
 # Installées dans le système, les dépendances n'étaient vues par aucun des deux
 #.
 echo ""
@@ -315,6 +322,43 @@ else
   fi
 fi
 
+# ── Étape 9 — le moteur, en service ─────────────────────────────────────────
+#
+# La base était posée en service (étape 7) et le moteur non : le setup finissait
+# en conseillant `brain-engine.sh start`, un lancement par fichier de PID qui ne
+# survit pas au reboot. Au premier redémarrage, la base tournait, l'API (7700)
+# et le MCP (7701) non — MCP en ECONNREFUSED, claims ouverts en repli local, et
+# rien ne disait que c'était attendu (Cortex-Template#2, premier fork réel).
+# Même règle que pour la base : un service, sauf `--sans-service`.
+# Après le build de l'étape 8 : le moteur ne sert `/ui/` que si `dist/` existe.
+echo ""
+echo "[ 9/$ETAPES ] Le moteur et le serveur MCP..."
+MOTEUR_SERVICE=false
+if $SANS_SERVICE; then
+  info "sans service — le moteur se lance à la main (voir ci-dessous)"
+elif ! command -v systemctl >/dev/null 2>&1; then
+  warn "systemctl absent — le moteur se lance à la main (voir ci-dessous)"
+elif bash "$BRAIN_ROOT/scripts/brain-engine.sh" install systemd; then
+  MOTEUR_SERVICE=true
+else
+  warn "le moteur n'est pas installé en service — relancer : bash scripts/brain-engine.sh install systemd"
+fi
+
+# ── Étape 10 — la recherche sémantique (Ollama) ─────────────────────────────
+#
+# Facultative — le brain tourne sans — mais jusqu'au 28/09 personne ne le
+# savait : un fork sans Ollama recevait « Aucun résultat » et croyait son brain
+# vide. Le setup le DÉCLARE ; il n'installe rien (Ollama est un paquet
+# du système). `ollama-setup.sh` sans option tire le modèle quand Ollama est là.
+echo ""
+echo "[10/$ETAPES] La recherche sémantique (Ollama)..."
+RECHERCHE_PRETE=false
+if bash "$BRAIN_ROOT/scripts/ollama-setup.sh" --verifier; then
+  RECHERCHE_PRETE=true
+else
+  warn "recherche sémantique indisponible — le brain tourne sans ; voir ci-dessus pour l'activer"
+fi
+
 # ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════╗"
@@ -329,8 +373,22 @@ if $SANS_SERVICE; then
   echo "  → Démarrer la base (sans service) :"
   echo "      (cd $BRAIN_ROOT/brain-dolt && dolt sql-server --config config.yaml &)"
 fi
-echo "  → Démarrer le moteur et le serveur MCP :"
-echo "      bash $BRAIN_ROOT/scripts/brain-engine.sh start"
+if $MOTEUR_SERVICE; then
+  echo "  → Le moteur et le serveur MCP tournent en service (brain-engine, brain-mcp) :"
+  echo "      bash $BRAIN_ROOT/scripts/brain-engine.sh status"
+else
+  echo "  → Démarrer le moteur et le serveur MCP (à relancer après chaque reboot) :"
+  echo "      bash $BRAIN_ROOT/scripts/brain-engine.sh start"
+  echo "    ou, pour qu'ils survivent au reboot :"
+  echo "      bash $BRAIN_ROOT/scripts/brain-engine.sh install systemd"
+fi
+if $RECHERCHE_PRETE; then
+  echo "  → Indexer le brain pour la recherche sémantique :"
+  echo "      bash $BRAIN_ROOT/scripts/brain-engine.sh embed"
+else
+  echo "  → La recherche sémantique (facultative) : installer Ollama, puis"
+  echo "      bash $BRAIN_ROOT/scripts/ollama-setup.sh --indexer"
+fi
 echo "  → Le dashboard :"
 echo "      http://localhost:${BRAIN_PORT:-7700}/ui/"
 echo "  → Brancher Claude Code sur le brain :"
@@ -338,6 +396,12 @@ echo "      claude mcp add --transport http brain http://127.0.0.1:${BRAIN_MCP_P
 echo "  → Une session :"
 echo "      claude → brain boot"
 echo ""
-info "Le push vers origin est verrouillé (write_mode: readonly_kernel)."
-info "Ton fork est à toi — pour pousser : git remote set-url --push origin <url de ton fork>"
+# Le résumé dit ce que le setup a FAIT : ce message était inconditionnel, et
+# chaque fork lisait « verrouillé » alors que son push était ouvert.
+if $PUSH_VERROUILLE; then
+  info "Le push vers origin est verrouillé (write_mode: readonly_kernel) : cette machine lit le noyau de l'instance."
+  info "Pour pousser quand même : git remote set-url --push origin <url>"
+else
+  info "Ton fork est à toi : le push vers origin est ouvert."
+fi
 echo ""

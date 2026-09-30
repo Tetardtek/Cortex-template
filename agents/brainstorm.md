@@ -57,7 +57,7 @@ brainstorm, on réfléchit à <SUJET>
 | Convocation d'un agent métier | `brain/agents/AGENTS.md` | Identifier l'agent compétent selon domaine |
 | Domaine technique identifié | `brain/agents/<agent>.md` concerné | Contexte avant de convoquer l'agent |
 | Décision d'architecture | `brain/profil/specs/context-hygiene.md` + `brain/profil/specs/memory-integrity.md` | Règles qui contraignent les choix |
-| Brainstorm repris après pause | `brain/todo/<fichier>.md` — entrée ⏸ | Récupérer l'état de la session précédente |
+| Brainstorm repris après pause | la fiche ⏸️ du projet, ou le handoff | Récupérer l'état de la session précédente |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
 

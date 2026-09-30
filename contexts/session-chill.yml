@@ -8,7 +8,8 @@
 #
 # L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
 # session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
-# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+# profil/forge-locale.md, agents/coach-boot.md, agents/secrets-guardian.md et
+# agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
 # s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
@@ -94,7 +95,7 @@ L2:
 
 # L3 — On demand (100% reactif)
 # Agents charges uniquement sur demande explicite :
-#   "on parle de mon-projet"  → projets/mon-projet.md + todo/mon-projet.md
+#   "on parle de <projet>"    → projets/<projet>.md + workspace/backlog/<projet>/backlog.md
 #   "j'apprends X"            → flow learning (clarifier → explorer → ancrer)
 #   "charge l'agent Y"        → agents/Y.md
 #   "qu'est-ce qu'on a fait?" → bsi-query.sh recent + claims du jour

@@ -1,25 +1,25 @@
-# reviews/ — Satellite Cortex-Template-Reviews
+# reviews/ — ton satellite
 
-> Ce dossier est un **placeholder**. Il sera remplace par votre propre clone du satellite.
+> Ce dossier est **à toi**. Le noyau ne suit que ce README : tout ce que tu y
+> écris est ignoré par son git, et ne se mélange jamais à son historique.
 
-## Qu'est-ce que c'est ?
+## Ce qu'il garde
 
-Les reviews contiennent vos **audits d'agents, reviews de code, et observations qualite** — la memoire de ce qui a ete valide, corrige ou ameliore.
+Les revues d'agents.
 
-## Setup
+## Le versionner à part — si tu veux
 
-Le script `brain-setup.sh` clone automatiquement ce satellite :
+Rien ne l'exige. Pour garder son historique, ou le partager entre tes machines,
+fais-en **ton** dépôt :
 
 ```bash
-# Automatique via setup
-bash scripts/brain-setup.sh
-
-# Ou manuellement
-git clone https://github.com/Tetardtek-Cortex/Cortex-Template-Reviews.git reviews
+cd <BRAIN_ROOT>/reviews
+git init
+git add .
+git commit -m "reviews : premier état"
+git remote add origin <URL_DE_TON_DEPOT>
+git push -u origin main
 ```
 
-> Forkez [Cortex-Template-Reviews](https://github.com/Tetardtek-Cortex/Cortex-Template-Reviews) pour avoir votre propre version.
-
-## Apres le clone
-
-Ce README sera remplace par le contenu du satellite. Le dossier est gitignore dans le brain — chaque satellite a son propre remote.
+Sur plusieurs machines, déclare-le dans `satellites.yml` : voir
+`docs/satellites.md`.

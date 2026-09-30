@@ -26,7 +26,7 @@ import argparse
 from datetime import datetime, timezone
 
 BRAIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.getenv('BRAIN_DB_PATH', os.path.join(BRAIN_ROOT, 'brain.db'))
+DB_PATH = os.getenv('BRAIN_DB_PATH') or os.path.join(BRAIN_ROOT, 'brain.db')
 SCHEMA_PATH = os.path.join(BRAIN_ROOT, 'brain-engine', 'schema.sql')
 
 
@@ -878,7 +878,7 @@ def main():
     if not args.dry_run and sqlite_actif:
         # Vérification finale
         print("\n── Vérification ────────────────────────")
-        for table in ('claims', 'signals', 'handoffs', 'agent_memory', 'sessions'):
+        for table in ('claims', 'signals', 'handoffs', 'sessions'):
             row = conn.execute(f"SELECT COUNT(*) as n FROM {table}").fetchone()
             print(f"  {table:<15} : {row['n']} entrées")
 

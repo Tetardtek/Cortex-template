@@ -59,7 +59,7 @@ Deux vérifications dans l'ordre :
 ## Activation
 
 **Automatique :** step 4.5 du BHP helloWorld — après lecture manifest, avant L1
-**Trigger :** tout `brain boot mode <type>` avec un manifest chargé
+**Trigger :** tout `brain boot <type>[/<scope>]` avec un manifest chargé
 
 ---
 

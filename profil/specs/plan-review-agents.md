@@ -332,13 +332,13 @@ Quand les 4 critères sont remplis → déclarer `swarm_ready: true` dans le wor
 | 11 | `refacto` | mon-api | ✅ 2026-03-12 |
 | 12 | `optimizer-backend` | mon-api | ✅ 2026-03-12 |
 | 13 | `optimizer-frontend` | Portfolio | ✅ 2026-03-12 |
-| 14 | `supervisor` | Brain multi-session | 🧪 à reviewer |
-| 15 | `brain-hypervisor` | Brain workflow | 🧪 à reviewer |
-| 16 | `kernel-orchestrator` | Brain workflow | 🧪 à reviewer |
+| 14 | `supervisor` | Brain multi-session | 🗄️ archivé le 30/09 |
+| 15 | `brain-hypervisor` | Brain workflow | 🗄️ archivé le 30/09 |
+| 16 | `kernel-orchestrator` | Brain workflow | 🗄️ archivé le 30/09 |
 | 17 | `session-orchestrator` | Brain session | 🧪 à reviewer |
 | 18 | `tech-lead` | mon-api sprint | 🧪 à reviewer |
 | 19 | `integrator` | Brain multi-agent | 🧪 à reviewer |
-| 20 | `context-broker` | Brain sprint cycle | 🧪 à reviewer |
+| 20 | `context-broker` | Brain sprint cycle | 🗄️ archivé le 30/09 |
 | 21 | `pre-flight` | Brain boot | 🧪 à reviewer |
 
 ### Batch B — Agents métier haute fréquence
@@ -366,7 +366,7 @@ Quand les 4 critères sont remplis → déclarer `swarm_ready: true` dans le wor
 | 37 | `i18n` | mon-api | 🧪 à reviewer |
 | 38 | `ux-architect` | brain-ui | 🧪 à reviewer |
 | 39 | `brain-ui-scribe` | brain-ui | 🧪 à reviewer |
-| 40 | `satellite-boot` | Brain satellite | 🧪 à reviewer |
+| 40 | `satellite-boot` | Brain satellite | 🗄️ archivé le 30/09 |
 
 ### Batch C — Scribes + agents spécialisés
 
@@ -387,7 +387,7 @@ Quand les 4 critères sont remplis → déclarer `swarm_ready: true` dans le wor
 | 50 | `orchestrator-scribe` | 🧪 à reviewer (autonome) |
 | 51 | `content-scribe` | 🧪 à reviewer (autonome) |
 | 52 | `infra-scribe` | 🧪 à reviewer (autonome) |
-| 53 | `bact-scribe` | 🧪 à reviewer (autonome) |
+| 53 | `bact-scribe` | 🗄️ archivé le 30/09 |
 | 54 | `diagram-scribe` | 🧪 à reviewer (autonome) |
 | 55 | `pattern-scribe` | 🧪 à reviewer (autonome) |
 | 56 | `git-analyst` | 🧪 à reviewer (autonome) |
@@ -397,12 +397,12 @@ Quand les 4 critères sont remplis → déclarer `swarm_ready: true` dans le wor
 | 60 | `scriptwriter` | 🧪 à reviewer (autonome) |
 | 61 | `seo-youtube` | 🧪 à reviewer (autonome) |
 | 62 | `product-strategist` | 🧪 à reviewer (autonome) |
-| 63 | `workflow-auditor` | 🧪 à reviewer (autonome) |
+| 63 | `workflow-auditor` | 🗄️ archivé le 30/09 |
 | 64 | `key-guardian` | 🧪 à reviewer (autonome) |
 | 65 | `feature-gate` | 🧪 à reviewer (autonome) |
 | 66 | `secrets-guardian` | 🧪 à reviewer (autonome) |
 | 67 | `secrets-injector` | 🧪 à reviewer (autonome) |
-| 68 | `bsi-schema` | référence — pas de review agent |
+| 68 | `bsi-schema` | 🗄️ archivé le 30/09 |
 | 69 | `game-designer` | 🧪 à reviewer (autonome) |
 | 70 | `capital-scribe` | 🧪 à reviewer (autonome) |
 | 71 | `config-scribe` | 🧪 à reviewer (autonome) |

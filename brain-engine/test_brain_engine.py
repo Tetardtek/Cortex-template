@@ -12,6 +12,7 @@ import sys
 import os
 import re
 import contextlib
+import io
 import unittest
 import tempfile
 import shutil
@@ -37,6 +38,30 @@ import distill
 # ══════════════════════════════════════════════════════════════════════════════
 # embed.py — chunk_by_size
 # ══════════════════════════════════════════════════════════════════════════════
+
+class TestLaSuiteEntiereTourne(unittest.TestCase):
+    """Aucune classe de test après `unittest.main()`.
+
+    Le 28/09, une classe s'est ajoutée APRÈS le bloc `if __name__ == '__main__'`,
+    puis 23 autres à sa suite : lancé en script — comme le doctor le lance —, le
+    fichier exécutait `unittest.main()` avant de les définir. 92 tests sur 376
+    n'ont pas tourné pendant deux jours, sans un bruit : « Ran 284 tests, OK ».
+    Relevé le 30/09 en ajoutant une classe.
+
+    Cette classe est la PREMIÈRE du fichier, exprès : placée en fin de
+    fichier, elle serait elle-même définie après un `main()` mal placé, et ne
+    tournerait jamais dans le seul cas qu'elle doit attraper."""
+
+    def test_le_main_est_la_derniere_instruction(self):
+        import ast
+        arbre = ast.parse(Path(__file__).read_text(encoding='utf-8'))
+        mains = [i for i, n in enumerate(arbre.body)
+                 if isinstance(n, ast.If) and '__main__' in ast.unparse(n.test)]
+        self.assertEqual(len(mains), 1, 'un seul bloc `if __name__ == "__main__"`')
+        apres = [n.name for n in arbre.body[mains[0] + 1:] if isinstance(n, ast.ClassDef)]
+        self.assertEqual(apres, [], f'classes définies après unittest.main() : {apres}')
+
+
 
 class TestDepotSerialise(unittest.TestCase):
     """Ce qu'on passe au CORE : le vrai `Depot`, délégué et sérialisé.
@@ -852,22 +877,23 @@ class TestSearchFunction(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]['filepath'], 'high.md')
 
-    def test_ollama_unavailable_returns_empty(self):
-        """Modèle d'embedding injoignable → liste vide, sans exception.
+    def test_ollama_unavailable_se_dit(self):
+        """Modèle d'embedding injoignable → `RechercheIndisponible`, pas `[]`.
 
-        Isolé par l'encodeur de fixtures qui rend `None`, et non plus par un
-        patch de `search.embed_query` : le chemin passe par `core.recherche`
-        depuis le 11/09, et cette fonction n'y est plus appelée.
+        Ce test exigeait une liste vide : il gravait dans la suite le défaut que
+        répare — « aucun résultat » et « pas de recherche » confondus.
+        Isolé par l'encodeur de fixtures qui rend `None` (le chemin passe par
+        `core.recherche` depuis le 11/09).
         """
         with self._isole(None, self.TROIS):
-            results = search.search("test")
-        self.assertEqual(results, [])
+            with self.assertRaises(search.RechercheIndisponible):
+                search.search("test")
 
-    def test_empty_db_returns_empty(self):
-        """Index vide → liste vide, sans exception."""
+    def test_empty_db_se_dit(self):
+        """Index vide → `RechercheIndisponible` : il faut indexer."""
         with self._isole([1.0, 0.0, 0.0], []):
-            results = search.search("test")
-        self.assertEqual(results, [])
+            with self.assertRaises(search.RechercheIndisponible):
+                search.search("test")
 
     def test_dimensions_incompatibles_sarretent_net(self):
         """Requête et index de dimensions différentes → erreur explicite.
@@ -1173,6 +1199,84 @@ from fastapi.testclient import TestClient
 # Les clients de test sont la machine elle-même : sans jeton, le moteur ne
 # répond qu'à elle — et TestClient se présente comme « testclient ».
 LOCAL = ('127.0.0.1', 50000)
+
+
+class TestStateVoitSystemd(unittest.TestCase):
+    """`/state` voit les unités systemd du brain. Il ne lisait que pm2 — absent
+    sur le fixe — et rendait une liste de services vide (audit du wiki, 29/09).
+    `systemctl` n'est jamais appelé pour de vrai : sa sortie est fabriquée."""
+
+    SORTIE = (
+        "brain-engine-local.service  loaded active   running Brain Engine local — HTTP API (port 7700)\n"
+        "brain-embed-local.service   loaded inactive dead    Brain local — indexation\n"
+        "brain-embed-local.timer     loaded active   waiting Brain local — embed toutes les 2 h\n"
+        "dolt-server.service         loaded failed   failed  Dolt SQL Server\n"
+        "brain-vieux.service         not-found inactive dead brain-vieux.service\n"
+    )
+
+    def _run(self, code=0, sortie=SORTIE):
+        return lambda *a, **k: subprocess.CompletedProcess(a, code, stdout=sortie, stderr='')
+
+    def test_les_unites_chargees_et_leur_etat(self):
+        self.assertEqual(srv._unites_systemd(run=self._run()), [
+            {'name': 'brain-engine-local.service', 'active': 'active', 'sub': 'running'},
+            {'name': 'brain-embed-local.service', 'active': 'inactive', 'sub': 'dead'},
+            {'name': 'brain-embed-local.timer', 'active': 'active', 'sub': 'waiting'},
+            {'name': 'dolt-server.service', 'active': 'failed', 'sub': 'failed'},
+        ])
+
+    def test_sans_systemd_utilisateur_une_liste_vide(self):
+        self.assertEqual(srv._unites_systemd(run=self._run(code=1, sortie='')), [])
+
+        def absent(*a, **k):
+            raise FileNotFoundError('systemctl')
+        self.assertEqual(srv._unites_systemd(run=absent), [])
+
+    def test_la_route_les_rend_et_plus_le_port_du_serveur_de_cles(self):
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        unites = [{'name': 'brain-engine-local.service', 'active': 'active', 'sub': 'running'}]
+        with patch.object(srv, '_unites_systemd', return_value=unites):
+            resp = client.get('/state')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['systemd'], unites)
+        self.assertNotIn('brain_key', resp.json()['ports'])
+
+    def test_infra_et_logs_sont_retires(self):
+        """`/infra` ne lisait que pm2 et renvoyait des services écrits en dur
+        (Apache, Gitea) qui ne tournent pas chez un fork ; `/logs` ne lisait que
+        pm2. Personne ne les appelait (29/09)."""
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        self.assertEqual(client.get('/infra').status_code, 404)
+        self.assertEqual(client.get('/logs/mon-projet').status_code, 404)
+
+
+class TestSansJetonLOwnerVoitTout(unittest.TestCase):
+    """Sans jeton configuré, `check_auth` rend les zones de l'owner. Il rendait
+    `['public', 'work', 'kernel']`, une copie à la main qui avait dérivé comme
+    celle de `/boot` : `/search` ne voyait ni `instance` ni `satellite`
+    (audit du wiki, 29/09)."""
+
+    def test_check_auth_sans_jeton_rend_les_zones_de_l_owner(self):
+        with patch.object(srv, '_TOKEN_MAP', {}):
+            self.assertEqual(sorted(srv.check_auth(None)), sorted(srv._SCOPE_ACCESS['owner']))
+
+    def test_search_en_local_sans_jeton_cherche_dans_les_cinq_zones(self):
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        vu = {}
+
+        def run(q, top_k=5, allowed_scopes=None):
+            vu['scopes'] = allowed_scopes
+            return []
+        with patch.object(srv, '_TOKEN_MAP', {}), patch.object(srv, 'run_single_query', run):
+            resp = client.get('/search?q=test')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('instance', vu['scopes'])
+        self.assertIn('satellite', vu['scopes'])
+
+    def test_avec_un_jeton_le_role_decide_toujours(self):
+        with patch.object(srv, '_TOKEN_MAP', {'j-mcp': 'mcp'}):
+            self.assertEqual(srv.check_auth('Bearer j-mcp'), srv._SCOPE_ACCESS['mcp'])
+            self.assertNotIn('kernel', srv.check_auth('Bearer j-mcp'))
 
 
 class TestServerAuth(unittest.TestCase):
@@ -2316,6 +2420,272 @@ class TestFermetureRefusee(BrainBsiJetable):
         self.assertIn('COMPLETEMENT', r.stdout, "le bilan se dit APRÈS l'écriture")
 
 
+class TestTypeParDefaut(BrainBsiJetable):
+    """Un claim ouvert sans `--type` est un `explore` — le lobby V2 — et prend
+    le TTL que ce manifeste déclare. C'était `navigate`, un type V1 sans
+    manifeste : 4 h, quand `explore` en déclare 8 (audit du wiki, 29/09)."""
+
+    def _ligne(self, sess):
+        con = sqlite3.connect(self.base)
+        ligne = con.execute("SELECT type, ttl_hours FROM claims WHERE sess_id = ?",
+                            (sess,)).fetchone()
+        con.close()
+        return ligne
+
+    def test_sans_type_le_claim_est_un_explore_a_son_ttl(self):
+        (self.brain / 'contexts' / 'session-explore.yml').write_text('type: explore\nttl_hours: 8\n')
+        sess = 'sess-20260929-1800-explore-t'
+        r = self._open(sess, '--scope', 'explore/t')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._ligne(sess), ('explore', 8))
+
+    def test_un_type_donne_reste_le_sien(self):
+        sess = 'sess-20260929-1801-pilote-t'
+        r = self._open(sess, '--type', 'pilote', '--scope', 'pilote/t')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._ligne(sess), ('pilote', 12))
+
+
+class TestTranscribeVoxtype(unittest.TestCase):
+    """`brain-transcribe.sh` passe par voxtype — joué avec de FAUX
+    `yt-dlp`, `ffmpeg` et `voxtype`, dans un PATH construit à la main : le vrai
+    voxtype (l'outil de dictée de l'utilisateur) n'y figure pas, il ne peut pas
+    être appelé."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-transcribe.sh'
+    OUTILS = ('bash', 'sh', 'env', 'grep', 'sed', 'tr', 'cut', 'du', 'wc', 'mkdir',
+              'cp', 'rm', 'dirname', 'tail', 'cat', 'echo', 'printf')
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix='transcribe-'))
+        self.bin = self.d / 'bin'
+        self.bin.mkdir()
+        for o in self.OUTILS:
+            chemin = shutil.which(o)
+            if chemin:
+                (self.bin / o).symlink_to(chemin)
+        self.appels = self.d / 'voxtype.args'
+        self._faux('yt-dlp', r"""
+case "$*" in
+  *"--print title"*) echo "Une Vidéo d'essai" ;;
+  *"--print duration_string"*) echo "1:00" ;;
+  *) for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+     : > "${out/\%(ext)s/wav}" ;;
+esac""")
+        self._faux('ffmpeg', 'for a in "$@"; do dernier="$a"; done; : > "$dernier"')
+        self._faux('voxtype', f"""echo "$@" > {self.appels}
+echo 'Loading audio file: "x.wav"'
+echo 'Audio format: 16000 Hz, 1 channel(s), Int'
+echo 'Processing 16000 samples (1.00s)...'
+echo ''
+echo 'Bonjour le brain.'""")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _faux(self, nom, corps):
+        f = self.bin / nom
+        f.write_text('#!/bin/bash\n' + corps + '\n', encoding='utf-8')
+        f.chmod(0o755)
+
+    def _lancer(self, *args):
+        env = {'PATH': str(self.bin), 'HOME': str(self.d),
+               'BRAIN_TRANSCRIBE_DIR': str(self.d / 'travail')}
+        return subprocess.run(['bash', str(self.SCRIPT), 'https://exemple/v', *args],
+                              capture_output=True, text=True, env=env, timeout=60)
+
+    def test_la_transcription_sort_sans_preambule(self):
+        sortie = self.d / 'sortie.txt'
+        r = self._lancer('--out', str(sortie))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sortie.read_text(encoding='utf-8'), 'Bonjour le brain.\n')
+
+    def test_modele_et_langue_sont_passes_explicitement(self):
+        self._lancer('--out', str(self.d / 's.txt'))
+        args = self.appels.read_text(encoding='utf-8').split()
+        self.assertIn('-q', args)
+        self.assertEqual(args[args.index('--model') + 1], 'small')
+        self.assertEqual(args[args.index('--language') + 1], 'fr')
+        self.assertIn('transcribe', args)
+
+    def test_sans_voxtype_il_refuse_en_le_disant(self):
+        (self.bin / 'voxtype').unlink()
+        r = self._lancer('--out', str(self.d / 's.txt'))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('voxtype introuvable', r.stdout)
+
+
+class TestWorkflowsCestLAutonomie(unittest.TestCase):
+    """`/workflows` sert le résumé du palier b, produit par la commande que la
+    config locale déclare. Sans source ou en échec, 200 et une
+    `note` — jamais un vide qui se tait."""
+
+    def setUp(self):
+        self.client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        self.d = Path(tempfile.mkdtemp(prefix='workflows-'))
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _source(self, corps, sortie=0):
+        f = self.d / 'source'
+        f.write_text(f'#!/bin/bash\n{corps}\nexit {sortie}\n', encoding='utf-8')
+        f.chmod(0o755)
+        return str(f)
+
+    def _get(self, commande):
+        env = {} if commande is None else {'BRAIN_RESUME_AUTONOMIE_CMD': commande}
+        with patch.dict(os.environ, env, clear=False):
+            if commande is None:
+                os.environ.pop('BRAIN_RESUME_AUTONOMIE_CMD', None)
+            r = self.client.get('/workflows')
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    def test_sans_source_declaree_la_note_le_dit(self):
+        d = self._get(None)
+        self.assertEqual(d['projets'], [])
+        self.assertIn('BRAIN_RESUME_AUTONOMIE_CMD', d['note'])
+
+    def test_la_source_est_servie_telle_quelle(self):
+        d = self._get(self._source(
+            "echo '{\"projets\": [{\"projet\": \"p\", \"etat\": \"ok\", \"en_avance\": 2}], \"note\": null}'"))
+        self.assertEqual(d['projets'][0]['en_avance'], 2)
+        self.assertIsNone(d['note'])
+
+    def test_une_source_qui_echoue_se_dit(self):
+        d = self._get(self._source('echo boum', sortie=3))
+        self.assertEqual(d['projets'], [])
+        self.assertIn('échoué', d['note'])
+
+    def test_une_source_illisible_se_dit(self):
+        d = self._get(self._source('echo pas du json'))
+        self.assertIn('JSON', d['note'])
+
+
+class TestPlantesApresReboot(BrainBsiJetable):
+    """Après un reboot, `plantes` voit les sessions coupées.
+
+    Mesuré sur un brain du réseau le 29/09 : le reboot efface les
+    fichiers `~/.claude/sessions/*.json` des sessions coupées ; `plantes` ne
+    déclarait planté qu'une identité ENCORE présente ici, et leurs claims
+    tenaient leur scope jusqu'à l'expiration. Le démarrage de la machine
+    (`btime`) est fabriqué, les sessions aussi — rien de réel n'est lu."""
+
+    DEMARRAGE = 1_790_000_000          # 2026-09-21 — le reboot fabriqué
+
+    def setUp(self):
+        super().setUp()
+        t = Path(self._tmp.name)
+        self.sessions = t / 'sessions'
+        self.sessions.mkdir()
+        self.stat = t / 'stat'
+        self.stat.write_text(f'cpu  1 2 3\nbtime {self.DEMARRAGE}\n', encoding='utf-8')
+        self.env.update(CLAUDE_SESSIONS_DIR=str(self.sessions), BRAIN_PROC_STAT=str(self.stat))
+
+    def _claim(self, sess, agent, heures_avant_le_demarrage):
+        from datetime import datetime, timedelta, timezone
+        quand = (datetime.fromtimestamp(self.DEMARRAGE, timezone.utc)
+                 - timedelta(hours=heures_avant_le_demarrage)).strftime('%Y-%m-%d %H:%M:%S')
+        con = sqlite3.connect(self.base)
+        con.execute("INSERT INTO claims (sess_id, type, scope, status, opened_at, agent_session) "
+                    "VALUES (?, 'pilote', 'pilote/t', 'open', ?, ?)", (sess, quand, agent))
+        con.commit()
+        con.close()
+
+    def _session(self, agent, pid):
+        (self.sessions / f'{pid}.json').write_text(json.dumps({'sessionId': agent, 'pid': pid}),
+                                                    encoding='utf-8')
+
+    def _plantes(self):
+        r = self._bsi('plantes')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return {l.split('|')[0] for l in r.stdout.splitlines() if '|' in l}
+
+    def test_l_incident_une_session_coupee_par_le_reboot_est_plantee(self):
+        self._claim('sess-avant', 'coupee-1', heures_avant_le_demarrage=2)
+        self.assertEqual(self._plantes(), {'sess-avant'})
+
+    def test_ouvert_apres_le_demarrage_une_identite_inconnue_n_est_pas_jugee(self):
+        self._claim('sess-apres', 'inconnue-2', heures_avant_le_demarrage=-1)
+        self.assertEqual(self._plantes(), set())
+
+    def test_une_session_reprise_apres_le_reboot_n_est_pas_plantee(self):
+        self._claim('sess-reprise', 'reprise-3', heures_avant_le_demarrage=2)
+        self._session('reprise-3', os.getpid())        # même identité, processus vivant
+        self.assertEqual(self._plantes(), set())
+
+    def test_un_claim_sans_identite_n_est_jamais_juge(self):
+        self._claim('sess-sans', None, heures_avant_le_demarrage=2)
+        self.assertEqual(self._plantes(), set())
+
+    def test_sans_btime_la_prudence_d_avant_reste(self):
+        self.stat.write_text('cpu  1 2 3\n', encoding='utf-8')
+        self._claim('sess-avant', 'coupee-4', heures_avant_le_demarrage=2)
+        self.assertEqual(self._plantes(), set())
+
+
+class TestEnergieTroisNiveaux(BrainBsiJetable):
+    """L'énergie de clôture a trois niveaux (BRAIN-046, tranché le 29/09) : le
+    script normalise, et refuse le reste AVANT d'écrire. Le premier cas est
+    l'incident : « 5 », la valeur la plus écrite de l'archive."""
+
+    def _energie(self, sess):
+        con = sqlite3.connect(self.base)
+        ligne = con.execute("SELECT status, energy FROM claims WHERE sess_id = ?",
+                            (sess,)).fetchone()
+        con.close()
+        return ligne
+
+    def test_cinq_est_refuse_et_rien_ne_se_ferme(self):
+        sess = 'sess-20260929-2200-work-e'
+        self._open(sess, '--type', 'work', '--scope', 'work/e')
+        r = self._bsi('close', sess, '--pas-le-mien', '--energy', '5')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('high / medium / low', r.stdout)
+        self.assertEqual(self._energie(sess), ('open', None))
+
+    def test_le_francais_et_la_lettre_se_normalisent(self):
+        for sess, donnee, attendu in (('sess-20260929-2201-work-f', 'haute', 'high'),
+                                      ('sess-20260929-2202-work-g', 'M', 'medium'),
+                                      ('sess-20260929-2203-work-h', 'low', 'low')):
+            self._open(sess, '--type', 'work', '--scope', f'work/{sess[-1]}')
+            r = self._bsi('close', sess, '--pas-le-mien', '--energy', donnee)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self._energie(sess), ('closed', attendu))
+
+    def test_sans_energie_rien_ne_change(self):
+        sess = 'sess-20260929-2204-work-i'
+        self._open(sess, '--type', 'work', '--scope', 'work/i')
+        r = self._bsi('close', sess, '--pas-le-mien')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._energie(sess), ('closed', None))
+
+
+class TestEnergieDeLaRoute(unittest.TestCase):
+    """La route est l'autorité : même règle que le script, pour tout écrivain."""
+
+    def test_la_regle(self):
+        self.assertEqual(srv._energie('Haute'), 'high')
+        self.assertEqual(srv._energie(' m '), 'medium')
+        self.assertIsNone(srv._energie(None))
+        for mauvaise in ('5', '9', 'energized', '5/5', ''):
+            with self.assertRaises(srv.HTTPException) as e:
+                srv._energie(mauvaise)
+            self.assertEqual(e.exception.status_code, 422)
+
+    def test_la_route_refuse_avant_de_lire_la_base(self):
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        import db as brain_db
+        with patch.object(srv, '_readonly_guard'), \
+             patch.object(brain_db, 'query_one', side_effect=AssertionError('lu')) as lu:
+            r = client.patch('/bsi/claims/sess-20260929-2205-work-j',
+                             json={'status': 'closed', 'energy': '5'})
+        self.assertEqual(r.status_code, 422, r.text)
+        self.assertIn('high / medium / low', r.text)
+        lu.assert_not_called()
+
+
 class TestMoteurAutonome(unittest.TestCase):
     """`moteur_autonome.py` : un moteur qui n'importe que le gabarit, son
     environnement et la bibliothèque standard démarre ; un moteur qui importe ce
@@ -2743,6 +3113,7 @@ class TestDocsVerite(unittest.TestCase):
                                       'echo "bash scripts/brain-engine.sh start"\n',
             'scripts/bsi-claim.sh': '# Usage: bsi-claim.sh <open|close|close-stale>\n',
             'skills/brain/SKILL.md': '# skill\n',
+            'brain-compose.yml': 'version: "2.3.5"\n',
             'docs/page.md': page,
         }.items():
             (g / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -2766,6 +3137,50 @@ class TestDocsVerite(unittest.TestCase):
     def _vrai(self, ligne: str):
         code, sortie = self._juger(ligne + '\n')
         self.assertEqual(code, 0, f"{ligne!r} ne doit pas rougir\n{sortie}")
+
+    # ── Les versions écrites en dur (Cortex-Template#7) ──
+    def test_une_version_passee_en_dur_rougit_meme_en_code(self):
+        """L'incident : la page publiée en v2.3.4 disait, dans un bloc de code,
+        `git merge v2.3.4` — juste ce jour-là, fausse dès la v2.3.5."""
+        code, sortie = self._juger('```bash\ngit merge v2.3.4\n```\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('[version]', sortie)
+
+    def test_la_version_courante_ne_rougit_pas(self):
+        self._vrai('> travail. Kernel v2.3.5.')
+
+    def test_une_adresse_n_est_pas_une_version(self):
+        self._vrai('Avec un client MySQL, sur `127.0.0.1:3307`, base `brain-dolt` :')
+
+    def test_un_exemple_declare_ne_rougit_pas(self):
+        self._vrai('git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus '
+                   'la précédente. <!-- docs-verite: permis -->')
+
+    def test_sans_version_du_gabarit_la_regle_se_tait(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), 'git merge v2.3.4\n')
+            (g / 'brain-compose.yml').unlink()
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_un_commentaire_ne_cree_pas_un_fichier(self):
+        """L'incident du 28/09 : `brain-engine/modules.yml`, absent du gabarit,
+        passait parce qu'un COMMENTAIRE de script le nommait. Seul le
+        code d'un script crée un fichier ; le texte qui en parle, non."""
+        page = 'Le rangement : `brain-engine/modules.yml`.\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), page)
+            (g / 'scripts' / 'retraits.sh').write_text(
+                '# la table sort aussi de `brain-engine/modules.yml`\necho ok\n')
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('[chemin]', r.stdout)
+
+    def test_le_code_d_un_script_cree_toujours(self):
+        # Le témoin contraire : `brain-setup.sh` écrit `.env.local` dans son CODE.
+        self._vrai('Le setup écrit `brain-engine/.env.local`.')
 
     # ── Les incidents de la v2.2.1 ──
 
@@ -2891,6 +3306,49 @@ class TestDocsVerite(unittest.TestCase):
     def test_un_gabarit_illisible_n_est_pas_un_vert(self):
         code, sortie = self._juger('rien\n', sans_agents=True)
         self.assertEqual(code, 2, sortie)
+
+    # ── Le wiki jugé — les lignes sont celles du wiki du 29/09 ──
+    def test_deux_spans_voisins_ne_font_pas_une_commande(self):
+        """Recollés, `scripts/bsi-claim.sh` et `ttl_hours` faisaient la commande
+        `bsi-claim.sh ttl_hours` — ligne de context-loading, mot pour mot."""
+        self._vrai('| `scripts/bsi-claim.sh` | lit `ttl_hours` à l\'ouverture du claim |')
+        self._faux('Lancer `bsi-claim.sh ttl_hours`.', 'commande')
+
+    def _juger_avec(self, fichiers: dict, *args):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), 'rien\n')
+            for rel, contenu in fichiers.items():
+                (g / rel).parent.mkdir(parents=True, exist_ok=True)
+                (g / rel).write_text(contenu)
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g),
+                                '--pages', 'wiki/*.md', *args],
+                               capture_output=True, text=True, timeout=30)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_un_lien_de_wiki_sans_md_mene_a_sa_page_avec_wiki(self):
+        pages = {'wiki/Home.md': '[Le laptop](laptop-satellite)\n',
+                 'wiki/laptop-satellite.md': '# laptop\n'}
+        code, sortie = self._juger_avec(pages)
+        self.assertEqual(code, 1, "sans --wiki, dans un dépôt, ce lien est mort")
+        code, sortie = self._juger_avec(pages, '--wiki')
+        self.assertEqual(code, 0, sortie)
+        code, sortie = self._juger_avec({'wiki/Home.md': '[Absente](absente)\n'}, '--wiki')
+        self.assertEqual(code, 1, "une page absente reste un lien mort")
+        self.assertIn('[lien]', sortie)
+
+    def test_un_journal_raconte_mais_ses_liens_sont_juges(self):
+        journal = ('---\nname: CHANGELOG\ndocs-verite: journal\n---\n'
+                   '## 2.1.0 — tiers free/pro/owner, `brain boot mode work`\n')
+        code, sortie = self._juger_avec({'wiki/CHANGELOG.md': journal})
+        self.assertEqual(code, 0, sortie)
+        code, sortie = self._juger_avec({'wiki/CHANGELOG.md': journal + '[vers](absente.md)\n'})
+        self.assertEqual(code, 1)
+        self.assertIn('[lien]', sortie)
+
+    def test_journal_hors_du_frontmatter_ne_declare_rien(self):
+        page = '# Page\n\ndocs-verite: journal\n\n`brain boot mode work`\n'
+        code, sortie = self._juger_avec({'wiki/page.md': page})
+        self.assertEqual(code, 1, "déclaré dans le frontmatter, jamais ailleurs")
 
 
 class TestDocsVeriteRenvois(unittest.TestCase):
@@ -3397,6 +3855,1888 @@ class TestSyncSansSigpipe(unittest.TestCase):
                                capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stdout[-300:] + r.stderr[-300:])
         self.assertIn('sess-x', r.stdout)
+
+
+
+class TestSchemaRetraits(unittest.TestCase):
+    """Un retrait de table atteint les instances — et jamais sur des lignes.
+
+    `schema.sql` n'a aucun `DROP` : une table retirée du schéma restait chez
+    toutes les instances (le laptop, le 28/09, gardait les huit tables retirées). Le
+    script les retire, mais une table qui porte des lignes n'est jamais touchée,
+    et une seule suffit à tout refuser. Éprouvé sur une base SQLite jetable,
+    construite depuis le schéma COURANT plus les tables retirées."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'schema-retraits.sh'
+    RETIREES = ['learning_modules', 'learning_tracks', 'todo_items', 'todo_sections',
+                'backlog_visions', 'decision_chantiers', 'agent_memory', 'agent_loads']
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('schema-retraits.sh absent')
+        self.tmp = Path(tempfile.mkdtemp(prefix='retraits-'))
+        self.base = self.tmp / 'base.db'
+        c = sqlite3.connect(self.base)
+        c.executescript((BRAIN_ROOT_PATH / 'brain-engine' / 'schema.sql').read_text())
+        self.attendues = self._tables(c)
+        # En toutes lettres : `template_autonome` lit le SQL du gabarit, et une
+        # table créée par une f-string y passe pour « interrogée, créée nulle
+        # part ». Ce montage CRÉE ce qu'il interroge — il faut que ça se lise.
+        c.executescript('''
+            CREATE TABLE learning_modules   (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE learning_tracks    (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE todo_items         (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE todo_sections      (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE backlog_visions    (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE decision_chantiers (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE agent_memory       (id INTEGER PRIMARY KEY, x TEXT);
+            CREATE TABLE agent_loads        (id INTEGER PRIMARY KEY, x TEXT);
+        ''')
+        self.assertEqual(self._tables(c) - self.attendues, set(self.RETIREES))
+        c.execute('CREATE VIEW v_graduation_candidates AS SELECT id FROM agent_memory')
+        c.commit(); c.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    @staticmethod
+    def _tables(c):
+        return {r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite%'")}
+
+    def _joue(self, *args, base=None):
+        env = {**os.environ, 'BRAIN_DB_BACKEND': 'sqlite', 'BRAIN_DB_PATH': str(base or self.base)}
+        return subprocess.run(['bash', str(self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def _etat(self):
+        c = sqlite3.connect(f'file:{self.base}?mode=ro', uri=True)
+        try:
+            vues = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'view'")}
+            return self._tables(c), vues
+        finally:
+            c.close()
+
+    def test_a_blanc_ne_touche_rien(self):
+        avant = self._etat()
+        r = self._joue()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('à blanc', r.stdout)
+        self.assertEqual(self._etat(), avant)
+
+    def test_applique_ramene_la_base_au_schema(self):
+        r = self._joue('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        tables, vues = self._etat()
+        self.assertEqual(tables, self.attendues)
+        self.assertNotIn('v_graduation_candidates', vues)
+
+    def test_une_table_pleine_refuse_tout(self):
+        c = sqlite3.connect(self.base)
+        c.execute("INSERT INTO agent_loads (x) VALUES ('la donnee du fork')"); c.commit(); c.close()
+        avant = self._etat()
+        r = self._joue('--appliquer')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('agent_loads', r.stdout)
+        self.assertEqual(self._etat(), avant, "un refus ne laisse pas une base à moitié migrée")
+
+    def test_relancer_ne_fait_rien(self):
+        self._joue('--appliquer')
+        r = self._joue('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('rien à retirer', r.stdout)
+
+    def test_une_base_absente_n_est_pas_creee(self):
+        absente = self.tmp / 'absente.db'
+        r = self._joue('--appliquer', base=absente)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(absente.exists(), "sqlite3 crée ce qu'il ouvre — le script ne doit pas l'ouvrir")
+
+
+class TestModulesDesTables(unittest.TestCase):
+    """Chaque table de la base appartient à exactement un module.
+
+    Le 28/09, huit tables sont parties en une fois : il avait fallu mesurer à la
+    main qui les lisait, et deux lecteurs avaient échappé à la première mesure.
+    `modules.yml` range les tables ; ce test tient le rangement dans les deux
+    sens, et le confronte au CORE, qui déclare les siennes dans `TABLES`."""
+
+    SCHEMA = BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql'
+    MANIFESTE = BRAIN_ROOT_PATH / 'brain-engine' / 'modules.yml'
+
+    @classmethod
+    def setUpClass(cls):
+        if not cls.MANIFESTE.exists():
+            raise unittest.SkipTest('modules.yml absent')
+        import yaml
+        cls.schema = set(re.findall(r'^CREATE TABLE `([a-z_]+)`',
+                                    cls.SCHEMA.read_text(), re.MULTILINE))
+        cls.modules = yaml.safe_load(cls.MANIFESTE.read_text())['modules']
+
+    def test_le_schema_est_lu(self):
+        self.assertGreater(len(self.schema), 10, "un schéma vide rendrait tout le reste vert")
+
+    def test_une_table_n_a_qu_un_module(self):
+        vues = {}
+        for nom, m in self.modules.items():
+            for t in (m.get('tables') or []):
+                vues.setdefault(t, []).append(nom)
+        doublons = {t: ms for t, ms in vues.items() if len(ms) > 1}
+        self.assertEqual(doublons, {})
+
+    def test_toute_table_du_schema_est_rangee(self):
+        rangees = {t for m in self.modules.values() for t in (m.get('tables') or [])}
+        self.assertEqual(self.schema - rangees, set(),
+                         "une table du schéma n'a pas de module — la ranger dans modules.yml")
+
+    def test_tout_ce_qui_est_range_existe(self):
+        rangees = {t for m in self.modules.values() for t in (m.get('tables') or [])}
+        self.assertEqual(rangees - self.schema, set(),
+                         "modules.yml range une table absente du schéma — retirée ?")
+
+    def test_le_core_et_le_manifeste_disent_la_meme_chose(self):
+        import importlib
+        import pkgutil
+        try:
+            import core
+        except ImportError:
+            self.skipTest('CORE absent')
+        declarees = {}
+        for info in pkgutil.iter_modules(core.__path__):
+            if info.name.startswith('test'):
+                continue
+            tables = set(getattr(importlib.import_module(f'core.{info.name}'), 'TABLES', set()))
+            if tables:
+                declarees[info.name] = tables
+        self.assertTrue(declarees, "aucune brique ne déclare de table — le CORE a-t-il été lu ?")
+        for brique, tables in declarees.items():
+            porteurs = [n for n, m in self.modules.items() if brique in (m.get('core') or [])]
+            self.assertEqual(len(porteurs), 1, f"la brique « {brique} » doit être nommée par un seul module")
+            self.assertLessEqual(tables, set(self.modules[porteurs[0]].get('tables') or []),
+                                 f"« {brique} » déclare des tables que son module ne range pas")
+        for nom, m in self.modules.items():
+            for brique in m.get('core') or []:
+                self.assertIn(brique, declarees, f"« {nom} » nomme une brique « {brique} » sans tables")
+
+
+class TestUnitesSansCycle(unittest.TestCase):
+    """Aucune unité générée ne s'ordonne après la target qui la réclame.
+
+    Cortex-Template#5 : `dolt-server.service` portait `After=default.target` et
+    `WantedBy=default.target`. La target se range après ce qu'elle réclame :
+    cycle, et systemd le casse au boot en supprimant le démarrage du moteur."""
+
+    def test_aucun_generateur_ne_fait_de_cycle(self):
+        fautifs = []
+        for s in sorted((BRAIN_ROOT_PATH / 'scripts').glob('*.sh')):
+            texte = s.read_text(encoding='utf-8', errors='replace')
+            reclamee = re.search(r'^WantedBy=.*\bdefault\.target\b', texte, re.MULTILINE)
+            apres = re.search(r'^After=.*\bdefault\.target\b', texte, re.MULTILINE)
+            if reclamee and apres:
+                fautifs.append(s.name)
+        self.assertEqual(fautifs, [])
+
+
+class TestClesVides(unittest.TestCase):
+    """Une clé d'environnement VIDE vaut sa valeur par défaut [Cortex-Template#6].
+
+    `os.getenv(X, défaut)` rend '' pour une clé présente et vide : `int('')`
+    faisait planter le moteur et le MCP (redémarrage n° 127), et un
+    `BRAIN_MCP_SCOPES` vide donnait zéro scope, en silence. Un `MYSECRETS`
+    copié de l'exemple sans remplir les clés optionnelles suffisait."""
+
+    def test_aucune_lecture_ou_le_vide_ecrase_le_defaut(self):
+        import ast
+        fautifs = []
+        for f in sorted((BRAIN_ROOT_PATH / 'brain-engine').glob('*.py')):
+            if f.name.startswith('test_'):
+                continue
+            for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))):
+                if (isinstance(n, ast.Call) and len(n.args) == 2
+                        and ast.unparse(n.func) in ('os.getenv', 'os.environ.get')):
+                    fautifs.append(f'{f.name}:{n.lineno}')
+        self.assertEqual(fautifs, [], "écrire `os.getenv(X) or défaut`")
+
+    EXEMPLE = BRAIN_ROOT_PATH / 'MYSECRETS.example'
+
+    def _defauts_du_code(self) -> dict:
+        """{CLÉ: défaut} pour chaque `os.getenv('CLÉ') or <constante>` du moteur."""
+        import ast
+        vus = {}
+        for f in sorted((BRAIN_ROOT_PATH / 'brain-engine').glob('*.py')):
+            if f.name.startswith('test_'):
+                continue
+            for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))):
+                if (isinstance(n, ast.BoolOp) and isinstance(n.op, ast.Or) and len(n.values) == 2
+                        and isinstance(n.values[0], ast.Call)
+                        and ast.unparse(n.values[0].func) == 'os.getenv'
+                        and isinstance(n.values[1], ast.Constant)):
+                    vus[n.values[0].args[0].value] = str(n.values[1].value)
+        return vus
+
+    def test_l_exemple_ne_laisse_vide_que_les_jetons(self):
+        if not self.EXEMPLE.exists():
+            self.skipTest('MYSECRETS.example absent')
+        vides = [l for l in self.EXEMPLE.read_text().splitlines()
+                 if re.fullmatch(r'[A-Z_]+=', l) and not l.startswith('BRAIN_TOKEN')]
+        self.assertEqual(vides, [], "une clé de réglage vide écrase l'Environment= de l'unité : la commenter")
+
+    def test_l_exemple_n_a_pas_de_commentaire_en_fin_de_ligne(self):
+        if not self.EXEMPLE.exists():
+            self.skipTest('MYSECRETS.example absent')
+        fautives = [l for l in self.EXEMPLE.read_text().splitlines()
+                    if re.match(r'[A-Z_]+=', l) and '#' in l]
+        self.assertEqual(fautives, [], "sous systemd, le commentaire ferait partie de la valeur")
+
+    def test_les_defauts_de_l_exemple_sont_ceux_du_code(self):
+        if not self.EXEMPLE.exists():
+            self.skipTest('MYSECRETS.example absent')
+        code = self._defauts_du_code()
+        self.assertGreater(len(code), 10, "le code n'a pas été lu")
+        ecarts = {}
+        for l in self.EXEMPLE.read_text().splitlines():
+            m = re.fullmatch(r'# ([A-Z_]+)=(\S+)', l)
+            if m and m.group(1) in code and code[m.group(1)] != m.group(2):
+                ecarts[m.group(1)] = (m.group(2), code[m.group(1)])
+        self.assertEqual(ecarts, {}, "(exemple, code)")
+
+    def test_db_supporte_des_cles_vides(self):
+        env = {**os.environ, 'BRAIN_DOLT_PORT': '', 'BRAIN_DB_BACKEND': '', 'BRAIN_DOLT_DB': ''}
+        r = subprocess.run([sys.executable, '-c',
+                            'import db; print(db.DOLT_PORT, db.BACKEND, db.DOLT_DB)'],
+                           cwd=BRAIN_ROOT_PATH / 'brain-engine', env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr[-500:])
+        self.assertEqual(r.stdout.split()[-3:], ['3307', 'dolt', 'brain-dolt'])
+
+
+class TestExempleConfigLocale(unittest.TestCase):
+    """`brain-compose.local.yml.example` a la forme de ce que le setup écrit.
+
+    L'exemple était resté à `kernel_version: "0.9.2"` et `feature_set: full` (un
+    reste des paliers), quand le setup écrivait `mode`, `docs_fetch`… Un forkeur
+    lisait une forme que rien ne produit plus."""
+
+    def _setup_ecrit(self) -> dict:
+        import yaml
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text()
+        m = re.search(r'cat > "\$LOCAL_COMPOSE" << EOF\n(.*?)\nEOF\n', texte, re.S)
+        self.assertIsNotNone(m, "le bloc écrit par le setup n'a pas été trouvé")
+        corps = re.sub(r'\$\([^)]*\)', 'x', m.group(1))         # $(date …)
+        corps = corps.replace('${WRITE_MODE}', '')               # fork : pas de verrou
+        corps = re.sub(r'\$\{?[A-Z_]+\}?', 'x', corps)
+        return yaml.safe_load(corps)
+
+    def _exemple(self) -> dict:
+        import yaml
+        texte = (BRAIN_ROOT_PATH / 'brain-compose.local.yml.example').read_text()
+        return yaml.safe_load(re.sub(r'<[A-Z_-]+>', 'x', texte))
+
+    def test_memes_cles_racine(self):
+        self.assertEqual(set(self._exemple()) , set(self._setup_ecrit()))
+
+    def test_memes_cles_d_instance(self):
+        ex = next(iter(self._exemple()['instances'].values()))
+        se = next(iter(self._setup_ecrit()['instances'].values()))
+        self.assertEqual(set(ex), set(se))
+
+    def test_pas_de_version_figee(self):
+        texte = (BRAIN_ROOT_PATH / 'brain-compose.local.yml.example').read_text()
+        self.assertIsNone(re.search(r'^kernel_version: "\d', texte, re.M),
+                          "une version écrite en dur vieillit : un marqueur, le setup écrit la vraie")
+
+
+class TestRechercheDitSaPanne(unittest.TestCase):
+    """Sans Ollama, la recherche le DIT — pas « Aucun résultat ».
+
+    Mesuré sur un fork v2.3.4 sans Ollama : `brain_search` répondait « Aucun
+    résultat », `brain_boot` omettait sa section, `embed` concluait « ✅ ». Le
+    CORE rendait pourtant la bonne alerte ; `search.py` la jetait."""
+
+    def _core(self, rendu):
+        faux = MagicMock()
+        faux.cherche.return_value = rendu
+        return patch.object(search, '_moteur_core', return_value=faux)
+
+    def test_modele_injoignable_leve(self):
+        from core.recherche import INJOIGNABLE
+        with self._core(([], INJOIGNABLE)):
+            with self.assertRaises(search.RechercheIndisponible) as ctx:
+                search.search('une question', top_k=3)
+        self.assertIn('ollama pull', ctx.exception.conseil())
+
+    def test_index_vide_leve(self):
+        from core.recherche import INDEX_VIDE
+        with self._core(([], INDEX_VIDE)):
+            with self.assertRaises(search.RechercheIndisponible) as ctx:
+                search.search('une question', top_k=3)
+        self.assertIn('brain-engine.sh embed', ctx.exception.conseil())
+
+    def test_un_avis_sur_la_requete_n_est_pas_une_panne(self):
+        with self._core(([], "2 mot(s) : la retrouvaille est quasi nulle")):
+            self.assertEqual(search.search('deux mots', top_k=3), [])
+
+    def test_la_route_search_repond_503(self):
+        from core.recherche import INJOIGNABLE
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        with patch.object(srv, '_TOKEN_MAP', {}), \
+             patch.object(srv, 'run_single_query', side_effect=search.RechercheIndisponible(INJOIGNABLE)):
+            r = client.get('/search?q=une+question')
+        self.assertEqual(r.status_code, 503)
+        self.assertIn('injoignable', r.json()['detail'])
+
+    def test_la_route_boot_repond_503(self):
+        from core.recherche import INDEX_VIDE
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        with patch.object(srv, 'run_boot_queries', side_effect=search.RechercheIndisponible(INDEX_VIDE)):
+            r = client.get('/boot')
+        self.assertEqual(r.status_code, 503)
+        self.assertIn('index est vide', r.json()['detail'])
+
+    def _mcp(self):
+        import mcp_server
+        return mcp_server
+
+    def test_brain_decisions_ne_rend_que_des_adr(self):
+        """Le motif `*.md` faisait passer `_template-adr.md` et `README.md`
+        devant les ADR : `last=2` ne rendait aucune décision (29/09)."""
+        m = self._mcp()
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / 'profil' / 'decisions'
+            d.mkdir(parents=True)
+            for nom in ('_template-adr.md', 'README.md', 'BRAIN-001-a.md', 'BRAIN-078-b.md'):
+                (d / nom).write_text(f'---\ntitle: {nom}\nstatus: accepted\n---\ncorps\n')
+            with patch.object(m, 'BRAIN_ROOT', Path(tmp)):
+                texte = getattr(m.brain_decisions, 'fn', m.brain_decisions)(2)
+        self.assertIn('BRAIN-078', texte)
+        self.assertIn('BRAIN-001', texte)
+        self.assertNotIn('_template', texte)
+        self.assertNotIn('README', texte)
+
+    def test_brain_search_dit_la_panne(self):
+        from core.recherche import INJOIGNABLE
+        m = self._mcp()
+        with patch.object(m, 'run_single_query', side_effect=search.RechercheIndisponible(INJOIGNABLE)):
+            texte = getattr(m.brain_search, 'fn', m.brain_search)('une question')
+        self.assertIn('Recherche indisponible', texte)
+        self.assertNotIn('Aucun résultat', texte)
+
+    def test_brain_boot_dit_la_panne(self):
+        from core.recherche import INJOIGNABLE
+        m = self._mcp()
+        with patch.object(m, 'run_boot_queries', side_effect=search.RechercheIndisponible(INJOIGNABLE)), \
+             patch.object(m, 'brain_state', return_value=''):
+            texte = getattr(m.brain_boot, 'fn', m.brain_boot)()
+        self.assertIn('Recherche sémantique indisponible', texte)
+
+    def test_embed_sort_en_2_sans_ollama(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / 'b.db'
+            c = sqlite3.connect(base)
+            c.executescript((BRAIN_ROOT_PATH / 'brain-engine' / 'schema.sql').read_text())
+            c.commit(); c.close()
+            env = {**os.environ, 'BRAIN_DB_BACKEND': 'sqlite', 'BRAIN_DB_PATH': str(base),
+                   'OLLAMA_URL': 'http://127.0.0.1:9'}
+            r = subprocess.run([sys.executable, 'embed.py', '--file', 'agents/debug.md'],
+                               cwd=BRAIN_ROOT_PATH / 'brain-engine', env=env,
+                               capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 2, (r.stdout + r.stderr)[-600:])
+
+
+class TestScopesDuMcpLocal(unittest.TestCase):
+    """Le MCP local d'un fork voit ce que le rôle `mcp` voit [Cortex-Template#9].
+
+    L'unité `brain-mcp` générée ne posait pas `BRAIN_MCP_SCOPES` : le MCP d'un
+    fork tombait sur le défaut ÉTROIT de mcp_server.py (public, work), et
+    `brain_search` ne voyait ni projets, ni focus, ni learning — sans signal.
+    La prod, elle, élargissait par sa propre unité."""
+
+    def test_l_unite_pose_le_role_mcp(self):
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh').read_text()
+        bloc = re.search(r'cat > "\$unites/brain-mcp\.service" << SVCEOF\n(.*?)\nSVCEOF', texte, re.S)
+        self.assertIsNotNone(bloc, "l'unité brain-mcp n'a pas été trouvée")
+        ligne = re.search(r'^Environment=BRAIN_MCP_SCOPES=(\S+)$', bloc.group(1), re.M)
+        self.assertIsNotNone(ligne, "l'unité ne pose pas BRAIN_MCP_SCOPES")
+        self.assertEqual(set(ligne.group(1).split(',')), set(srv._SCOPE_ACCESS['mcp']))
+
+
+class TestEchangesBoite(unittest.TestCase):
+    """Le boot montre ce que l'autre brain a déposé — une fois, par machine.
+
+    `echanges/` est partagé avec le brain d'une autre personne. Au boot, les
+    nouveautés de `boites/kevin/` et `rapports/` s'affichent, puis sont
+    marquées vues dans la config LOCALE du clone (rien n'entre dans le dépôt)."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'echanges-boite.sh'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('echanges-boite.sh absent — script d’instance')
+        self.tmp = Path(tempfile.mkdtemp(prefix='echanges-'))
+        (self.tmp / 'scripts').mkdir()
+        shutil.copy(self.SCRIPT, self.tmp / 'scripts' / 'echanges-boite.sh')
+        self.e = self.tmp / 'echanges'
+        for d in ('boites/kevin', 'boites/blackstars', 'rapports'):
+            (self.e / d).mkdir(parents=True)
+            (self.e / d / '.gitkeep').write_text('')
+        self._git('init', '-q')
+        self._depose('README.md', '# contrat\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _git(self, *args):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+                       cwd=self.e, check=True, capture_output=True)
+
+    def _depose(self, chemin, texte):
+        (self.e / chemin).write_text(texte)
+        self._git('add', '-A'); self._git('commit', '-qm', chemin)
+
+    def _boite(self, *args):
+        return subprocess.run(['bash', str(self.tmp / 'scripts' / 'echanges-boite.sh'), *args],
+                              capture_output=True, text=True, timeout=30)
+
+    def test_une_fois_puis_silence(self):
+        self._depose('boites/kevin/2026-09-28-salut.md', '# Salut\n\n— Claude, pour l’autre\n')
+        r = self._boite()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('boites/kevin/2026-09-28-salut.md — Salut', r.stdout)
+        self.assertIn('— Claude, pour l’autre', r.stdout)
+        self.assertNotIn('.gitkeep', r.stdout)
+        self.assertEqual(self._boite().stdout, '', "déjà vu : plus rien au boot suivant")
+
+    def test_seule_la_nouveaute_s_affiche(self):
+        self._depose('boites/kevin/a.md', '# A\n')
+        self._boite()
+        self._depose('rapports/2026-09-28-mesure.md', '# Mesure\n')
+        self._depose('boites/blackstars/pour-lui.md', '# pas pour Kevin\n')
+        sortie = self._boite().stdout
+        self.assertIn('rapports/2026-09-28-mesure.md', sortie)
+        self.assertNotIn('boites/kevin/a.md', sortie)
+        self.assertNotIn('pour-lui', sortie, "la boîte de l'autre ne s'affiche pas")
+
+    def test_tout_ne_deplace_pas_le_vu(self):
+        self._depose('boites/kevin/a.md', '# A\n')
+        self.assertIn('boites/kevin/a.md', self._boite('--tout').stdout)
+        self.assertIn('boites/kevin/a.md', self._boite().stdout, "--tout n'a rien marqué vu")
+
+    def test_satellite_absent_silence(self):
+        shutil.rmtree(self.e)
+        r = self._boite()
+        self.assertEqual((r.returncode, r.stdout), (0, ''))
+
+
+class TestInstallSystemd(unittest.TestCase):
+    """`install systemd` se rejoue : il réécrit les unités ET les relance, et
+    installe le timer d'embed [Cortex-Template#10].
+
+    Joué pour de vrai : un faux `systemctl` en tête du PATH note ses appels,
+    les unités s'écrivent dans un XDG_CONFIG_HOME jetable, les ports sont ceux
+    d'un bac à sable — rien ne touche aux unités de la machine."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='install-systemd-'))
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        self.appels = self.tmp / 'appels'
+        faux = self.bin / 'systemctl'
+        faux.write_text(f'#!/bin/sh\necho "$*" >> {self.appels}\nexit 0\n')
+        faux.chmod(0o755)
+        self.unites = self.tmp / 'config' / 'systemd' / 'user'
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _installer(self, mode='prod'):
+        env = {**os.environ,
+               'PATH': f'{self.bin}:{os.environ["PATH"]}',
+               'XDG_CONFIG_HOME': str(self.tmp / 'config'),
+               'BRAIN_MODE': mode, 'BRAIN_PORT': '17799', 'BRAIN_MCP_PORT': '17798'}
+        r = subprocess.run(['bash', str(self.SCRIPT), 'install', 'systemd'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        appels = self.appels.read_text().splitlines() if self.appels.exists() else []
+        return r, appels
+
+    def test_les_unites_actives_sont_relancees(self):
+        # `enable --now` ne relance pas une unité déjà active : le nouvel
+        # environnement n'arrivait qu'au prochain démarrage de session.
+        r, appels = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('--user restart brain-engine.service brain-mcp.service', appels)
+        self.assertNotIn('--user enable --now brain-engine.service brain-mcp.service', appels)
+
+    def test_le_timer_d_embed_remplace_le_cron(self):
+        r, appels = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('crontab', r.stdout + r.stderr)
+        timer = (self.unites / 'brain-embed.timer').read_text()
+        self.assertIn('OnUnitActiveSec=', timer)
+        service = (self.unites / 'brain-embed.service').read_text()
+        # Par `brain-engine.sh embed` : son code 2 (Ollama injoignable) fait
+        # échouer l'unité, et l'échec se voit.
+        self.assertRegex(service, r'(?m)^ExecStart=.*scripts/brain-engine\.sh embed$')
+        self.assertIn('--user enable --now brain-embed.timer', appels)
+
+    def test_pas_d_embed_en_demo(self):
+        r, appels = self._installer(mode='demo')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((self.unites / 'brain-embed.timer').exists())
+        self.assertNotIn('--user enable --now brain-embed.timer', appels)
+
+    def test_rejouer_n_empile_pas_de_sauvegardes(self):
+        # La page « Se mettre à jour » fait rejouer `install systemd` à chaque
+        # version : une copie par passage empilerait des sauvegardes identiques.
+        self._installer()
+        r, _ = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(self.unites.glob('*.avant-*')), [])
+
+    def test_une_unite_changee_est_gardee_a_cote(self):
+        self._installer()
+        mcp = self.unites / 'brain-mcp.service'
+        mcp.write_text(mcp.read_text().replace('Environment=BRAIN_MCP_SCOPES=', 'Environment=ANCIEN=1\n#'))
+        r, _ = self._installer()
+        gardees = sorted(p.name for p in self.unites.glob('*.avant-*'))
+        self.assertEqual(len(gardees), 1, gardees)
+        self.assertTrue(gardees[0].startswith('brain-mcp.service.avant-'))
+        self.assertIn('ANCIEN=1', (self.unites / gardees[0]).read_text())
+
+    def _status(self):
+        env = {**os.environ,
+               'PATH': f'{self.bin}:{os.environ["PATH"]}',
+               'XDG_CONFIG_HOME': str(self.tmp / 'config'),
+               'BRAIN_MODE': 'prod', 'BRAIN_PORT': '17799', 'BRAIN_MCP_PORT': '17798'}
+        r = subprocess.run(['bash', str(self.SCRIPT), 'status'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        return r.stdout + r.stderr
+
+    def test_status_voit_une_unite_d_une_version_passee(self):
+        # L'incident de #10 : l'unité MCP d'une v2.3.4, sans la ligne des
+        # scopes, relancée par un simple `restart` — sans aucun signal.
+        self._installer()
+        mcp = self.unites / 'brain-mcp.service'
+        mcp.write_text(''.join(l for l in mcp.read_text().splitlines(True)
+                               if not l.startswith('Environment=BRAIN_MCP_SCOPES=')))
+        sortie = self._status()
+        self.assertIn('brain-mcp.service', sortie)
+        self.assertIn('install systemd', sortie)
+        self.assertNotIn('celles de cette version', sortie)
+
+    def test_status_dit_des_unites_a_jour(self):
+        self._installer()
+        sortie = self._status()
+        self.assertIn('unités : celles de cette version', sortie)
+        self.assertNotIn("d'une autre version", sortie)
+
+    def test_status_se_tait_sans_unites_ou_pour_un_autre_brain(self):
+        self.assertNotIn('unités', self._status())
+        self.unites.mkdir(parents=True)
+        (self.unites / 'brain-engine.service').write_text('[Service]\nWorkingDirectory=/ailleurs/Brain\n')
+        self.assertNotIn('unités', self._status())
+
+    def test_un_moteur_de_systemd_n_est_pas_une_instance_manuelle(self):
+        # L'incident : un moteur lancé par systemd (pas de fichier de PID) était
+        # annoncé « instance manuelle », puis `stop` répondait « pas lancé par
+        # ce script ». Un faux moteur de CE brain — la ligne de commande que
+        # `pid_en_cours` reconnaît, sans port — tient le rôle de systemd.
+        serveur = BRAIN_ROOT_PATH / 'brain-engine' / 'server.py'
+        faux = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', str(serveur)])
+        try:
+            r, _ = self._installer()
+        finally:
+            faux.kill()
+            faux.wait()
+        sortie = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 0, sortie)
+        self.assertNotIn("Arrêt de l'instance manuelle", sortie)
+        self.assertIn('tourne déjà', sortie)
+
+
+class TestBrainImbrique(unittest.TestCase):
+    """Une copie de brain posée dans celui-ci ne s'indexe pas.
+
+    Le 28/09, le premier passage du timer d'embed a indexé trois worktrees de
+    `workspace/scratch/` : 14 751 chunks sur 30 453. `workspace/**/*.md` est du
+    corpus et le TTL laisse passer une copie fraîche. Le premier cas est le
+    chemin de l'incident, copié du journal."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-imbrique-'))
+        self._racine = embed.BRAIN_ROOT
+        embed.BRAIN_ROOT = self.tmp
+        embed._KERNELS.clear()
+        def f(rel, texte='## Titre\n\nun contenu assez long pour un chunk.\n'):
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text(texte)
+        f('KERNEL.md')
+        f('workspace/scratch/notes-de-travail.md')
+        f('workspace/scratch/wt-v236/KERNEL.md')
+        f('workspace/scratch/wt-v236/workspace/papers/README.md')
+        f('workspace/scratch/wt-v236/agents/helloWorld.md')
+        # Un sous-module a un `.git` FICHIER, comme un worktree : il reste du corpus.
+        f('wiki/.git', 'gitdir: ../.git/modules/wiki\n')
+        f('wiki/page.md')
+
+    def tearDown(self):
+        embed.BRAIN_ROOT = self._racine
+        embed._KERNELS.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_le_chemin_de_l_incident_est_exclu(self):
+        p = self.tmp / 'workspace/scratch/wt-v236/workspace/papers/README.md'
+        self.assertTrue(embed.should_exclude(p))
+
+    def test_le_corpus_ne_prend_pas_la_copie(self):
+        pris = {str(p.relative_to(self.tmp)) for p, _ in embed.collect_files()}
+        self.assertIn('workspace/scratch/notes-de-travail.md', pris)
+        self.assertIn('wiki/page.md', pris)
+        self.assertEqual([x for x in pris if 'wt-v236' in x], [])
+
+    def test_la_racine_n_est_pas_une_copie(self):
+        self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'KERNEL.md'))
+        self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'workspace/scratch/notes-de-travail.md'))
+
+
+class TestForgeWhoami(unittest.TestCase):
+    """`whoami` ne dit que ce qu'il a vérifié.
+
+    Il disait « ✅ accès confirmé » avec un jeton en lecture seule, et rendait
+    une sortie identique au mot près une fois le jeton régénéré en écriture.
+    Joué contre une FAUSSE forge : `conf` et `call` sont remplacés — ni
+    MYSECRETS lu, ni réseau."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+    # Le message exact de Gitea, relevé le 26/09.
+    REFUS_DE_SCOPE = ('token does not have at least one of required scope(s), '
+                      'required=[write:repository], token scope=read:repository')
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_essai', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+        self.bf.conf = lambda: ('https://forge.essai', 'jeton-factice')
+
+    def _whoami(self, reponse):
+        self.bf.call = lambda method, path, payload=None: reponse
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = self.bf.cmd_whoami('Owner/depot')
+        return code, sortie.getvalue()
+
+    def test_la_meme_sortie_ne_pretend_plus_l_ecriture(self):
+        code, sortie = self._whoami((200, {'permissions': {'admin': True, 'push': True, 'pull': True}}))
+        self.assertEqual(code, 0)
+        self.assertNotIn('accès confirmé', sortie)
+        self.assertIn('NON vérifiable', sortie)
+
+    def test_un_compte_sans_push_rougit(self):
+        code, sortie = self._whoami((200, {'permissions': {'admin': False, 'push': False, 'pull': True}}))
+        self.assertEqual(code, 1)
+        self.assertIn('push=False', sortie)
+
+    def test_un_refus_de_scope_est_dit_en_clair(self):
+        texte = self.bf.raison(403, {'message': self.REFUS_DE_SCOPE})
+        self.assertIn(self.REFUS_DE_SCOPE, texte)
+        self.assertIn('JETON', texte)
+        self.assertIn('write:repository', texte.split('→', 1)[1])
+
+    def test_un_autre_refus_reste_tel_quel(self):
+        self.assertEqual(self.bf.raison(404, {'message': 'not found'}), 'not found')
+        self.assertIsNone(self.bf.raison(500, None))
+
+
+class TestTypesDeCommitGeneres(unittest.TestCase):
+    """La skill liste les types de commit que le hook `commit-msg` applique —
+    lus au même endroit, de la même façon. Si l'extraction de l'un
+    change sans l'autre, ce test rougit."""
+
+    def test_la_skill_et_le_hook_lisent_les_memes_types(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'docs_generer_types', BRAIN_ROOT_PATH / 'scripts' / 'docs-generer.py')
+        dg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dg)
+        generes = dg.Mesures(BRAIN_ROOT_PATH).types_commit
+        # Le hook LUI-MÊME, sur un type qui n'existe pas : il refuse et dit
+        # « Types attendus : … » — sa propre extraction, pas une copie.
+        with tempfile.TemporaryDirectory(prefix='types-commit-') as d:
+            msg = Path(d) / 'MSG'
+            msg.write_text('inexistant: un sujet\n', encoding='utf-8')
+            r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'hooks' / 'commit-msg'),
+                                str(msg)], cwd=BRAIN_ROOT_PATH, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1, "le hook devait refuser un type inexistant")
+        ligne = next((l for l in r.stderr.splitlines() if 'Types attendus' in l), '')
+        du_hook = ligne.split(':', 1)[1].split() if ':' in ligne else []
+        self.assertTrue(du_hook, "le hook n'a rien dit — le test ne mesurerait rien")
+        self.assertEqual(generes, du_hook)
+
+
+class TestForgeMergeRetireLaBranche(unittest.TestCase):
+    """La branche source part avec la fusion — sauf une branche longue. Joué
+    contre une FAUSSE forge : aucun réseau, aucun jeton."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_merge', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+
+    def _merge(self, tete, depot='Owner/depot'):
+        envoye = {}
+        def call(method, path, payload=None):
+            if method == 'GET':
+                return 200, {'head': {'ref': tete, 'repo': {'full_name': depot}}}
+            envoye.update(payload or {})
+            return 200, None
+        self.bf.call = call
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.bf.cmd_merge('Owner/depot', '1', 'merge'), 0)
+        return envoye
+
+    def test_une_branche_de_travail_part(self):
+        self.assertTrue(self._merge('scribe/fiche-1')['delete_branch_after_merge'])
+
+    def test_dev_autonome_reste(self):
+        self.assertFalse(self._merge('dev/autonome')['delete_branch_after_merge'])
+
+    def test_un_tronc_reste(self):
+        self.assertFalse(self._merge('main')['delete_branch_after_merge'])
+
+    def test_la_branche_d_un_fork_n_est_pas_la_notre(self):
+        self.assertFalse(self._merge('scribe/fiche-1', depot='Autre/fork')['delete_branch_after_merge'])
+
+
+class TestForgeAutonome(unittest.TestCase):
+    """En autonomie, le jeton du compte `brain` — et JAMAIS de repli sur celui
+    de l'humain (BRAIN-079, étape 6). Joué contre un FAUX MYSECRETS : le vrai
+    n'est jamais lu."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_autonome', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+        self.d = Path(tempfile.mkdtemp(prefix='forge-autonome-'))
+        self.bf.SECRETS = self.d / 'MYSECRETS'
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _conf(self, contenu, autonome):
+        self.bf.SECRETS.write_text(contenu, encoding='utf-8')
+        self.bf.AUTONOME = autonome
+        return self.bf.conf()
+
+    def test_ensemble_c_est_le_jeton_de_l_humain(self):
+        self.assertEqual(self._conf('GITEA_TOKEN=h\nGITEA_TOKEN_AUTONOME=b\n', False)[1], 'h')
+
+    def test_en_autonomie_c_est_le_compte_brain(self):
+        self.assertEqual(self._conf('GITEA_TOKEN=h\nGITEA_TOKEN_AUTONOME=b\n', True)[1], 'b')
+
+    def test_en_autonomie_sans_son_jeton_il_refuse_sans_repli(self):
+        with self.assertRaises(SystemExit) as e:
+            self._conf('GITEA_TOKEN=h\n', True)
+        self.assertIn('JAMAIS', str(e.exception))
+        self.assertNotIn('=h', str(e.exception))
+
+
+class TestHookMarqueursDeConflit(unittest.TestCase):
+    """Le pre-commit refuse un marqueur de conflit git ajouté par le commit.
+
+    Le 27/09, `||||||| 5c73ba0` — la ligne de BASE d'une fusion diff3 — est
+    entré dans une fiche du backlog, sans bruit. Joué dans un dépôt
+    JETABLE où le hook est copié : ses gardes optionnels s'effacent."""
+
+    HOOKS = BRAIN_ROOT_PATH / 'scripts' / 'hooks'
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix='hook-marqueurs-'))
+        (self.d / 'scripts' / 'hooks').mkdir(parents=True)
+        (self.d / 'scripts' / 'lib').mkdir()
+        for f in ('pre-commit', '_racines.sh'):
+            shutil.copy(self.HOOKS / f, self.d / 'scripts' / 'hooks' / f)
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh', self.d / 'scripts' / 'lib' / 'python.sh')
+        self._git('init', '-q')
+        (self.d / 'fiche.md').write_text('# fiche\n')
+        self._git('add', '-A')
+        self._git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--no-verify')
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _git(self, *a):
+        return subprocess.run(['git', *a], cwd=self.d, capture_output=True, text=True, check=True)
+
+    def _hook(self, contenu):
+        (self.d / 'fiche.md').write_text(contenu)
+        self._git('add', 'fiche.md')
+        return subprocess.run(['bash', 'scripts/hooks/pre-commit'], cwd=self.d,
+                              capture_output=True, text=True, timeout=60)
+
+    def test_la_ligne_de_base_de_l_incident_est_refusee(self):
+        r = self._hook('# fiche\nseul fichier manquant pèse plus que 1 654 lignes de dérive.\n'
+                       '||||||| 5c73ba0\n\n---\n')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('marqueur', r.stdout)
+
+    def test_les_marqueurs_d_un_conflit_classique_sont_refuses(self):
+        r = self._hook('# fiche\n<<<<<<< HEAD\nici\n=======\nlà\n>>>>>>> autre\n')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+
+    def test_un_commit_propre_passe(self):
+        r = self._hook('# fiche\ndu texte, et des espaces en fin de ligne   \n')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class TestDoltLaptop(unittest.TestCase):
+    """`dolt-laptop.sh` pose la branche du laptop, et son épreuve voit une garde
+    absente [BRAIN-078].
+
+    Une vraie base Dolt, au vrai schéma, servie sur un port libre du bac à
+    sable — jamais la base de la machine."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'dolt-laptop.sh'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('dolt-laptop.sh absent — script d’instance')
+        if not shutil.which('dolt'):
+            self.skipTest('dolt absent')
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
+        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-laptop-'))
+        self.base = self.tmp / 'brain-dolt'
+        self.base.mkdir()
+        env = {**os.environ, 'HOME': str(self.tmp)}
+        run = lambda *a, **k: subprocess.run(a, cwd=self.base, env=env, capture_output=True, text=True, check=True, **k)
+        run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
+        run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
+        run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
+        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+                                        cwd=self.base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
+            except OSError:
+                time.sleep(0.1)
+
+    def tearDown(self):
+        if hasattr(self, 'serveur'):
+            self.serveur.terminate(); self.serveur.wait(10)
+        if hasattr(self, 'tmp'):
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lancer(self, *args, script=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_DOLT_PORT=str(self.port), BRAIN_ROOT=str(BRAIN_ROOT_PATH))
+        return subprocess.run(['bash', str(script or self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def _laptop_existe(self):
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user='root', password='', database='brain-dolt')
+        with c.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM mysql.user WHERE User='laptop'")
+            return cur.fetchone()[0] > 0
+
+    def test_a_blanc_rien_n_est_pose(self):
+        r = self._lancer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('À BLANC', r.stdout)
+        self.assertFalse(self._laptop_existe())
+
+    def test_applique_s_eprouve_et_se_rejoue(self):
+        r = self._lancer('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('7 épreuve(s), 0 échec(s)', r.stdout)
+        self.assertTrue(self._laptop_existe())
+        r = self._lancer('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('0 échec(s)', r.stdout)
+
+    def test_l_epreuve_voit_une_garde_absente(self):
+        # Une copie du script qui ne retire PAS la règle par défaut : tout
+        # utilisateur écrit alors sur toute branche, main comprise. L'épreuve
+        # doit le voir — sa première version, qui écrivait « zéro ligne », ne
+        # l'aurait pas vu.
+        mutant = self.tmp / 'dolt-laptop-sans-retrait.sh'
+        texte = self.SCRIPT.read_text()
+        retrait = 'if defaut:\n    gestes.append'
+        # La règle de `laptop` saute aussi : sous la règle par défaut, Dolt la
+        # refuse comme redondante, et le script s'arrêterait avant l'épreuve.
+        regle = 'if not any(x[:4] == (BASE, BRANCHE, UTILISATEUR, HOTE_UTILISATEUR) for x in regles):'
+        self.assertEqual((texte.count(retrait), texte.count(regle)), (1, 1))
+        mutant.write_text(texte.replace(retrait, 'if False:\n    gestes.append').replace(regle, 'if False:'))
+        (self.tmp / 'lib').mkdir()
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh', self.tmp / 'lib' / 'python.sh')
+        r = self._lancer('--appliquer', script=mutant)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('❌ écrire sur main : refusé', r.stdout)
+
+
+class TestDoltSauvegarde(unittest.TestCase):
+    """`dolt-sauvegarde.sh` sauvegarde l'historique et prouve qu'il se restaure
+   . Une vraie base Dolt sur un port libre, une sauvegarde dans un
+    dossier jetable — jamais la base de la machine."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'dolt-sauvegarde.sh'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('dolt-sauvegarde.sh absent — script d’instance')
+        self.dolt = shutil.which('dolt')
+        if not self.dolt:
+            self.skipTest('dolt absent')
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
+        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-sauvegarde-'))
+        base = self.tmp / 'brain-dolt'
+        base.mkdir()
+        env = {**os.environ, 'HOME': str(self.tmp)}
+        run = lambda *a: subprocess.run(a, cwd=base, env=env, capture_output=True, text=True, check=True)
+        run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
+        run('dolt', 'sql', '-q', "CREATE TABLE claims (sess_id varchar(64) primary key); "
+                                 "INSERT INTO claims VALUES ('a'); CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','un')")
+        run('dolt', 'sql', '-q', "INSERT INTO claims VALUES ('b'); CALL DOLT_COMMIT('-Am','deux')")
+        self.serveur = subprocess.Popen([self.dolt, 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+                                        cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
+            except OSError:
+                time.sleep(0.1)
+        self.sauvegardes = self.tmp / 'Sauvegardes'
+        self.sauvegardes.mkdir()
+
+    def tearDown(self):
+        if hasattr(self, 'serveur'):
+            self.serveur.terminate(); self.serveur.wait(10)
+        if hasattr(self, 'tmp'):
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _declarer(self):
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user='root', password='',
+                            database='brain-dolt', autocommit=True)
+        with c.cursor() as cur:
+            cur.execute("CALL DOLT_BACKUP('add', 'local', %s)", (f"file://{self.sauvegardes / 'brain-dolt'}",))
+
+    def _lancer(self, *args, path=None, copie=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_DOLT_PORT=str(self.port), BRAIN_ROOT=str(BRAIN_ROOT_PATH))
+        if copie:
+            env['BRAIN_DOLT_COPIE'] = copie
+        if path:
+            env['PATH'] = f"{path}:{env['PATH']}"
+        return subprocess.run(['bash', str(self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=180)
+
+    def test_sans_sauvegarde_declaree_il_le_dit(self):
+        r = self._lancer()
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("DOLT_BACKUP('add'", r.stdout)
+
+    def test_sauvegarde_puis_restaure_a_l_identique(self):
+        self._declarer()
+        r = self._lancer('--eprouver')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("à l'identique", r.stdout)
+        self.assertEqual(list(self.sauvegardes.glob('.epreuve-restauration-*')), [],
+                         'le dossier jetable de la restauration est effacé')
+
+    def _faux_rsync(self, sortie):
+        faux = self.tmp / 'faux-rsync'
+        faux.mkdir(exist_ok=True)
+        journal = self.tmp / 'rsync.args'
+        (faux / 'rsync').write_text(f'#!/bin/bash\necho "$@" > {journal}\nexit {sortie}\n')
+        (faux / 'rsync').chmod(0o755)
+        return faux, journal
+
+    def test_sans_cible_declaree_rien_n_est_copie(self):
+        self._declarer()
+        faux, journal = self._faux_rsync(0)
+        r = self._lancer(path=str(faux))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(journal.exists(), "sans BRAIN_DOLT_COPIE, rsync n'est pas appelé")
+
+    def test_la_copie_part_apres_le_sync(self):
+        self._declarer()
+        faux, journal = self._faux_rsync(0)
+        r = self._lancer(path=str(faux), copie='hote:Sauvegardes/brain-dolt/')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('copiée hors du poste', r.stdout)
+        args = journal.read_text().split()
+        self.assertEqual(args[-2:], [f"{self.sauvegardes / 'brain-dolt'}/", 'hote:Sauvegardes/brain-dolt/'])
+
+    def test_une_copie_ratee_se_dit_et_sort_en_3(self):
+        self._declarer()
+        faux, _ = self._faux_rsync(12)
+        r = self._lancer(path=str(faux), copie='hote:x/')
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn('LOCALE est faite', r.stdout)
+
+    def test_une_copie_ratee_n_est_pas_masquee_par_l_epreuve(self):
+        self._declarer()
+        faux, _ = self._faux_rsync(12)
+        r = self._lancer('--eprouver', path=str(faux), copie='hote:x/')
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+
+    def test_une_restauration_qui_ne_rend_pas_la_base_rougit(self):
+        # Un faux `dolt` dont `backup restore` rend une base VIDE : la
+        # comparaison doit le voir — sinon l'épreuve ne prouverait rien.
+        self._declarer()
+        faux = self.tmp / 'bin'
+        faux.mkdir()
+        (faux / 'dolt').write_text(
+            '#!/bin/bash\n'
+            'if [ "$1" = backup ] && [ "$2" = restore ]; then\n'
+            f'  mkdir -p "$4" && cd "$4" && exec {self.dolt} init --name x --email x@x\n'
+            'fi\n'
+            f'exec {self.dolt} "$@"\n')
+        (faux / 'dolt').chmod(0o755)
+        r = self._lancer('--eprouver', path=faux)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('ne rend pas la base', r.stdout)
+
+
+class TestEmbedPasSurReplica(unittest.TestCase):
+    """`install systemd` ne pose pas le timer d'embed sur une instance
+    `replica-nomad` : les vecteurs appartiennent au master, et la base refuse
+    au laptop d'écrire `embeddings` [BRAIN-078]. Et `status` ne voit pas le
+    timer absent comme une unité d'une autre version.
+
+    Un faux brain : un dépôt git jetable, les scripts copiés, une config locale
+    qui déclare la posture — comme sur le laptop."""
+
+    def setUp(self):
+        if not (BRAIN_ROOT_PATH / 'scripts' / 'posture-gate-check.sh').exists():
+            self.skipTest('posture-gate-check.sh absent — script d’instance')
+        self.tmp = Path(tempfile.mkdtemp(prefix='embed-replica-'))
+        self.brain = self.tmp / 'brain'
+        (self.brain / 'scripts' / 'lib').mkdir(parents=True)
+        (self.brain / 'brain-engine').mkdir()
+        for f in ('brain-engine.sh', 'posture-gate-check.sh', 'lib/python.sh'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.brain / 'scripts' / f)
+        for f in ('server.py', 'mcp_server.py'):
+            (self.brain / 'brain-engine' / f).write_text('# faux\n')
+        (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+        subprocess.run(['git', 'init', '-q'], cwd=self.brain, check=True)
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        (self.bin / 'systemctl').write_text('#!/bin/sh\nexit 0\n')
+        (self.bin / 'systemctl').chmod(0o755)
+        self.unites = self.tmp / 'config' / 'systemd' / 'user'
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _posture(self, posture):
+        (self.brain / 'brain-compose.local.yml').write_text(
+            f'instances:\n  essai:\n    active: true\n    posture: {posture}\n    mode: prod\n')
+
+    def _lancer(self, commande):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(PATH=f"{self.bin}:{env['PATH']}", XDG_CONFIG_HOME=str(self.tmp / 'config'),
+                   BRAIN_PORT='17797', BRAIN_MCP_PORT='17796')
+        r = subprocess.run(['bash', str(self.brain / 'scripts' / 'brain-engine.sh'), *commande.split()],
+                           env=env, capture_output=True, text=True, timeout=60)
+        return r.stdout + r.stderr
+
+    def test_sur_replica_pas_de_timer_et_status_ne_s_en_plaint_pas(self):
+        self._posture('replica-nomad')
+        sortie = self._lancer('install systemd')
+        self.assertTrue((self.unites / 'brain-engine.service').exists(), sortie)
+        self.assertFalse((self.unites / 'brain-embed.timer').exists(), sortie)
+        self.assertIn('replica-nomad', sortie)
+        self.assertIn('unités : celles de cette version', self._lancer('status'))
+
+    def test_le_temoin_master_a_son_timer(self):
+        self._posture('master')
+        self._lancer('install systemd')
+        self.assertTrue((self.unites / 'brain-embed.timer').exists())
+
+
+class TestSuffixeDeMachine(unittest.TestCase):
+    """Sur une instance `replica-nomad`, un claim s'ouvre sous un identifiant
+    qui porte `.<machine>` — tranché le 29/09 [BRAIN-078]. Le script
+    refuse sans, et donne l'identifiant à utiliser.
+
+    Un faux brain : dépôt jetable, scripts copiés, config locale qui déclare la
+    posture. Le moteur visé est un port MORT et la base un SQLite jetable : le
+    cas accepté ne peut rien ouvrir nulle part."""
+
+    def setUp(self):
+        if not (BRAIN_ROOT_PATH / 'scripts' / 'posture-gate-check.sh').exists():
+            self.skipTest('posture-gate-check.sh absent — script d’instance')
+        self.tmp = Path(tempfile.mkdtemp(prefix='suffixe-machine-'))
+        self.brain = self.tmp / 'brain'
+        (self.brain / 'scripts' / 'lib').mkdir(parents=True)
+        (self.brain / 'brain-engine').mkdir()
+        for f in ('bsi-claim.sh', 'posture-gate-check.sh', 'lib/python.sh'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.brain / 'scripts' / f)
+        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'db.py', self.brain / 'brain-engine' / 'db.py')
+        (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+        subprocess.run(['git', 'init', '-q'], cwd=self.brain, check=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _config(self, posture, machine='laptop'):
+        (self.brain / 'brain-compose.local.yml').write_text(
+            f'instances:\n  essai:\n    active: true\n    posture: {posture}\n'
+            + (f'machine: {machine}\n' if machine else ''))
+
+    def _ouvrir(self, sess_id):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_PORT='1', BRAIN_DB_BACKEND='sqlite',
+                   BRAIN_DB_PATH=str(self.tmp / 'jetable.db'))
+        r = subprocess.run(['bash', str(self.brain / 'scripts' / 'bsi-claim.sh'), 'open', sess_id,
+                            '--type', 'work', '--scope', 'work/essai'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_sur_replica_sans_suffixe_refuse_et_donne_l_identifiant(self):
+        self._config('replica-nomad')
+        code, sortie = self._ouvrir('sess-20260929-1330-work-essai')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('open sess-20260929-1330-work-essai.laptop', sortie)
+
+    def test_sur_replica_avec_suffixe_le_garde_laisse_passer(self):
+        self._config('replica-nomad')
+        _, sortie = self._ouvrir('sess-20260929-1330-work-essai.laptop')
+        self.assertNotIn("l'identifiant porte", sortie)
+        self.assertIn('repli', sortie)   # arrivé au repli local : le garde est passé
+
+    def test_sur_la_prod_rien_ne_change(self):
+        self._config('master', machine='desktop')
+        _, sortie = self._ouvrir('sess-20260929-1330-work-essai')
+        self.assertNotIn("l'identifiant porte", sortie)
+
+
+class TestDoltBrancheRafraichir(unittest.TestCase):
+    """La branche du laptop reçoit `main`, et chaque machine garde ses lignes
+    [BRAIN-078]. Une vraie base Dolt au vrai schéma, sur un port libre ; la
+    branche posée par dolt-laptop.sh ; un faux brain qui se dit `laptop`."""
+
+    def setUp(self):
+        for f in ('dolt-branche-rafraichir.sh', 'dolt-laptop.sh'):
+            if not (BRAIN_ROOT_PATH / 'scripts' / f).exists():
+                self.skipTest(f'{f} absent — script d’instance')
+        if not shutil.which('dolt'):
+            self.skipTest('dolt absent')
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
+        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-rafraichir-'))
+        base = self.tmp / 'brain-dolt'
+        base.mkdir()
+        env = {**os.environ, 'HOME': str(self.tmp)}
+        run = lambda *a, **k: subprocess.run(a, cwd=base, env=env, capture_output=True, text=True, check=True, **k)
+        run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
+        run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
+        run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
+        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+                                        cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
+            except OSError:
+                time.sleep(0.1)
+        # Le faux brain du laptop : ses scripts, db.py, et `machine: laptop`.
+        self.brain = self.tmp / 'brain'
+        (self.brain / 'scripts' / 'lib').mkdir(parents=True)
+        (self.brain / 'brain-engine').mkdir()
+        for f in ('dolt-branche-rafraichir.sh', 'dolt-laptop.sh', 'lib/python.sh'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.brain / 'scripts' / f)
+        for f in ('db.py', 'modules.yml'):
+            shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
+        (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+        (self.brain / 'brain-compose.local.yml').write_text('machine: laptop\n')
+        r = self._lancer('dolt-laptop.sh', '--appliquer', laptop=False)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def tearDown(self):
+        if hasattr(self, 'serveur'):
+            self.serveur.terminate(); self.serveur.wait(10)
+        if hasattr(self, 'tmp'):
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lancer(self, script, *args, laptop=True, chemin=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_DOLT_PORT=str(self.port), BRAIN_ROOT=str(self.brain))
+        if laptop:
+            env.update(BRAIN_DB_BACKEND='dolt', BRAIN_DOLT_USER='laptop', BRAIN_DOLT_DB='brain-dolt/laptop')
+        return subprocess.run(['bash', str(chemin or self.brain / 'scripts' / script), *args],
+                              env=env, capture_output=True, text=True, timeout=120)
+
+    def _sql(self, utilisateur, base, *requetes):
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user=utilisateur, password='',
+                            database=base, autocommit=True)
+        with c.cursor() as cur:
+            for r in requetes:
+                cur.execute(r)
+            return cur.fetchall()
+
+    def _pire_cas(self):
+        ins = "INSERT INTO claims (sess_id,type,scope,opened_at) VALUES ('{}','work','work/x',UTC_TIMESTAMP())"
+        self._sql('root', 'brain-dolt', ins.format('sess-a-fixe'), ins.format('sess-b.laptop'),
+                  "CALL DOLT_COMMIT('-Am','base')")
+        self.assertEqual(self._lancer('dolt-branche-rafraichir.sh').returncode, 0)
+        # chaque côté modifie LES DEUX lignes ; le fixe ajoute un claim ; le
+        # laptop laisse une écriture non commitée
+        self._sql('root', 'brain-dolt', "UPDATE claims SET status='closed'",
+                  ins.format('sess-c-fixe'), "CALL DOLT_COMMIT('-Am','le fixe ferme tout')")
+        self._sql('laptop', 'brain-dolt/laptop', "UPDATE claims SET status='paused'",
+                  "CALL DOLT_ADD('claims')", "CALL DOLT_COMMIT('-m','le laptop met en pause')",
+                  ins.format('sess-d.laptop'))
+
+    def _etat(self):
+        return dict(self._sql('root', 'brain-dolt/laptop', "SELECT sess_id, status FROM claims"))
+
+    def test_chaque_machine_garde_ses_lignes(self):
+        self._pire_cas()
+        r = self._lancer('dolt-branche-rafraichir.sh')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._etat(), {'sess-a-fixe': 'closed', 'sess-b.laptop': 'paused',
+                                        'sess-c-fixe': 'open', 'sess-d.laptop': 'open'})
+        principal = dict(self._sql('root', 'brain-dolt', "SELECT sess_id, status FROM claims"))
+        self.assertNotIn('sess-d.laptop', principal, '`main` ne reçoit rien du laptop')
+        self.assertIn('0 commit(s)', self._lancer('dolt-branche-rafraichir.sh').stdout)
+
+    def test_a_blanc_ne_touche_rien(self):
+        self._pire_cas()
+        avant = self._etat()
+        r = self._lancer('dolt-branche-rafraichir.sh', '--a-blanc')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('pas encore reçus', r.stdout)
+        self.assertEqual(self._etat(), avant)
+
+    def test_sans_la_regle_du_proprietaire_la_ligne_du_laptop_se_perd(self):
+        # Le mutant donne tout à `main` : la ligne du laptop prend « closed ».
+        # Le test ci-dessus le verrait — la règle est ce qui la protège.
+        texte = (self.brain / 'scripts' / 'dolt-branche-rafraichir.sh').read_text()
+        self.assertEqual(texte.count('        if col:\n'), 1)
+        mutant = self.brain / 'scripts' / 'mutant.sh'
+        mutant.write_text(texte.replace('        if col:\n', '        if False:\n'))
+        self._pire_cas()
+        self.assertEqual(self._lancer(None, chemin=mutant).returncode, 0)
+        self.assertEqual(self._etat()['sess-b.laptop'], 'closed')
+
+
+class TestFixeVoitLeLaptop(unittest.TestCase):
+    """Le fixe voit les sessions que le laptop a ouvertes sur SA branche, et
+    chaque machine fait foi pour ses lignes [BRAIN-078]. Vraie base Dolt au
+    vrai schéma, sur un port libre ; le VRAI db.py et le vrai bsi-query.sh."""
+
+    def setUp(self):
+        if not (BRAIN_ROOT_PATH / 'scripts' / 'dolt-laptop.sh').exists():
+            self.skipTest('dolt-laptop.sh absent — script d’instance')
+        if not shutil.which('dolt'):
+            self.skipTest('dolt absent')
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
+        self.tmp = Path(tempfile.mkdtemp(prefix='fixe-voit-laptop-'))
+        base = self.tmp / 'brain-dolt'
+        base.mkdir()
+        env = {**os.environ, 'HOME': str(self.tmp)}
+        run = lambda *a, **k: subprocess.run(a, cwd=base, env=env, capture_output=True, text=True, check=True, **k)
+        run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
+        run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
+        run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
+        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+                                        cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
+            except OSError:
+                time.sleep(0.1)
+        r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'dolt-laptop.sh'), '--appliquer'],
+                           env=self._env(), capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        ins = "INSERT INTO claims (sess_id,type,scope,status,opened_at) VALUES ('{}','work','work/{}','{}',UTC_TIMESTAMP())"
+        # main : un claim ouvert du fixe, un fermé, et la copie PÉRIMÉE d'un
+        # claim du laptop, restée « open » après une ancienne fusion
+        self._sql('root', 'brain-dolt', ins.format('sess-f1', 'a', 'open'), ins.format('sess-f2', 'b', 'closed'),
+                  ins.format('sess-l2.laptop', 'c', 'open'), "CALL DOLT_COMMIT('-Am','main')")
+        # la branche : rafraîchie, puis le laptop ouvre l1 et FERME l2
+        self._sql('laptop', 'brain-dolt/laptop', "CALL DOLT_MERGE('main')",
+                  ins.format('sess-l1.laptop', 'd', 'open'),
+                  "UPDATE claims SET status='closed' WHERE sess_id='sess-l2.laptop'",
+                  "CALL DOLT_ADD('claims')", "CALL DOLT_COMMIT('-m','laptop')")
+
+    def tearDown(self):
+        if hasattr(self, 'serveur'):
+            self.serveur.terminate(); self.serveur.wait(10)
+        if hasattr(self, 'tmp'):
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _env(self, base='brain-dolt', user='root'):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_DB_BACKEND='dolt', BRAIN_DOLT_PORT=str(self.port),
+                   BRAIN_DOLT_DB=base, BRAIN_DOLT_USER=user)
+        return env
+
+    def _sql(self, utilisateur, base, *requetes):
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user=utilisateur, password='',
+                            database=base, autocommit=True)
+        with c.cursor() as cur:
+            for r in requetes:
+                cur.execute(r)
+
+    def _reseau(self, base='brain-dolt', user='root'):
+        code = ('import sys, json; sys.path.insert(0, "brain-engine"); import db; '
+                'print(json.dumps({"branches": db.branches_satellites(), "ouverts": sorted('
+                '[r["sess_id"], r["_branche"]] for r in db.claims_du_reseau("status = \'open\'", colonnes="sess_id"))}))')
+        r = subprocess.run([str(BRAIN_ROOT_PATH / 'brain-engine' / '.venv' / 'bin' / 'python3'), '-c', code],
+                           cwd=BRAIN_ROOT_PATH, env=self._env(base, user), capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def test_le_reseau_montre_chaque_machine_par_sa_source(self):
+        vu = self._reseau()
+        self.assertEqual(vu['branches'], ['laptop'])
+        # l2 : fermé sur SA branche — la copie périmée de main ne le rouvre pas
+        self.assertEqual(vu['ouverts'], [['sess-f1', None], ['sess-l1.laptop', 'laptop']])
+
+    def test_bsi_query_open_voit_le_laptop(self):
+        r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'bsi-query.sh'), 'open'],
+                           env=self._env(), capture_output=True, text=True, timeout=60)
+        self.assertIn('sess-l1.laptop', r.stdout, r.stderr)
+        self.assertIn('sess-f1', r.stdout)
+        self.assertNotIn('sess-l2.laptop', r.stdout)
+        n = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'bsi-query.sh'), 'count-open'],
+                           env=self._env(), capture_output=True, text=True, timeout=60)
+        self.assertEqual(n.stdout.strip().splitlines()[-1], '2')
+
+    def test_depuis_la_branche_pas_de_satellites(self):
+        self.assertEqual(self._reseau('brain-dolt/laptop', 'laptop')['branches'], [])
+
+    def _noyau_du_laptop(self):
+        self._sql('laptop', 'brain-dolt/laptop',
+                  "INSERT INTO claims (sess_id,type,scope,zone,status,opened_at) VALUES "
+                  "('sess-k.laptop','brain','brain','kernel','open',UTC_TIMESTAMP())",
+                  "CALL DOLT_ADD('claims')", "CALL DOLT_COMMIT('-m','noyau ouvert sur le laptop')")
+
+    def test_le_verrou_du_fixe_voit_le_noyau_du_laptop(self):
+        # Deux machines ouvraient le même scope noyau : chacune ne regardait
+        # que sa base. La route construit son BSI avec `db.ouverts_du_reseau`.
+        self._noyau_du_laptop()
+        code = ('import sys; sys.path.insert(0, "brain-engine"); import db; from core.bsi import BSI; '
+                'c = BSI(db.depot(), ouverts_du_reseau=db.ouverts_du_reseau).conflit("brain/kernel", zone="kernel"); '
+                'print(c.sess_id if c else "LIBRE")')
+        r = subprocess.run([str(BRAIN_ROOT_PATH / 'brain-engine' / '.venv' / 'bin' / 'python3'), '-c', code],
+                           cwd=BRAIN_ROOT_PATH, env=self._env(), capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.stdout.strip().splitlines()[-1], 'sess-k.laptop', r.stderr)
+
+    def test_le_repli_de_bsi_claim_refuse_aussi(self):
+        # Moteur injoignable (port mort) : le repli local ouvre lui-même — avec
+        # le même verrou du réseau.
+        self._noyau_du_laptop()
+        env = self._env()
+        env['BRAIN_PORT'] = '1'
+        r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'bsi-claim.sh'), 'open',
+                            'sess-20260929-1600-brain-kernel', '--type', 'brain', '--scope', 'brain/kernel',
+                            '--zone', 'kernel'], env=env, capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('SCOPE CONFLICT', r.stdout + r.stderr)
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user='root', password='', database='brain-dolt')
+        with c.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM claims WHERE sess_id='sess-20260929-1600-brain-kernel'")
+            self.assertEqual(cur.fetchone()[0], 0, "rien n'a été ouvert")
+
+
+class TestInstallSelonLaBase(unittest.TestCase):
+    """Le moteur attend le service de SA base, et `install systemd` n'avertit
+    que là où une base locale manquerait de service.
+
+    Sur le laptop, la base est celle du fixe, par un tunnel [BRAIN-078] :
+    l'unité attendait un dolt-server qui n'existe pas, ignorait le tunnel, et
+    l'installation avertissait « pas de dolt-server.service » — à tort. Un faux
+    brain par cas ; un faux `systemctl` qui ne connaît aucune unité."""
+
+    def _installer(self, base_locale=False, tunnel=False):
+        tmp = Path(tempfile.mkdtemp(prefix='install-base-'))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        b = tmp / 'brain'
+        (b / 'scripts' / 'lib').mkdir(parents=True)
+        (b / 'brain-engine').mkdir()
+        for f in ('brain-engine.sh', 'lib/python.sh'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, b / 'scripts' / f)
+        for f in ('server.py', 'mcp_server.py'):
+            (b / 'brain-engine' / f).write_text('# faux\n')
+        (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+        subprocess.run(['git', 'init', '-q'], cwd=b, check=True)
+        if base_locale:
+            (b / 'brain-dolt' / '.dolt').mkdir(parents=True)
+        unites = tmp / 'config' / 'systemd' / 'user'
+        unites.mkdir(parents=True)
+        if tunnel:
+            (unites / 'brain-tunnel-dolt.service').write_text('[Service]\nExecStart=/bin/true\n')
+        (tmp / 'bin').mkdir()
+        (tmp / 'bin' / 'systemctl').write_text('#!/bin/sh\n[ "$2" = cat ] && exit 1\nexit 0\n')
+        (tmp / 'bin' / 'systemctl').chmod(0o755)
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(PATH=f"{tmp / 'bin'}:{env['PATH']}", XDG_CONFIG_HOME=str(tmp / 'config'),
+                   BRAIN_MODE='prod', BRAIN_PORT='17793', BRAIN_MCP_PORT='17792')
+        r = subprocess.run(['bash', str(b / 'scripts' / 'brain-engine.sh'), 'install', 'systemd'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        return r.stdout + r.stderr, (unites / 'brain-engine.service').read_text()
+
+    def test_base_locale_sans_service_avertit(self):
+        sortie, unite = self._installer(base_locale=True)
+        self.assertIn('pas de dolt-server.service', sortie)
+        self.assertIn('After=dolt-server.service', unite)
+
+    def test_base_par_tunnel_le_moteur_l_attend_sans_avertir(self):
+        sortie, unite = self._installer(tunnel=True)
+        self.assertNotIn('pas de dolt-server.service', sortie)
+        self.assertIn('brain-tunnel-dolt.service', sortie)
+        self.assertIn('After=brain-tunnel-dolt.service', unite)
+        self.assertNotIn('dolt-server', unite)
+
+    def test_sans_base_locale_ni_tunnel_aucune_dependance(self):
+        sortie, unite = self._installer()
+        self.assertNotIn('pas de dolt-server.service', sortie)
+        self.assertNotIn('Wants=', unite)
+
+
+class TestLaptopNomadeRapatrier(unittest.TestCase):
+    """Au retour, les commits faits hors du bureau rejoignent la branche du
+    laptop sur le fixe — et rien n'avance si elle a bougé entre-temps
+    [BRAIN-078]. Un petit dépôt joue le fixe (servi sur un port libre) ; un
+    clone superficiel de sa branche joue la photo du laptop."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'laptop-nomade.sh'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('laptop-nomade.sh absent — script d’instance')
+        if not shutil.which('dolt'):
+            self.skipTest('dolt absent')
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
+        self.tmp = Path(tempfile.mkdtemp(prefix='laptop-nomade-'))
+        self.env = {**os.environ, 'HOME': str(self.tmp)}
+        fixe = self.tmp / 'fixe'
+        fixe.mkdir()
+        self._run(fixe, 'dolt', 'init', '--name', 'fixe', '--email', 'fixe@local')
+        self._run(fixe, 'dolt', 'sql', '-q',
+                  "CREATE TABLE claims (sess_id varchar(64) primary key, status varchar(16)); "
+                  "INSERT INTO claims VALUES ('sess-a','open'); CALL DOLT_ADD('-A'); "
+                  "CALL DOLT_COMMIT('-m','un'); CALL DOLT_BRANCH('laptop')")
+        # la photo : un clone superficiel de la branche, par un remote fichier
+        remote = self.tmp / 'remote'
+        remote.mkdir()
+        self._run(fixe, 'dolt', 'remote', 'add', 'r', f'file://{remote}')
+        self._run(fixe, 'dolt', 'push', 'r', 'laptop')
+        self._run(self.tmp, 'dolt', 'clone', '--depth', '1', '--branch', 'laptop', f'file://{remote}', 'photo')
+        photo = self.tmp / 'photo'
+        self._run(photo, 'dolt', 'config', '--local', '--add', 'user.name', 'laptop')
+        self._run(photo, 'dolt', 'config', '--local', '--add', 'user.email', 'laptop@nomade')
+        self._run(photo, 'dolt', 'sql', '-q', "INSERT INTO claims VALUES ('sess-train.laptop','open')")
+        self._run(photo, 'dolt', 'commit', '-Am', 'ouvert hors ligne')
+        self._run(photo, 'dolt', 'sql', '-q', "UPDATE claims SET status='closed' WHERE sess_id='sess-train.laptop'")
+        self._run(photo, 'dolt', 'commit', '-Am', 'fermé hors ligne')
+        self._run(photo, 'dolt', 'gc')
+        self.noms = photo / '.dolt' / 'noms'
+        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+                                        cwd=fixe, env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(100):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
+            except OSError:
+                time.sleep(0.1)
+
+    def tearDown(self):
+        if hasattr(self, 'serveur'):
+            self.serveur.terminate(); self.serveur.wait(10)
+        if hasattr(self, 'tmp'):
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, cwd, *cmd):
+        return subprocess.run(cmd, cwd=cwd, env=self.env, capture_output=True, text=True, check=True)
+
+    def _sql(self, base, *requetes):
+        import pymysql
+        c = pymysql.connect(host='127.0.0.1', port=self.port, user='root', password='', database=base, autocommit=True)
+        with c.cursor() as cur:
+            for r in requetes:
+                cur.execute(r)
+            return cur.fetchall()
+
+    def _rapatrier(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(BRAIN_DOLT_PORT=str(self.port), BRAIN_DOLT_DB='fixe')
+        return subprocess.run(['bash', str(self.SCRIPT), 'rapatrier', str(self.noms)], env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def test_les_commits_hors_ligne_rejoignent_la_branche(self):
+        r = self._rapatrier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('avancée de 2 commit(s)', r.stdout)
+        self.assertEqual(self._sql('fixe/laptop', "SELECT status FROM claims WHERE sess_id='sess-train.laptop'"),
+                         (('closed',),))
+        signes = self._sql('fixe/laptop', "SELECT committer FROM dolt_log LIMIT 2")
+        self.assertEqual({c for (c,) in signes}, {'laptop'})
+        self.assertEqual(self._sql('fixe', "SELECT COUNT(*) FROM dolt_remotes WHERE name='nomade'"), ((0,),),
+                         'le remote de passage est retiré')
+
+    def test_si_la_branche_a_bouge_rien_n_avance(self):
+        self._sql('fixe/laptop', "INSERT INTO claims VALUES ('sess-pendant','open')",
+                  "CALL DOLT_COMMIT('-Am','écrit sur la branche pendant l absence')")
+        avant = self._sql('fixe/laptop', "SELECT commit_hash FROM dolt_log LIMIT 1")
+        r = self._rapatrier()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('a bougé pendant l', r.stderr)
+        self.assertEqual(self._sql('fixe/laptop', "SELECT commit_hash FROM dolt_log LIMIT 1"), avant)
+
+
+class TestWikiChangelog(unittest.TestCase):
+    """`wiki/CHANGELOG.md` se génère depuis le `changelog:` de `brain-compose.yml`.
+    La copie écrite à la main s'était arrêtée à la 2.0.0 pendant que treize
+    versions passaient — et une application l'affichait (audit du wiki, 29/09).
+    Script d'instance : le wiki ne part pas avec le gabarit, ni ce script."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'wiki-changelog.py'
+    COMPOSE = ('version: "2.3.6"\nchangelog:\n'
+               '  - version: "2.1.0"\n    date: "2026-04-07"\n    notes: "avant le realignement"\n'
+               '  - version: "2.0.0"\n    date: "2026-04-24"\n    notes: "realignement"\n'
+               '  - version: "2.3.6"\n    date: "2026-09-28"\n    notes: "le timer"\n')
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('wiki-changelog.py absent — script d’instance')
+        self._tmp = tempfile.TemporaryDirectory()
+        self.brain = Path(self._tmp.name)
+        (self.brain / 'brain-compose.yml').write_text(self.COMPOSE)
+        (self.brain / 'wiki').mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, *args):
+        return subprocess.run([sys.executable, str(self.SCRIPT), '--brain', str(self.brain), *args],
+                              capture_output=True, text=True, timeout=30)
+
+    def test_la_plus_recente_en_haut_sans_renumeroter(self):
+        page = self._run().stdout
+        a, b, c = (page.index(f'## {v} — ') for v in ('2.3.6', '2.0.0', '2.1.0'))
+        self.assertLess(a, b)
+        self.assertLess(b, c, "l'ordre écrit, renversé — pas le tri des numéros")
+        self.assertIn('Version courante : **2.3.6**', page)
+        self.assertIn('ne pas éditer', page)
+
+    def test_check_rougit_puis_ecrire_le_remet_d_accord(self):
+        (self.brain / 'wiki' / 'CHANGELOG.md').write_text('# CHANGELOG\n\n## 2.0.0\n')
+        self.assertEqual(self._run('--check').returncode, 1)
+        self.assertEqual(self._run('--ecrire').returncode, 0)
+        self.assertEqual(self._run('--check').returncode, 0)
+        with open(self.brain / 'brain-compose.yml', 'a') as f:
+            f.write('  - version: "2.3.7"\n    date: "2026-09-30"\n    notes: "suite"\n')
+        self.assertEqual(self._run('--check').returncode, 1, "une version ajoutée se voit")
+
+    def test_sans_wiki_le_check_s_abstient(self):
+        (self.brain / 'wiki').rmdir()
+        r = self._run('--check')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('SKIP', r.stdout)
+
+    def test_le_vrai_brain_compose_se_rend(self):
+        r = subprocess.run([sys.executable, str(self.SCRIPT), '--brain', str(BRAIN_ROOT_PATH)],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('## 2.3.6 — ', r.stdout)
+
+
+class TestRegistresVeille(unittest.TestCase):
+    """La veille des registres ne confond jamais « à jour » et « rien vu ».
+
+    Les outils ne rendent que 0 ou 1. Or `backlog_issues` sort en 0 avec `SKIP`
+    quand la forge est injoignable, et une base injoignable fait sortir une
+    trace Python en 1, comme un écart. Joué contre de FAUX outils : aucun
+    registre réel n'est lu, l'état s'écrit dans un dossier jetable."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'registres-veille.py'
+    OUTILS = ('project_registry', 'agent_registry', 'backlog_issues', 'index_purge')
+    # Ce que chaque faux outil fait, selon la variable FAUX_<OUTIL>.
+    FAUX = (
+        'import os, sys\n'
+        'nom = os.path.basename(sys.argv[0])[:-3].upper()\n'
+        'cas = os.environ.get("FAUX_" + nom, "ok")\n'
+        'if cas == "ok": print("✅ aucun écart"); sys.exit(0)\n'
+        'if cas == "ecart": print("❌ 2 écart(s)"); sys.exit(1)\n'
+        'if cas == "skip": print("\\n  SKIP forge injoignable : URLError\\n"); sys.exit(0)\n'
+        'if cas == "trace": raise RuntimeError("base injoignable")\n'
+        'sys.exit(3)\n'
+    )
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('registres-veille.py absent — script d’instance')
+        self.tmp = Path(tempfile.mkdtemp())
+        outils = self.tmp / 'myeline' / 'tools'
+        outils.mkdir(parents=True)
+        for o in self.OUTILS:
+            (outils / f'{o}.py').write_text(self.FAUX, encoding='utf-8')
+        self.etat = self.tmp / 'etat' / 'veille.json'
+        self.env = dict(os.environ, BRAIN_ROOT=str(self.tmp), MYELINE_ROOT=str(self.tmp / 'myeline'),
+                        BRAIN_REGISTRES_ETAT=str(self.etat))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, *args, **cas):
+        env = dict(self.env, **{f'FAUX_{k.upper()}': v for k, v in cas.items()})
+        return subprocess.run([sys.executable, str(self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def _etats(self):
+        return {r['outil']: r['etat'] for r in json.loads(self.etat.read_text())['resultats']}
+
+    def test_tout_a_jour(self):
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('4/4 à jour', r.stdout)
+        self.assertEqual(set(self._etats().values()), {'à jour'})
+
+    def test_un_ecart_se_dit_avec_son_geste_sans_rougir_le_service(self):
+        r = self._run(project_registry='ecart')
+        self.assertEqual(r.returncode, 0)          # un écart n'est pas une panne du timer
+        self.assertEqual(self._etats()['project_registry'], 'écart')
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn('--emit --apply', lu.stdout)
+
+    def test_skip_n_est_pas_a_jour(self):
+        # Le message exact de `backlog_issues` quand la forge ne répond pas.
+        self._run(backlog_issues='skip')
+        self.assertEqual(self._etats()['backlog_issues'], 'non mesuré')
+        self.assertEqual(self._run('--lire').returncode, 1)
+
+    def test_une_trace_est_une_panne_pas_un_ecart(self):
+        r = self._run(index_purge='trace')
+        self.assertEqual(self._etats()['index_purge'], 'en panne')
+        self.assertEqual(r.returncode, 1)          # la veille n'a pas pu mesurer
+
+    def test_un_code_inconnu_est_une_panne(self):
+        self._run(agent_registry='autre')
+        self.assertEqual(self._etats()['agent_registry'], 'en panne')
+
+    def test_un_outil_absent_est_une_panne(self):
+        (self.tmp / 'myeline' / 'tools' / 'index_purge.py').unlink()
+        r = self._run()
+        self.assertEqual(self._etats()['index_purge'], 'en panne')
+        self.assertEqual(r.returncode, 1)
+
+    def test_sans_etat_le_silence_se_dit(self):
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn('jamais tourné', lu.stdout)
+
+    def test_un_etat_perime_se_dit(self):
+        self._run()
+        donnees = json.loads(self.etat.read_text())
+        donnees['date'] = '2026-01-01T00:00:00Z'
+        self.etat.write_text(json.dumps(donnees))
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn('ne tourne plus', lu.stdout)
+
+    def test_un_etat_illisible_se_dit(self):
+        self.etat.parent.mkdir(parents=True)
+        self.etat.write_text('{pas du json')
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn('illisible', lu.stdout)
+
+    def test_la_veille_n_ecrit_que_son_etat(self):
+        avant = sorted(p.relative_to(self.tmp) for p in self.tmp.rglob('*'))
+        self._run(project_registry='ecart')
+        apres = sorted(p.relative_to(self.tmp) for p in self.tmp.rglob('*'))
+        nouveaux = [str(p) for p in apres if p not in avant]
+        self.assertEqual(nouveaux, ['etat', 'etat/veille.json'])
+
+
+class TestWsFermeAuReseau(unittest.TestCase):
+    """`/ws` rediffusait les événements BSI à tout appareil du réseau.
+
+    Identifiants de session, scopes, chemins verrouillés, corps des `PATCH` de
+    claims : mesuré le 30/09 sur le fixe, qui a ses jetons et écoute sur
+    0.0.0.0. La boucle locale passe ; le réseau montre un jeton."""
+
+    DISTANT = ('192.0.2.1', 50000)
+    JETONS = {'j-owner': 'owner'}
+
+    def _connecter(self, client, headers=None):
+        from starlette.websockets import WebSocketDisconnect
+        try:
+            with TestClient(srv.app, client=client).websocket_connect('/ws', headers=headers or {}):
+                return 'acceptée'
+        except WebSocketDisconnect as e:
+            return f'fermée {e.code}'
+
+    def test_le_reseau_sans_jeton_est_refuse(self):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            self.assertEqual(self._connecter(self.DISTANT), 'fermée 1008')
+
+    def test_le_reseau_avec_un_jeton_passe(self):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            self.assertEqual(self._connecter(self.DISTANT, {'authorization': 'Bearer j-owner'}), 'acceptée')
+
+    def test_un_jeton_faux_est_refuse(self):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            self.assertEqual(self._connecter(self.DISTANT, {'authorization': 'Bearer faux'}), 'fermée 1008')
+
+    def test_la_boucle_locale_passe_sans_jeton(self):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            self.assertEqual(self._connecter(LOCAL), 'acceptée')
+
+    def test_un_proxy_qui_relaie_n_est_pas_local(self):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            self.assertEqual(self._connecter(LOCAL, {'x-forwarded-for': '192.0.2.9'}), 'fermée 1008')
+
+
+class TestGateRetiree(unittest.TestCase):
+    """`POST /gate/…/approve` est retirée avec la machinerie archivée."""
+
+    def test_la_route_n_existe_plus(self):
+        chemins = {getattr(r, 'path', '') for r in srv.app.routes}
+        self.assertFalse([c for c in chemins if c.startswith('/gate')], chemins)
+
+
+class TestMajDisponible(unittest.TestCase):
+    """Le boot dit qu'une version plus récente existe — et laisse chacun libre.
+
+    Joué contre un VRAI amont git jetable (des tags fabriqués) et un fork
+    jetable qui le déclare en `upstream` : aucun réseau, aucun dépôt réel."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'maj-disponible.py'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('maj-disponible.py absent')
+        self.tmp = Path(tempfile.mkdtemp())
+        self.amont = self.tmp / 'amont.git'
+        self.fork = self.tmp / 'fork'
+        self.etat = self.tmp / 'etat' / 'maj.json'
+        g = lambda *a, cwd=None: subprocess.run(['git', *a], cwd=cwd, check=True, capture_output=True)
+        g('init', '-q', '--bare', str(self.amont))
+        self.fork.mkdir()
+        g('init', '-q', cwd=self.fork)
+        (self.fork / 'brain-compose.yml').write_text('# gabarit\nversion: "2.4.0"\n')
+        g('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.', cwd=self.fork)
+        g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'v', cwd=self.fork)
+        self.g = g
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _tags(self, *tags):
+        for t in tags:
+            self.g('tag', t, cwd=self.fork)
+        self.g('push', '-q', str(self.amont), '--tags', cwd=self.fork)
+
+    def _declarer_amont(self, url=None):
+        self.g('remote', 'add', 'upstream', url or str(self.amont), cwd=self.fork)
+
+    def _run(self, *args, env_extra=None):
+        env = dict(os.environ, BRAIN_ROOT=str(self.fork), BRAIN_MAJ_ETAT=str(self.etat), **(env_extra or {}))
+        return subprocess.run([sys.executable, str(self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def test_une_version_plus_recente_se_dit_en_une_ligne(self):
+        self._tags('v2.3.6', 'v2.4.0', 'v2.4.1', 'programme/v2.9.9')
+        self._declarer_amont()
+        self.assertEqual(self._run().returncode, 0)
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertEqual(len(lu.stdout.strip().splitlines()), 1)
+        self.assertIn('v2.4.1 est disponible', lu.stdout)   # pas programme/v2.9.9
+        self.assertIn('tu es en 2.4.0', lu.stdout)
+
+    def test_a_jour_rien_ne_s_affiche(self):
+        self._tags('v2.3.6', 'v2.4.0')
+        self._declarer_amont()
+        self._run()
+        lu = self._run('--lire')
+        self.assertEqual((lu.returncode, lu.stdout), (0, ''))
+
+    def test_la_comparaison_est_numerique(self):
+        self._tags('v2.9.0', 'v2.10.0')
+        self._declarer_amont()
+        self._run()
+        self.assertIn('v2.10.0 est disponible', self._run('--lire').stdout)
+
+    def test_sans_amont_la_source_ne_voit_rien(self):
+        r = self._run()
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('pas de remote', r.stdout)
+        lu = self._run('--lire')
+        self.assertEqual((lu.returncode, lu.stdout), (0, ''))
+
+    def test_un_amont_injoignable_ne_passe_pas_pour_a_jour(self):
+        self._declarer_amont(str(self.tmp / 'nulle-part.git'))
+        r = self._run()
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(json.loads(self.etat.read_text())['resultat'], 'injoignable')
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn("jamais répondu", lu.stdout)
+
+    def test_un_echec_garde_la_date_du_dernier_succes(self):
+        self._tags('v2.4.0')
+        self._declarer_amont()
+        self._run()
+        donnees = json.loads(self.etat.read_text())
+        donnees['succes'] = '2026-01-01T00:00:00Z'      # un vieux succès
+        self.etat.write_text(json.dumps(donnees))
+        self.g('remote', 'set-url', 'upstream', str(self.tmp / 'nulle-part.git'), cwd=self.fork)
+        self._run()
+        self.assertEqual(json.loads(self.etat.read_text())['succes'], '2026-01-01T00:00:00Z')
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1)
+        self.assertIn('depuis le 01/01', lu.stdout)
+
+    def test_un_echec_recent_ne_dit_rien(self):
+        self._tags('v2.4.0')
+        self._declarer_amont()
+        self._run()
+        self.g('remote', 'set-url', 'upstream', str(self.tmp / 'nulle-part.git'), cwd=self.fork)
+        self._run()
+        lu = self._run('--lire')
+        self.assertEqual((lu.returncode, lu.stdout), (0, ''))      # pas d'insistance
+
+    def test_lire_n_appelle_ni_git_ni_le_reseau(self):
+        self._tags('v2.4.0', 'v2.4.1')
+        self._declarer_amont()
+        self._run()
+        lu = self._run('--lire', env_extra={'PATH': str(self.tmp / 'vide')})   # git introuvable
+        self.assertEqual(lu.returncode, 1, lu.stderr)
+        self.assertIn('v2.4.1 est disponible', lu.stdout)
+
+    def test_la_verification_n_ecrit_rien_dans_le_depot(self):
+        self._tags('v2.4.0', 'v2.4.1')
+        self._declarer_amont()
+        avant = subprocess.run(['git', 'for-each-ref'], cwd=self.fork, capture_output=True, text=True).stdout
+        self._run()
+        apres = subprocess.run(['git', 'for-each-ref'], cwd=self.fork, capture_output=True, text=True).stdout
+        self.assertEqual(avant, apres)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

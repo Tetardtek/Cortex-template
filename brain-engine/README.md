@@ -46,8 +46,8 @@ dépendances, la base. À la main :
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-`umap-learn` et `numpy` ne servent qu'à la visualisation (`umap-positions.py`,
-`umap-edges.py`). Le moteur démarre sans eux si vous ne l'utilisez pas.
+`umap-learn` et `numpy` ne servent qu'à la visualisation (`GET /visualize`).
+Le moteur démarre sans eux si vous ne l'utilisez pas.
 
 ---
 

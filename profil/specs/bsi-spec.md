@@ -287,7 +287,8 @@ Dit ici pour qu'on ne le prenne pas pour un mécanisme vivant :
   `workflow`, `workflow_step`, `theme_branch` existent en base ; `bsi-claim.sh
   open` ne sait pas les poser (seule la route `POST /bsi/claims` les accepte),
   et aucun claim ne les a jamais portés. Les agents qui les décrivent
-  (`kernel-orchestrator`, `satellite-boot`, `supervisor`) sont sous bandeau.
+  (`kernel-orchestrator`, `satellite-boot`, `supervisor`) sont **archivés depuis le
+  30/09** (`agents/archive/`, BRAIN-079).
 - **Statuts** `stale`, `paused`, `waiting_human`, `failed` — voir Cycle de vie.
 
 ---

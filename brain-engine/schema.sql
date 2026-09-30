@@ -14,33 +14,7 @@
 PRAGMA journal_mode=WAL;  -- lectures concurrentes sûres (multi-sessions)
 PRAGMA foreign_keys=ON;
 
--- ── 29 tables ─────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS agent_loads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sess_id TEXT NOT NULL,
-    agent TEXT NOT NULL,
-    tokens_estimated INTEGER,
-    loaded_at TEXT NOT NULL,
-    reason TEXT
-);
-
-CREATE TABLE IF NOT EXISTS agent_memory (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent TEXT NOT NULL,
-    projet TEXT NOT NULL,
-    stack TEXT NOT NULL,
-    pattern_id TEXT NOT NULL,
-    validations INTEGER NOT NULL DEFAULT '0',
-    kpi_score REAL NOT NULL DEFAULT '0',
-    graduated INTEGER NOT NULL DEFAULT '0',
-    seuil_graduation INTEGER NOT NULL DEFAULT '3',
-    last_validated TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (agent,projet,stack,pattern_id)
-);
+-- ── 20 tables ─────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS agents (
     id TEXT NOT NULL,
@@ -58,18 +32,6 @@ CREATE TABLE IF NOT EXISTS agents (
     sends_to TEXT,
     zone_access TEXT,
     signals TEXT,
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS backlog_visions (
-    id TEXT NOT NULL,
-    project TEXT,
-    title TEXT NOT NULL,
-    status TEXT DEFAULT 'seed' CHECK (status IS NULL OR status IN ('seed','conception','ready','promoted','archived')),
-    filename TEXT,
     description TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -167,18 +129,6 @@ CREATE TABLE IF NOT EXISTS claims_archive (
     agent_session TEXT,
     archived_at TEXT NOT NULL,
     PRIMARY KEY (sess_id)
-);
-
-CREATE TABLE IF NOT EXISTS cosmos_edges (
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    similarity REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS decision_chantiers (
-    decision_id TEXT NOT NULL,
-    chantier_id TEXT NOT NULL,
-    linked_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -294,31 +244,6 @@ CREATE TABLE IF NOT EXISTS intentions (
     PRIMARY KEY (id)
 );
 
-CREATE TABLE IF NOT EXISTS learning_modules (
-    id TEXT NOT NULL,
-    track_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    status TEXT DEFAULT 'locked' CHECK (status IS NULL OR status IN ('locked','exploring','acquired','a-faire','in-progress','paused')),
-    sort_order INTEGER DEFAULT '0',
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS learning_tracks (
-    id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    status TEXT DEFAULT 'exploring' CHECK (status IS NULL OR status IN ('exploring','paused','acquired')),
-    domain TEXT,
-    feeds TEXT,
-    module_count INTEGER DEFAULT '0',
-    modules_done INTEGER DEFAULT '0',
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (id)
-);
-
 CREATE TABLE IF NOT EXISTS locks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     filepath TEXT NOT NULL,
@@ -410,32 +335,9 @@ CREATE TABLE IF NOT EXISTS signals_archive (
     PRIMARY KEY (sig_id)
 );
 
-CREATE TABLE IF NOT EXISTS todo_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER NOT NULL,
-    text TEXT NOT NULL,
-    done INTEGER DEFAULT '0',
-    sort_order INTEGER DEFAULT '0',
-    created_at TEXT NOT NULL
-);
+-- ── 0 index ─────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS todo_sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project TEXT NOT NULL,
-    title TEXT NOT NULL,
-    intention_id TEXT,
-    status TEXT DEFAULT 'open' CHECK (status IS NULL OR status IN ('open','done','cancelled')),
-    sort_order INTEGER DEFAULT '0',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
 
--- ── 4 index ─────────────────────────────────────────────
-
-CREATE INDEX IF NOT EXISTS backlog_visions_project ON backlog_visions (project);
-CREATE INDEX IF NOT EXISTS todo_items_section_id ON todo_items (section_id);
-CREATE INDEX IF NOT EXISTS todo_sections_intention_id ON todo_sections (intention_id);
-CREATE INDEX IF NOT EXISTS todo_sections_project ON todo_sections (project);
 
 -- ── Vues utilitaires ─────────────────────────────────────────────────────────
 
@@ -459,14 +361,6 @@ CREATE VIEW IF NOT EXISTS v_active_locks AS
            CASE WHEN julianday('now') < julianday(expires_at) THEN 'active' ELSE 'expired' END AS lock_status
     FROM locks
     ORDER BY claimed_at DESC;
-
-CREATE VIEW IF NOT EXISTS v_graduation_candidates AS
-    SELECT agent, projet, stack, pattern_id, validations, kpi_score,
-           ROUND(CAST(validations AS REAL) / seuil_graduation, 2) AS progress
-    FROM agent_memory
-    WHERE graduated = 0
-      AND validations >= seuil_graduation
-    ORDER BY validations DESC;
 
 CREATE VIEW IF NOT EXISTS v_cold_start_kpi AS
     SELECT

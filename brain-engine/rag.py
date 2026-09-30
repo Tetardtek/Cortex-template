@@ -166,13 +166,19 @@ def main():
                         help='Output JSON brut')
     args = parser.parse_args()
 
-    # Mode boot si aucune query fournie
-    if not args.query:
-        results = run_boot_queries()
-        label   = 'RAG boot'
-    else:
-        results = run_single_query(args.query, top_k=args.top)
-        label   = f'RAG — {args.query}'
+    # Mode boot si aucune query fournie. Une panne se dit sur stderr, avec un
+    # code : la sortie standard, elle, peut être injectée dans un contexte.
+    from search import RechercheIndisponible
+    try:
+        if not args.query:
+            results = run_boot_queries()
+            label   = 'RAG boot'
+        else:
+            results = run_single_query(args.query, top_k=args.top)
+            label   = f'RAG — {args.query}'
+    except RechercheIndisponible as panne:
+        print(f"⚠️  recherche indisponible — {panne}. {panne.conseil()}", file=sys.stderr)
+        sys.exit(3)
 
     # Silencieux si aucun résultat — ne pas polluer le contexte
     if not results:

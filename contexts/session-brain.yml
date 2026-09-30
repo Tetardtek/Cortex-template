@@ -9,7 +9,8 @@
 #
 # L0 n'est PAS « tout ce qui est toujours chargé ». CLAUDE.md, lu à chaque
 # session quel que soit le type, charge déjà PATHS.md, profil/specs/collaboration.md,
-# agents/coach-boot.md, agents/secrets-guardian.md et agents/helloWorld.md.
+# profil/forge-locale.md, agents/coach-boot.md, agents/secrets-guardian.md et
+# agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
 # s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
@@ -69,7 +70,8 @@ L1:
   # cap servi par brain_focus() MCP — plus de lecture fichier directe
   # focus.md genere depuis Dolt via API /focus — plus de fichier statique
   - BRAIN-INDEX.md                  # aiguillage BSI — les claims et signaux sont en base
-  # todos : source unique Dolt (todo_items/todo_sections) depuis 2026-04-08 — plus de fichier todo/brain.md
+  # todos : les fiches du backlog (workspace/backlog/<projet>/) — les tables todo_* n'ont
+  # jamais été peuplées, retirées le 28/09
   - agents/coach-boot.md            # garde comportemental
   - agents/coach.md                 # coach complet — gardien kernel, gate decisions
   - agents/brain-guardian.md        # auto-mefiance structurelle
@@ -90,7 +92,7 @@ L2:
 # Scope /kernel → write-lock (gate humain sur toute ecriture kernel)
 # Scope /agents → agents/AGENTS.md charge
 L3:
-  hint: "Charger a la demande : orchestrator, bsi-schema, context-loading, AGENTS.md"
+  hint: "Charger a la demande : orchestrator, context-loading, AGENTS.md"
 
 # --- Comportements absorbes ---
 # edit-brain : gate humain obligatoire avant write kernel

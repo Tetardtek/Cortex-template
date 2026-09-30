@@ -38,13 +38,16 @@ remplit en travaillant.
 *Liste générée depuis `brain-engine/schema-dolt.sql` et
 `brain-engine/views-dolt.sql`.*
 
+Chaque table appartient à un **module** (les sessions, le catalogue, la
+recherche, les intentions…) : `brain-engine/modules.yml` les range, et la suite
+de tests refuse une table que personne ne possède.
+
 Les tables qui comptent au quotidien :
 
 | Table | Ce qu'elle garde |
 |---|---|
 | `claims` | une ligne par session : type, périmètre, durée, résultat |
 | `intentions` | les objectifs qui durent plusieurs sessions |
-| `todo_sections`, `todo_items` | les todos, par projet |
 | `projects` | les projets et leur statut |
 | `decisions` | les décisions d'architecture |
 | `embeddings` | l'index de la recherche sémantique |
@@ -73,10 +76,8 @@ SELECT status, COUNT(*) FROM projects GROUP BY status;
 -- les intentions au front, dans l'ordre
 SELECT id, title FROM intentions WHERE front = 1 ORDER BY front_order;
 
--- les todos ouverts, par projet
-SELECT s.project, COUNT(*) FROM todo_sections s
-JOIN todo_items i ON i.section_id = s.id
-WHERE i.done = 0 GROUP BY s.project;
+-- les sessions ouvertes, par type
+SELECT type, COUNT(*) FROM claims WHERE status = 'open' GROUP BY type;
 
 -- les dernières sessions
 SELECT sess_id, type, result FROM claims ORDER BY opened_at DESC LIMIT 10;

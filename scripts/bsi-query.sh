@@ -167,12 +167,14 @@ def _ligne(r):
         etat = f"expire dans {reste:.1f}h" if reste >= 0 else f"EXPIRE depuis {-reste:.1f}h"
     return f"{r['sess_id']} | {r['scope']} | {r['opened_at']} UTC | age {age} | {etat}{note}"
 
+# Les claims ouverts du RÉSEAU : ceux de cette base, et ceux que chaque machine
+# satellite a ouverts sur sa branche (BRAIN-078) — `db.claims_du_reseau`.
+def _ouverts(colonnes="sess_id, scope, opened_at, expires_at, ttl_hours"):
+    rows = db.claims_du_reseau("status = 'open'", colonnes=colonnes)
+    return sorted(rows, key=lambda r: r.get("opened_at") or datetime.min, reverse=True)
+
 if cmd == "open":
-    rows = db.query("""
-        SELECT sess_id, scope, opened_at, expires_at, ttl_hours
-        FROM claims WHERE status = 'open'
-        ORDER BY opened_at DESC
-    """)
+    rows = _ouverts()
     for r in rows:
         print(_ligne(r))
 
@@ -181,11 +183,7 @@ elif cmd == "stale":
     # `expires_at`, donc il declarait stale toute session `pilote` de plus de
     # 4 h alors que son TTL est de 12. etait applique dans
     # `close-stale` et jamais propage ici.
-    rows = db.query("""
-        SELECT sess_id, scope, opened_at, expires_at, ttl_hours
-        FROM claims WHERE status = 'open'
-        ORDER BY opened_at DESC
-    """)
+    rows = _ouverts()
     maintenant = datetime.now(timezone.utc).replace(tzinfo=None)
     stales = [r for r in rows
               if (_echeance(r)[0] is not None and _echeance(r)[0] < maintenant)]
@@ -193,7 +191,7 @@ elif cmd == "stale":
         print(_ligne(r))
 
 elif cmd == "count-open":
-    print(db.count("claims", "status = 'open'"))
+    print(len(_ouverts("sess_id")))
 
 elif cmd == "count-stale":
     # Le MEME critere que `stale`, par la meme fonction : l echeance du claim.
@@ -201,10 +199,7 @@ elif cmd == "count-stale":
     # abandonne, et qui declarait perimee toute session `pilote` (TTL 12 h) des
     # sa quatrieme heure. Deux criteres pour un meme mot finissent toujours par
     # se contredire.
-    rows = db.query("""
-        SELECT sess_id, opened_at, expires_at, ttl_hours
-        FROM claims WHERE status = 'open'
-    """)
+    rows = _ouverts("sess_id, opened_at, expires_at, ttl_hours")
     maintenant = datetime.now(timezone.utc).replace(tzinfo=None)
     print(sum(1 for r in rows
               if _echeance(r)[0] is not None and _echeance(r)[0] < maintenant))

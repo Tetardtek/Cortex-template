@@ -4,7 +4,7 @@
 #
 # Usage :
 #   bsi-claim.sh open  <sess_id> [--scope X] [--type X] [--zone X] [--mode X] [--story "X"] [--project X]
-#   bsi-claim.sh close <sess_id> [--result X] [--energy X] [--intention X] [--tags X] [--deliverables X]
+#   bsi-claim.sh close <sess_id> [--result X] [--energy high|medium|low] [--intention X] [--tags X] [--deliverables X]
 #   bsi-claim.sh close-stale          → ferme tous les claims open > TTL (4h par défaut)
 #   bsi-claim.sh rattacher            → reprend le claim d une identité remplacée (session reprise)
 #   bsi-claim.sh exists <sess_id>     → exit 0 si open, exit 1 sinon
@@ -28,6 +28,7 @@ shift || true
 
 python3 - "$BRAIN_ROOT" "$CMD" "$@" <<'PYEOF'
 import re
+import subprocess
 import sys
 import os
 from datetime import datetime, timezone
@@ -107,6 +108,10 @@ def avertir_repli():
     print("    Les claims des autres machines n'ont PAS ete consultes :")
     print("    ce claim n'engage que cette machine.")
     print("    Le Dashboard n'a PAS ete notifie : il ne verra pas la session.")
+    # Le cas type : un fork dont le moteur ne survit pas au reboot. Sans ces
+    # deux lignes, rien ne disait quoi faire (Cortex-Template#2).
+    print("    Le moteur tourne-t-il ?  bash scripts/brain-engine.sh status")
+    print("    Aucun service ne le relance au demarrage ?  bash scripts/brain-engine.sh install systemd")
 
 
 def parse_opts(args):
@@ -121,6 +126,30 @@ def parse_opts(args):
             i += 1
     return opts
 
+# L'energie de cloture a TROIS niveaux (BRAIN-046) — tranche par Kevin le
+# 29/09. Rien ne le verifiait : mesure le meme jour, les claims portaient une
+# vingtaine de valeurs (« 5 », « high », « 4 », « haute », « 9 », « energized »,
+# « max »...) et aucune serie n'etait comparable. La valeur se normalise ici,
+# AVANT la route et avant le repli local : les deux chemins ecrivent la meme.
+ENERGIES = {
+    "high": "high", "h": "high", "haute": "high", "haut": "high",
+    "medium": "medium", "m": "medium", "moyenne": "medium", "moyen": "medium",
+    "low": "low", "l": "low", "basse": "low", "bas": "low",
+}
+
+
+def energie(valeur):
+    """`high` / `medium` / `low` — ou None si absente ; sinon on refuse (exit 2)."""
+    if valeur is None:
+        return None
+    n = ENERGIES.get(str(valeur).strip().lower())
+    if n is None:
+        print(f"❌ energie « {valeur} » refusee — trois niveaux : high / medium / low "
+              f"(ou h / m / l). Rien n a ete ferme.")
+        sys.exit(2)
+    return n
+
+
 def ttl_du_type(type_: str | None) -> int | None:
     """Le `ttl_hours` que le manifeste du type déclare — ou None.
 
@@ -129,7 +158,7 @@ def ttl_du_type(type_: str | None) -> int | None:
     4 h — la route du moteur et le repli aussi. Le TTL du type ne dépendait donc
     que de l'appelant, et deux ouvertures prescrites l'oubliaient : des sessions
     `pilote` ouvertes à 4 h au lieu de 12. `--ttl` reste une surcharge.
-    Un type sans manifeste (`satellite`, `navigate`…) garde le défaut.
+    Un type sans manifeste (`satellite`…) garde le défaut.
     """
     if not type_ or not re.fullmatch(r"[a-z][a-z-]*", type_):
         return None
@@ -145,18 +174,69 @@ def ttl_du_type(type_: str | None) -> int | None:
     return None
 
 
+# Le type d'un claim ouvert sans `--type` : le lobby des sessions V2
+# (BRAIN-044, BRAIN-047), celui que helloWorld prend quand le signal manque.
+# C'était `navigate`, un type V1 sans manifeste : le claim gardait 4 h quand
+# `explore` en déclare 8.
+TYPE_PAR_DEFAUT = "explore"
+
+
 def opts_d_ouverture(brut: list) -> dict:
-    """Les options d'un `open` — le TTL du type ajouté si `--ttl` manque.
+    """Les options d'un `open` — le type par défaut, puis le TTL de ce type si
+    `--ttl` manque.
 
     Deux chemins ouvrent un claim, la route du moteur et le repli, et chacun
     relit les arguments : la règle vit ici pour qu'ils reçoivent le même.
     """
     opts = parse_opts(brut)
+    opts.setdefault("type", TYPE_PAR_DEFAUT)
     if "ttl" not in opts:
         du_type = ttl_du_type(opts.get("type"))
         if du_type is not None:
             opts["ttl"] = str(du_type)
     return opts
+
+
+def suffixe_de_machine() -> str | None:
+    """Le suffixe que porte un identifiant ouvert sur CETTE machine, ou None.
+
+    Une instance `replica-nomad` écrit sur sa branche de la base du fixe
+    (BRAIN-078). Deux sessions ouvertes la même minute, même type, même scope,
+    sur les deux machines, auraient la même clé — et la fusion des branches en
+    ferait un conflit. Tranché le 29/09 (forme « a ») : sur une
+    replica, l'identifiant finit par `.<machine>` — `machine:` de
+    brain-compose.local.yml. La prod garde les siens. Un fork n'a pas
+    posture-gate-check.sh : il reste master, rien ne change pour lui.
+    """
+    garde = os.path.join(brain_root, "scripts", "posture-gate-check.sh")
+    if not os.path.isfile(garde):
+        return None
+    p = subprocess.run(["bash", garde, "--posture"], capture_output=True, text=True)
+    if p.stdout.strip() != "replica-nomad":
+        return None
+    machine = None
+    try:
+        import yaml
+        with open(os.path.join(brain_root, "brain-compose.local.yml"), encoding="utf-8") as f:
+            machine = (yaml.safe_load(f) or {}).get("machine")
+    except (OSError, ImportError):
+        pass
+    return f".{machine}" if machine else ".replica"
+
+
+def exiger_le_suffixe(sess_id: str) -> None:
+    """Sur une replica, refuser un identifiant sans le suffixe de la machine —
+    et donner celui à utiliser. Le script ne l'ajoute PAS lui-même : la session
+    ne connaîtrait plus son propre identifiant, et sa fermeture échouerait."""
+    suffixe = suffixe_de_machine()
+    if suffixe is None or sess_id.endswith(suffixe):
+        return
+    print(f"\u274c sur cette machine (replica-nomad), l'identifiant porte `{suffixe}` :",
+          file=sys.stderr)
+    print(f"   bash scripts/bsi-claim.sh open {sess_id}{suffixe} …", file=sys.stderr)
+    print("   (BRAIN-078 — la même clé ouverte sur les deux machines ferait un conflit)",
+          file=sys.stderr)
+    sys.exit(1)
 
 
 def valider_sess_id(sess_id: str) -> None:
@@ -272,10 +352,10 @@ def _ouvrir_en_repli(sess_id, opts, now):
 
     new_scope = opts.get("scope", "brain/")
 
-    # Scope overlap detection — BSI mutex
-    open_claims = db.query(
-        "SELECT sess_id, scope, zone FROM claims WHERE status = 'open'"
-    )
+    # Scope overlap detection — BSI mutex. Le réseau, pas cette base seule :
+    # les claims que chaque machine satellite a ouverts sur sa branche comptent
+    # aussi (BRAIN-078) — la même source que le verrou du moteur.
+    open_claims = db.claims_du_reseau("status = 'open'", colonnes="sess_id, scope, zone")
 
     for oc in open_claims:
         oc_scope = oc.get("scope") or ""
@@ -297,7 +377,7 @@ def _ouvrir_en_repli(sess_id, opts, now):
             print(f"   Demandé  : {sess_id} → scope: {new_scope}")
             print(f"   → Parallélisme autorisé — attention aux conflits d'écriture")
 
-    claim_type = opts.get("type", "navigate")
+    claim_type = opts["type"]
     zone = opts.get("zone", "project")
     mode = opts.get("mode")
     story = opts.get("story")
@@ -406,6 +486,7 @@ def cmd_open():
 
     sess_id = args[0]
     valider_sess_id(sess_id)
+    exiger_le_suffixe(sess_id)
     opts = opts_d_ouverture(args[1:])
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -416,7 +497,7 @@ def cmd_open():
     corps = {
         "sess_id":       sess_id,
         "scope":         opts.get("scope", "brain/"),
-        "type":          opts.get("type", "navigate"),
+        "type":          opts["type"],
         "zone":          opts.get("zone", "project"),
         "mode":          opts.get("mode"),
         "story_angle":   opts.get("story"),
@@ -679,7 +760,7 @@ def cmd_close():
     # existe pour eviter.
 
     # Enrichment fields (BRAIN-046)
-    energy = opts.get("energy")          # high/medium/low
+    energy = energie(opts.get("energy"))  # high/medium/low — normalisee, ou refus
     intention = opts.get("intention")    # slug intention liée
     tags = opts.get("tags")              # comma-separated
     deliverables = opts.get("deliverables")  # texte libre
@@ -1136,14 +1217,42 @@ def cmd_rattacher():
         print(f"✅ rattache : {sess_id} — porte desormais cette session ({agent[:8]}…)")
 
 
+def demarrage_de_la_machine():
+    """L'heure du dernier démarrage (UTC), lue dans `/proc/stat` (`btime`).
+
+    `None` si illisible : l'appelant garde alors la prudence d'avant.
+    `BRAIN_PROC_STAT` le remplace dans les tests, comme `CLAUDE_SESSIONS_DIR`.
+    """
+    chemin = os.environ.get("BRAIN_PROC_STAT") or "/proc/stat"
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            for ligne in f:
+                if ligne.startswith("btime "):
+                    return datetime.fromtimestamp(int(ligne.split()[1]), timezone.utc)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
 def cmd_plantes():
     """Les claims OUVERTS dont la session a planté — un par ligne.
 
-    Planté : l'identité portée par le claim a un fichier de session sur CETTE
-    machine, son processus est mort, et aucune session vivante n'en descend
-    (`scripts/lib/filiation.py`). Une identité inconnue ici n'est jamais
-    déclarée plantée : l'expiration s'en charge. Lecture seule — c'est
-    l'appelant (le daemon) qui ferme.
+    Planté, deux cas :
+
+    1. l'identité portée par le claim a un fichier de session sur CETTE
+       machine, son processus est mort, et aucune session vivante n'en descend
+       (`scripts/lib/filiation.py`) ;
+    2. l'identité est INCONNUE ici, et la machine a redémarré APRÈS l'ouverture
+       du claim — aucune session d'avant le démarrage ne peut plus y vivre
+      . Mesuré sur un brain du réseau le 29/09 : après un
+       reboot, les fichiers des sessions coupées ont disparu, et leurs claims
+       tenaient leur scope jusqu'à l'expiration (12 h en `pilote`).
+
+    Une identité inconnue d'un claim ouvert APRÈS le démarrage n'est jamais
+    déclarée plantée : l'expiration s'en charge. Un claim sans identité non
+    plus : on ne peut rien en dire. Les claims d'une autre machine ne sont pas
+    lus ici — `ouverts()` ne voit que la base de CETTE machine (BRAIN-078).
+    Lecture seule — c'est l'appelant (le daemon) qui ferme.
     """
     sys.path.insert(0, os.path.join(brain_root, "scripts", "lib"))
     from filiation import lire, mortes
@@ -1159,15 +1268,25 @@ def cmd_plantes():
     if not bsi.porte_identite:
         return
     morts = mortes(sessions)
+    connues = {s["sessionId"] for s in sessions}
+    demarrage = demarrage_de_la_machine()
+    from core.bsi import en_utc
     for c in bsi.ouverts():
-        if c.agent_session and c.agent_session in morts:
+        if not c.agent_session:
+            continue
+        if c.agent_session in morts:
+            print(f"{c.sess_id}|{c.agent_session}")
+            continue
+        ouvert = en_utc(c.ouvert_le)
+        if (c.agent_session not in connues and demarrage is not None
+                and ouvert is not None and ouvert < demarrage):
             print(f"{c.sess_id}|{c.agent_session}")
 
 
 def cmd_help():
-    print("Usage: bsi-claim.sh <open|close|close-stale|exists|init|restore>")
+    print("Usage: bsi-claim.sh <open|close|close-stale|touch|plantes|rattacher|exists|init|restore|help>")
     print("  open  <sess_id> [--scope X] [--type X] [--zone X] [--mode X] [--story 'X'] [--project X]")
-    print("  close [<sess_id>] [--result X] [--energy X] [--intention X] [--tags X] [--deliverables X] [--pas-le-mien]")
+    print("  close [<sess_id>] [--result X] [--energy high|medium|low] [--intention X] [--tags X] [--deliverables X] [--pas-le-mien]")
     print("        sans sess_id : le claim de CETTE session, retrouve par CLAUDE_CODE_SESSION_ID")
     print("        (BRAIN-077). Fermer celui d une AUTRE session est refuse, sauf --pas-le-mien.")
     print("  close-stale       — ferme les claims dont l expiration est passee")

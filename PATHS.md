@@ -17,6 +17,7 @@
 | `reviews/` | `<BRAIN_ROOT>/reviews/` | `YOUR-ORG/Cortex-Template-Reviews` | ✅ |
 | `profil/` | `<BRAIN_ROOT>/profil/` | `YOUR-ORG/Cortex-Template-Profil` | ✅ |
 | `todo/` | `<BRAIN_ROOT>/todo/` | `YOUR-ORG/Cortex-Template-Todo` | ✅ |
+| `learning/` | `<BRAIN_ROOT>/learning/` | ton dépôt, quand tu veux (`docs/satellites.md`) | ✅ |
 | `projects/` | `<PROJECTS_ROOT>` | GitHub / Gitea | — |
 | `home/` | `<HOME>` | — | — |
 

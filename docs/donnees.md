@@ -34,12 +34,16 @@ remplit en travaillant.
 
 ## Ce qu'elle contient
 
-**Tables (29)** — `agent_loads`, `agent_memory`, `agents`, `backlog_visions`, `chantiers`, `circuit_breaker`, `claims`, `claims_archive`, `cosmos_edges`, `decision_chantiers`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `learning_modules`, `learning_tracks`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`, `todo_items`, `todo_sections`
+**Tables (20)** — `agents`, `chantiers`, `circuit_breaker`, `claims`, `claims_archive`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`
 
-**Vues (6)** — `v_open_claims`, `v_stale_claims`, `v_active_locks`, `v_cold_start_kpi`, `v_graduation_candidates`, `v_metabolism_`
+**Vues (5)** — `v_open_claims`, `v_stale_claims`, `v_active_locks`, `v_cold_start_kpi`, `v_metabolism_`
 
 *Liste générée depuis `brain-engine/schema-dolt.sql` et
 `brain-engine/views-dolt.sql`.*
+
+Chaque table appartient à un **module** (les sessions, le catalogue, la
+recherche, les intentions…) : `brain-engine/modules.yml` les range, et la suite
+de tests refuse une table que personne ne possède.
 
 Les tables qui comptent au quotidien :
 
@@ -47,7 +51,6 @@ Les tables qui comptent au quotidien :
 |---|---|
 | `claims` | une ligne par session : type, périmètre, durée, résultat |
 | `intentions` | les objectifs qui durent plusieurs sessions |
-| `todo_sections`, `todo_items` | les todos, par projet |
 | `projects` | les projets et leur statut |
 | `decisions` | les décisions d'architecture |
 | `embeddings` | l'index de la recherche sémantique |
@@ -76,10 +79,8 @@ SELECT status, COUNT(*) FROM projects GROUP BY status;
 -- les intentions au front, dans l'ordre
 SELECT id, title FROM intentions WHERE front = 1 ORDER BY front_order;
 
--- les todos ouverts, par projet
-SELECT s.project, COUNT(*) FROM todo_sections s
-JOIN todo_items i ON i.section_id = s.id
-WHERE i.done = 0 GROUP BY s.project;
+-- les sessions ouvertes, par type
+SELECT type, COUNT(*) FROM claims WHERE status = 'open' GROUP BY type;
 
 -- les dernières sessions
 SELECT sess_id, type, result FROM claims ORDER BY opened_at DESC LIMIT 10;

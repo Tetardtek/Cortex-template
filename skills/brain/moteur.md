@@ -19,7 +19,7 @@ bash scripts/brain-engine.sh install systemd   # unités UTILISATEUR
 `stop` n'arrête que ce que `start` a lancé, par son fichier de PID. Un moteur
 lancé par systemd s'arrête par `systemctl --user stop brain-engine`.
 
-## Les 30 routes de l'API
+## Les 26 routes de l'API
 
 | Méthode | Route | Ce qu'elle fait |
 |---|---|---|
@@ -40,19 +40,15 @@ lancé par systemd s'arrête par `systemctl --user stop brain-engine`.
 | GET | `/docs` | Les pages de docs/*.md, avec leur libellé, groupe et ordre déclarés. |
 | GET | `/docs/{filename}` | Retourne le contenu brut d'un fichier docs/*.md. |
 | GET | `/focus` | Focus généré depuis Dolt — remplace focus.md statique. Zéro drift. |
-| POST | `/gate/{workflow_id}/{step_id}/approve` | Résout une gate (approve / abort / skip). Requiert zone kernel (owner). |
 | GET | `/health` | Sanity check — vérifie que le moteur répond. |
-| GET | `/infra` | Retourne l'état des services infrastructure depuis pm2 + config statique. |
 | GET | `/intentions` | Liste les intentions depuis Dolt. Filtres optionnels par status, project, front. |
 | GET | `/intentions/{intention_id}` | Détail d'une intention spécifique avec toutes les relations. |
-| GET | `/logs/{project}` | Lit les 50 dernières lignes pm2 pour un projet. Requiert zone work. |
 | GET | `/search` | — |
 | GET | `/state` | Environnement fondamental dérivé — Layer 2 uniquement. |
 | GET | `/teams` | Liste toutes les teams parsées depuis teams/*.yml. |
 | GET | `/visualize` | Retourne les coordonnées 3D UMAP des embeddings brain. Cache JSON regénéré si stale. |
-| GET | `/workflows` | Retourne les workflows BSI depuis la base (BRAIN-042). |
-| POST | `/workflows/create` | Crée un claim BSI dans la base (BRAIN-042). Requiert zone kernel (owner uniquement). |
-| WS | `/ws` | WebSocket temps réel — broadcasts workflow:update, gate:pending, gate:resolved. |
+| GET | `/workflows` | Ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079). |
+| WS | `/ws` | WebSocket temps réel — les événements BSI (claims, verrous) et ambient. |
 
 *Lues dans `server.py` (arbre syntaxique, décorateurs `@app.<méthode>`). La
 description est la première ligne de la docstring de chaque route.*
@@ -62,7 +58,7 @@ description est la première ligne de la docstring de chaque route.*
 - **`brain_search`** — Recherche sémantique dans le brain.
 - **`brain_state`** — Environnement fondamental du brain — dérivé en temps réel, jamais stocké.
 - **`brain_boot`** — Charge le contexte de boot du brain.
-- **`brain_workflows`** — Retourne les workflows actifs du brain (claims BSI ouverts).
+- **`brain_workflows`** — Retourne ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079).
 - **`brain_agents`** — Retourne les agents disponibles dans le brain.
 - **`brain_decisions`** — Retourne les dernières décisions architecturales (ADRs).
 - **`brain_focus`** — Retourne le focus genere du brain depuis Dolt.

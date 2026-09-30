@@ -29,7 +29,7 @@ helloWorld prend le relais : etat projets, todos prioritaires, detection de sess
 Ne pas demander a l'utilisateur de se redecrire — tout est dans le brain.
 
 > **BSI boot claim — non negociable** : apres le briefing, ouvrir un claim via `bash scripts/bsi-claim.sh open` (ADR-042).
-> La base est la source unique (table `claims`). Pas de commit git, pas de push. Voir protocole complet dans helloWorld.md ## Boot claim automatique.
+> La base est la source unique (table `claims`). Pas de commit git, pas de push. Voir le protocole complet dans `agents/helloWorld.md`, section « Ouvrir un claim de session ».
 
 > **Sessions** — `brain boot <type>[/<scope>]`, 6 types :
 > `work` · `brain` · `explore` · `pilote` · `chill` · `learning`

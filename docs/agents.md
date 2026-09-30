@@ -25,7 +25,7 @@ travaillent : le contexte reste disponible pour ce que tu fais.
 
 ---
 
-## Les 74 agents
+## Les 67 agents
 
 *Liste générée depuis l'en-tête de chaque fichier `agents/*.md` — la portée
 (`brain.scope`) et le rôle (`brain.type`) qu'il déclare, et sa description.
@@ -73,31 +73,26 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 
 - **`brain-ui-scribe`** — Brain-UI scribe — contexte brain-ui, stack, composants, Sprint 2
 
-### Le fonctionnement du brain (19)
+### Le fonctionnement du brain (14)
 
 - **`brain-compose`** — Brain-compose — multi-instances, symlinks kernel, registre machine
 - **`brain-guardian`** — Brain guardian — auto-méfiance structurelle, assertions prouvées uniquement quand brain opère sur lui-même
-- **`brain-hypervisor`** — Hyperviseur brain — supervision multi-workflow parallèle, BACT hook
 - **`brainstorm`** — Exploration et structuration de décisions — avocat du diable
 - **`coach-boot`** — Coach boot — extrait coach.md boot-summary, chargé en L0 pour toutes les sessions
 - **`coach`** — Coach permanent — présence, progression, feedback
 - **`conciergerie`** — Archivage et hygiène de la donnée cognitive
-- **`context-broker`** — Context broker — cycle respiratoire, inhale source map, expire release map
 - **`integrator`** — Intégration multi-agents — absorption, validation critères, handoff
 - **`interprete`** — Clarification d'intention — demandes ambiguës, scope drift
-- **`kernel-orchestrator`** — Kernel orchestrator — exécution workflows BSI v3-9, circuit breaker
 - **`mentor`** — Mentor — pédagogie, explication, garde-fou
 - **`metabolism-scribe`** — Metabolism scribe — métriques session, health_score, prix par agent
 - **`pre-flight`** — Pre-flight — gate boot, vérifie kerneluser + write_lock + posture avant chargement L1
 - **`pulse`** — Snapshot live du brain — passé, présent, futur
 - **`scribe`** — Scribe — maintenance du brain, structuration
-- **`supervisor`** — Supervisor — multi-sessions, dual-agent, CHECKPOINT, escalade humain
 - **`tech-lead`** — Tech lead — gate sprint, contention map, overflow zones
-- **`workflow-auditor`** — Workflow auditor — rétrospective, KPIs actionnables, capture toolkit
 
 ### Orchestration (2)
 
-- **`orchestrator`** — Coordination — diagnostic et délégation multi-agents
+- **`orchestrator`** — Coordination — aiguiller vers les agents, composer une fiche prête à agir, juger le rendu contre ses critères de fin
 - **`session-orchestrator`** — Session orchestrator — lifecycle boot 4 couches, close séquencé
 
 ### Scribes du brain — ce qui s'écrit, et où (10)
@@ -107,10 +102,10 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 - **`content-scribe`** — Content scribe — persistance content layer, drafts, content-logs
 - **`decision-scribe`** — Decision scribe — registre connaissance structurelle, gate:human.DEFINE
 - **`infra-scribe`** — Infra scribe — registre infra, DB, deploy paths, runtime
-- **`kanban-scribe`** — Kanban scribe — pipeline kanban, transitions état au wrap
+- **`kanban-scribe`** — Le mouvement du backlog — états des fiches, clôture sur preuve, gestes mécaniques (palier a)
 - **`orchestrator-scribe`** — Bus inter-sessions — Signals BSI, cycles coworking, HANDOFF
 - **`pattern-scribe`** — Pattern scribe — détection patterns récurrents inter-sessions, registre drift contextualisation
-- **`todo-scribe`** — Persistance intentions — gardien de brain/todo/
+- **`todo-scribe`** — La liste du backlog — une fiche par tâche, par projet ; proposée à l'humain, créée seule en mode kanban
 - **`toolkit-scribe`** — Toolkit scribe — persistance patterns, gardien toolkit/
 
 ### Sur le brain lui-même (5)
@@ -125,14 +120,6 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 
 - **`guide`** — Présentation du système — onboarding, visite guidée, « comment je fais X ? »
 - **`pathfinder`** — Routage d'intention — comprend le besoin, oriente vers le bon type de session
-
-### Repères de session (1)
-
-- **`time-anchor`** — Time anchor — conscience temporelle, recontextualisation, fallback post-compaction MCP KO
-
-### Spécifications (1)
-
-- **`bsi-schema`** — **Source unique du schema claim BSI versionné dans git.**
 
 ### Utilitaires (1)
 

@@ -135,7 +135,7 @@ WorkflowBuilder
 │   ├── [+ Ajouter gate]
 │   └── Chaque step : label + type (step/gate) + agentHint optionnel
 ├── Gate required ? (toggle — pré-rempli depuis preset)
-└── [Envoyer au kernel ▶] — POST /workflows/create
+└── [Envoyer au kernel ▶] — ⚠️ la route `POST /workflows/create` est retirée (30/09) : le lancement passe par le palier c
 ```
 
 ### AgentBrowser — sélecteur d'agents
@@ -154,7 +154,7 @@ Quand l'utilisateur veut assigner un agent hint à un step :
   > orchestrator, brainstorm, ...
 
 ⚙️ Agents kernel (protocole)
-  > brain-hypervisor, kernel-orchestrator, ...
+  > orchestrator (composer, juger), kanban-scribe, ...
 ```
 
 Sélection → ajoute l'agent dans le step. Ferme automatiquement.

@@ -175,25 +175,14 @@ Repos projets : GitHub, Gitea projets clients/perso
 
 ---
 
-## Mode rendering — instance autonome projet
+## Mode rendering — retiré le 30/09
 
-```
-Mode rendering = satellite autonome sur zone:project
-  → scope_lock: true   — ne sort jamais du scope déclaré
-  → zone_lock: project — zone:kernel = BLOCKED_ON immédiat
-  → circuit_breaker    — 3 fails → arrêt + signal pilote
-  → mutex BSI-v3-7     — vérifie le lock fichier avant chaque écriture
-
-Ce mode NE PEUT PAS :
-  - Modifier agents/, profil/, scripts/, KERNEL.md, brain-compose.yml
-  - Prendre des décisions architecturales
-  - Continuer après 3 échecs consécutifs
-  - Écrire dans un fichier locké par une autre instance
-
-Déclaration dans le claim pilote :
-  mode: rendering
-  scope: mon-api/           ← le seul périmètre autorisé
-```
+> Le satellite autonome sur `zone:project` (verrou de scope, disjoncteur à trois
+> échecs, mutex BSI-v3-7) n'a jamais tourné en base. Sa place est prise
+> par le **palier c** (BRAIN-079) : un worker travaille dans son worktree, depuis
+> `dev/autonome`, sous le compte `brain` ; l'`orchestrator` juge, et la forge borne
+> ce qu'il peut atteindre (tronc protégé). Les modes de `brain-compose.yml` sont
+> retirés le même jour.
 
 ---
 
@@ -227,7 +216,7 @@ bash scripts/kernel-isolation-check.sh --strict  # zéro tolérance
 ```bash
 bash scripts/kernel-lock-gen.sh    # régénère kernel.lock après chaque modification kernel
 ```
-`kernel.lock` — 79 fichiers kernel checksumés en SHA-256. Permet à un fork de détecter les fichiers modifiés localement avant de puller une update upstream.
+`kernel.lock` — l'empreinte SHA-256 des fichiers du noyau, régénérée à chaque version. Il sert à **l'amont** : `brain doctor` y mesure la dérive du noyau entre deux versions. Il n'est pas distribué — un fork se met à jour par git (fusion du tag de la version), voir la page de doc **Se mettre à jour**.
 
 ---
 
@@ -246,18 +235,20 @@ bash scripts/kernel-lock-gen.sh    # régénère kernel.lock après chaque modif
 ### Règle de délégation kernel — non négociable
 
 ```
-PHASE ACTUELLE (BSI-v3, avant kernel-orchestrator) :
-  zone:kernel write → session humaine uniquement
-  Aucun satellite ne modifie une zone:kernel en autonomie
+zone:kernel write → session humaine uniquement
+  Aucun agent ne modifie une zone:kernel en autonomie
   Toute modification kernel = décision humaine explicite dans la session
 
-PHASE FUTURE (après BSI-v3-9 kernel-orchestrator stable) :
-  zone:kernel write → autorisé si kerneluser: true ET satellite lancé par owner
-  Le satellite agit sous délégation explicite — jamais en auto-init
+EN AUTONOMIE (BRAIN-079, paliers b et c) :
+  un worker travaille dans SON worktree, sur une branche tirée de `dev/autonome`
+  l'orchestrator juge, puis fusionne dans `dev/autonome` — jamais dans le tronc
+  seul l'humain porte `dev/autonome` au tronc (la forge l'impose : tronc protégé)
 ```
 
-**Pourquoi human-only maintenant :**
-Le kernel-orchestrator (BSI-v3-9) n'existe pas encore. Laisser des satellites écrire en zone kernel sans ce garde-fou = dérive garantie. La promotion se fait quand l'orchestrator est mature et auditable.
+**Pourquoi :** la délégation vers le noyau devait attendre un
+`kernel-orchestrator` « mature et auditable » — il n'a jamais tourné, et il est
+archivé (30/09). La règle tient donc sans condition : le noyau ne s'écrit
+qu'avec l'humain, et l'autonomie n'atteint jamais le tronc.
 
 ### kerneluser
 

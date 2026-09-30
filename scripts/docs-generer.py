@@ -269,6 +269,31 @@ class Mesures:
         return outils_mcp(self.brain)
 
     @functools.cached_property
+    def types_commit(self) -> list[str]:
+        """Les types de commit, lus dans `KERNEL.md` « Commit types » — COMME le
+        hook `commit-msg` les lit : la section, jusqu'au titre suivant, puis les
+        lignes de tableau `| `type:` | …`. La skill disait « feat:, fix:,
+        scribe:, config:… » à la main, et une session a tenté `release:` et
+        `docs:` — refusés tous deux par le hook."""
+        kernel = self.brain / "KERNEL.md"
+        if not kernel.is_file():
+            raise Illisible("KERNEL.md introuvable — les types de commit n'ont pas de source")
+        dedans, trouves = False, []
+        for ligne in kernel.read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("## Commit types"):
+                dedans = True
+                continue
+            if dedans and re.match(r"^## [^C]", ligne):
+                break
+            if dedans:
+                m = re.match(r"^\| *`([a-z]+):` *\|", ligne)
+                if m:
+                    trouves.append(m.group(1))
+        if not trouves:
+            raise Illisible("aucun type de commit dans KERNEL.md « Commit types »")
+        return trouves
+
+    @functools.cached_property
     def version(self) -> str:
         compose = self.brain / "brain-compose.yml"
         m = re.search(r'^version:\s*"?([^"\s]+)"?', compose.read_text(encoding="utf-8"),
@@ -344,6 +369,7 @@ VALEURS = {
     "NB_VUES": lambda m: str(len(m.vues)),
     "NB_ROUTES": lambda m: str(len(m.routes)),
     "NB_OUTILS": lambda m: str(len(m.outils)),
+    "TYPES_DE_COMMIT": lambda m: ", ".join(f"`{x}:`" for x in m.types_commit),
 }
 
 

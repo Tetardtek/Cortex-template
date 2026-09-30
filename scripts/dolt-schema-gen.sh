@@ -21,7 +21,7 @@
 #
 # ── Le partage avec views-dolt.sql ──────────────────────────────────────────
 #
-# Ce script écrit les TABLES. Les six vues vivent dans `views-dolt.sql`, écrit à
+# Ce script écrit les TABLES. Les cinq vues vivent dans `views-dolt.sql`, écrit à
 # la main : elles portent leur raisonnement — pourquoi `TIMESTAMPDIFF`, pourquoi
 # `UTC_TIMESTAMP` et non `NOW()`, pourquoi un claim périmé se mesure depuis son
 # expiration. Un dump les rendrait sans rien de tout ça. Une source chacun, et

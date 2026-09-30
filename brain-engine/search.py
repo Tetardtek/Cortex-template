@@ -28,8 +28,8 @@ import urllib.error
 from pathlib import Path
 
 BRAIN_ROOT  = Path(__file__).parent.parent
-OLLAMA_URL  = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
+OLLAMA_URL  = os.getenv('OLLAMA_URL') or 'http://localhost:11434'
+EMBED_MODEL = os.getenv('EMBED_MODEL') or 'nomic-embed-text'
 
 # Guardrail — cohérent avec embed.py
 _BLOCKED_MODELS = ['mistral', 'qwen', 'llama', 'gemma', 'phi', 'deepseek']
@@ -285,6 +285,22 @@ def _moteur_core():
     return _MOTEUR_CORE
 
 
+class RechercheIndisponible(RuntimeError):
+    """La recherche n'a pas eu lieu : modèle d'embedding injoignable, ou index vide.
+
+    Levée plutôt qu'une liste vide : « aucun résultat » et « pas de recherche »
+    se ressemblaient au point qu'un fork sans Ollama croyait son brain vide de
+    souvenirs. Le message est l'alerte du CORE ; `conseil()` dit quoi faire.
+    """
+
+    def conseil(self) -> str:
+        from core.recherche import INJOIGNABLE
+        if str(self) == INJOIGNABLE:
+            return (f"Ollama répond-il ({OLLAMA_URL}) avec le modèle « {EMBED_MODEL} » ? "
+                    f"`ollama pull {EMBED_MODEL}`, puis `bash scripts/brain-engine.sh embed`.")
+        return "Indexer le brain : `bash scripts/brain-engine.sh embed` (Ollama requis)."
+
+
 def search(query: str, top_k: int = 5, min_score: float = 0.0,
            allowed_scopes: list[str] | None = None) -> list[dict]:
     """Retourne les top-K chunks les plus proches de la query.
@@ -308,8 +324,11 @@ def search(query: str, top_k: int = 5, min_score: float = 0.0,
         query, combien=top_k, score_min=min_score, scopes=allowed_scopes)
 
     if not resultats:
-        # Le CORE distingue « index vide » et « modèle injoignable » dans son
-        # alerte ; ici on garde le message que les appelants connaissent.
+        # Le CORE distingue « index vide » et « modèle injoignable » — une panne,
+        # à dire — d'un avis sur la requête, qui n'empêche pas un vrai « rien ».
+        from core.recherche import PANNES
+        if _alerte in PANNES:
+            raise RechercheIndisponible(_alerte)
         return []
 
     # Le CORE parle sa langue, l'instance traduit vers la sienne. La

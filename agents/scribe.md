@@ -44,9 +44,9 @@ Fin de session           →  Scan complet : focus + fichiers touchés
 
 | Repo | Fichiers cibles | Jamais ailleurs |
 |------|----------------|-----------------|
-| `brain/` | `focus.md`, `projets/<X>.md`, `infrastructure/<domaine>.md`, `agents/AGENTS.md` | Pas `toolkit/`, pas `progression/`, pas `todo/` |
+| `brain/` | `focus.md`, `projets/<X>.md`, `infrastructure/<domaine>.md`, `agents/AGENTS.md` | Pas `toolkit/`, pas `progression/`, pas les fiches |
 
-> `todo/` → `todo-scribe` | `toolkit/` → `toolkit-scribe` | `progression/` → `coach-scribe` (si présent)
+> les fiches (`workspace/backlog/<projet>/`) → `todo-scribe` et `kanban-scribe` | `toolkit/` → `toolkit-scribe` | `progression/` → `coach-scribe` (si présent)
 
 ### Ligne directrice — non négociable
 
@@ -59,7 +59,7 @@ Le brain est le cerveau externalisé. Une info non documentée est une info perd
 | `recruiter` (si présent) | Nouveaux agents → AGENTS.md |
 | `vps` | Nouveau service → vps.md |
 | `ci-cd` | Nouveau pipeline → cicd.md |
-| `todo-scribe` | Fin de session — todo-scribe (brain/todo/) puis scribe (brain/) |
+| `todo-scribe` | Fin de session — les fiches d'abord (étape 2 de la clôture), puis scribe (brain/) |
 
 ---
 
@@ -94,7 +94,6 @@ scribe, décision technique : on migre vers Gitea CI
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Toujours en fin de session | `brain/todo/README.md` | Intentions en attente |
 | Un projet a avancé | `brain/projets/<projet>.md` | Mettre à jour le bon fichier |
 | Infra a changé | `infrastructure/<domaine>.md` | Documenter le bon domaine |
 | Agent créé ou amélioré | `brain/agents/<agent>.md` | Vérifier cohérence AGENTS.md |
@@ -155,7 +154,7 @@ scribe, décision technique : on migre vers Gitea CI
 | Objectif atteint ou abandonné | `profil/objectifs.md` + `focus.md` |
 | Nouvelle règle de collaboration | `profil/specs/collaboration.md` |
 | Pattern validé en prod | `toolkit/<domaine>/` |
-| Intention de session planifiée | `todo/<projet>.md` |
+| Intention de session planifiée | une fiche — proposée par `todo-scribe` dans `workspace/backlog/<projet>/` |
 | Règle ajoutée/modifiée dans la config LLM (CLAUDE.md, system prompt...) | `ENTRYPOINT.md` — miroir portable obligatoire |
 
 ---
@@ -252,7 +251,7 @@ Chaque session doit laisser le brain **plus riche qu'à son départ**.
 | `vps` | Nouveau service déployé → scribe documente dans vps.md |
 | `ci-cd` | Nouveau pipeline → scribe documente dans cicd.md |
 | `monitoring` | Nouveau monitor → scribe documente dans monitoring.md |
-| `todo-scribe` | Fin de session — todo-scribe écrit brain/todo/, scribe écrit brain/. Ordre : todo-scribe d'abord |
+| `todo-scribe` | Fin de session — todo-scribe écrit les fiches, scribe écrit brain/. Ordre : les fiches d'abord |
 | Tous les agents | Il observe, il documente ce qu'ils produisent |
 
 ---

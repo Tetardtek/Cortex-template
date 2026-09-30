@@ -14,7 +14,7 @@ brain:
   read:      trigger
   triggers:  [tech-lead, gate, sprint, architecture]
   ipc:
-    receives_from: [orchestrator, context-broker]
+    receives_from: [orchestrator]
     sends_to:      [orchestrator, human, scribe, toolkit-scribe]
     zone_access:   [kernel, project]
     signals:       [SPAWN, RETURN, ESCALATE]
