@@ -161,7 +161,7 @@ app = FastAPI(title='Brain-as-a-Service', version='BE-4', docs_url='/api-docs')
 class _SansJetonResteLocal:
     """Sans jeton configuré, le moteur ne répond qu'à la machine elle-même.
 
-    La règle du MCP, tranchée par Kevin le 28/09. `check_auth` rend
+    La règle du MCP, tranchée par l'owner le 28/09. `check_auth` rend
     les trois zones à qui n'a pas de jeton quand aucun n'est configuré — l'état
     d'un fork neuf — et uvicorn écoute sur 0.0.0.0 : sans cette garde, toute
     machine du réseau local lisait le corpus et écrivait. Elle couvre HTTP et
@@ -914,16 +914,14 @@ def _open_claims() -> list[dict]:
 
 
 def _foreign_lock(rel_path: str, holder: str | None) -> dict | None:
-    """Lock actif tenu par quelqu'un d'autre, ou None."""
+    """Lock actif tenu par quelqu'un d'autre, sur n'importe quelle machine du
+    réseau, ou None."""
     try:
-        row = brain_db.query_one(
-            f"SELECT holder, expires_at FROM locks WHERE filepath = %s AND {VERROU_ACTIF}",
-            (rel_path,),
-        )
+        rows = brain_db.verrous_du_reseau("filepath = %s", (rel_path,))
     except Exception as exc:
         log.error('locks illisibles: %s', exc)
         raise HTTPException(status_code=503, detail='locks illisibles — écriture refusée')
-    return row if row and row['holder'] != holder else None
+    return next((r for r in rows if r['holder'] != holder), None)
 
 
 @app.get('/brain/{path:path}')
@@ -1533,7 +1531,7 @@ def bsi_claims_list(
     # tient : `include_peers=true` ne pose pas la même question. Elle demande
     # l'état d'un RÉSEAU, pas d'une machine, et un réseau doit pouvoir répondre
     # « voici ce que j'ai, et voici qui n'a pas répondu ». Décidé le 16/09 par
-    # Kevin, après audit : aucun appelant n'utilisait ce mode, donc la dette se
+    # L'owner, après audit : aucun appelant n'utilisait ce mode, donc la dette se
     # soldait sans casse — et ne pas la solder l'aurait laissée à celui qui
     # aurait écrit le premier appelant.
     all_claims = list(local_claims)
@@ -1961,7 +1959,7 @@ def _duree_du_claim(opened_at) -> int | None:
         return None
 
 
-# L'énergie de clôture a TROIS niveaux (BRAIN-046) — tranché par Kevin le
+# L'énergie de clôture a TROIS niveaux (BRAIN-046) — tranché par l'owner le
 # 29/09. Rien ne le vérifiait : mesuré le même jour, une vingtaine de valeurs en
 # base (« 5 », « high », « 4 », « haute », « 9 », « energized »…), aucune série
 # comparable. `bsi-claim.sh` normalise de la même façon ; la route est l'autorité,
@@ -2347,12 +2345,23 @@ def bsi_locks_list(
         if 'work' not in scopes:
             raise HTTPException(status_code=403, detail='Zone work requise')
 
-    return brain_db.query(f"""
+    locaux = brain_db.query(f"""
         SELECT filepath, holder, claimed_at, expires_at,
                CASE WHEN {VERROU_ACTIF}
                     THEN 'active' ELSE 'expired' END AS lock_status
         FROM locks ORDER BY claimed_at DESC
     """)
+    # Les verrous actifs des AUTRES machines, avec leur source. C'est
+    # `verrous_du_reseau` qui tranche, et c'est lui que la prise de verrou
+    # consulte.
+    propre = brain_db.branche_propre()
+    ailleurs = []
+    for r in brain_db.verrous_du_reseau():
+        if r['_branche'] != propre:
+            r = dict(r, lock_status='active', branche=r['_branche'] or 'main')
+            r.pop('_branche', None)
+            ailleurs.append(r)
+    return locaux + ailleurs
 
 
 @app.post('/bsi/locks')
@@ -2377,57 +2386,27 @@ async def bsi_locks_acquire(
 
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    # Check peer locks FIRST (cross-machine coordination)
+    # ── Les verrous de tout le réseau, lus dans la base commune — ──
     #
-    # 🔴 Un peer injoignable était avalé par `except Exception: pass`, et la
-    # route accordait le lock en répondant 200 — sans que rien ne dise qu'elle
-    # n'avait joint personne. `scripts/file-lock.sh` affiche alors, sur cette
-    # même réponse :
-    #
-    #     Chemin   : moteur — peers consultes, Dashboard notifie
-    #
-    # C'est une AFFIRMATION, et c'est cette route qui la lui faisait dire. Le
-    # cas n'est pas théorique : `laptop` est déclaré `active` dans
-    # `brain-compose.local.yml` et ne répond pas (mesuré le 15/09).
-    #
-    # Le mécanisme existait déjà pour le cas voisin — `avertir_repli()` dans
-    # `file-lock.sh` dit « ce que le repli ne fait PAS » quand le MOTEUR est
-    # injoignable. Il n'avait pas d'équivalent pour « moteur joignable, peer
-    # injoignable ». Un mutex distribué qui se croit global n'en est pas un.
-    #
-    # On accorde toujours — refuser sur un peer muet bloquerait le travail
-    # hors ligne, et ce n'est pas la décision de cette route. Mais on le DIT.
-    injoignables = []
-    for peer in _load_peers():
-        try:
-            req = urllib.request.Request(f"{peer['url'].rstrip('/')}/bsi/locks")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                peer_locks = json.loads(resp.read())
-                for pl in peer_locks:
-                    if (pl.get('filepath') == filepath
-                            and pl.get('lock_status') == 'active'
-                            and pl.get('holder') != holder):
-                        raise HTTPException(
-                            status_code=409,
-                            detail=f"Lock détenu par {pl['holder']} sur {peer['name']} jusqu'à {pl.get('expires_at')}"
-                        )
-        except HTTPException:
-            raise
-        except Exception as exc:                            # noqa: BLE001
-            injoignables.append(peer['name'])
-            log.warning('lock: peer %s injoignable (%s: %s) — non consulté',
-                        peer['name'], type(exc).__name__, exc)
-
-    # Check existing local lock
-    existing = brain_db.query_one(f"""
-        SELECT holder, expires_at FROM locks
-        WHERE filepath = %s AND {VERROU_ACTIF}
-    """, (filepath,))
-
-    if existing and existing['holder'] != holder:
+    # Jusqu'au 2/10, la route consultait chaque pair en HTTP (`_load_peers`).
+    # Sans jeton et à travers un pare-feu, la consultation n'a jamais abouti
+    # (000 dans un sens, 401 dans l'autre) : chaque machine accordait chez elle,
+    # et un pair injoignable était avalé — `file-lock.sh` affichait « peers
+    # consultés » sur un verrou que personne d'autre n'avait vu (15/09). Le
+    # réseau se lit maintenant là où il est écrit, `main` et chaque branche
+    # satellite, comme les claims.
+    try:
+        tenus = brain_db.verrous_du_reseau("filepath = %s", (filepath,))
+        sources = brain_db.sources_des_verrous()
+    except Exception as exc:                                # noqa: BLE001
+        log.error('locks du réseau illisibles: %s', exc)
+        raise HTTPException(status_code=503, detail='verrous du réseau illisibles — verrou refusé')
+    autre = next((r for r in tenus if r['holder'] != holder), None)
+    if autre:
+        ou = f" sur {autre['_branche']}" if autre.get('_branche') else ''
         raise HTTPException(
             status_code=409,
-            detail=f"Lock détenu par {existing['holder']} jusqu'à {existing['expires_at']}"
+            detail=f"Lock détenu par {autre['holder']}{ou} jusqu'à {autre['expires_at']}"
         )
 
     # Upsert — remplace si même holder ou expiré
@@ -2449,8 +2428,10 @@ async def bsi_locks_acquire(
     # « absent parce que tout va bien » de « absent parce que l'appelant parle
     # à une vieille version » — et c'est précisément l'ambiguïté qui a permis
     # à `file-lock.sh` d'affirmer « peers consultés » pendant des mois.
+    # `peers_injoignables` reste, toujours vide : `file-lock.sh` le lit. `reseau`
+    # dit ce qui a été consulté — l'affirmation vient d'ici, avec sa preuve.
     return {'ok': True, 'filepath': filepath, 'holder': holder,
-            'peers_injoignables': injoignables}
+            'peers_injoignables': [], 'reseau': sources}
 
 
 @app.delete('/bsi/locks/{filepath:path}')

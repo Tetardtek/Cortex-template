@@ -200,7 +200,7 @@ def chemins_devines(brique: str) -> set[str]:
 
     ⚠️ Ce contrôle vient d'un incident voisin, pas d'une idée. Le 09/10/09, la
     session régie a trouvé que `cargo test` écrivait dans le `~/.config` réel
-    de Kevin — trois fois, dont un `impl Default` qui rouvrait un vrai tirage à
+    de l'owner — trois fois, dont un `impl Default` qui rouvrait un vrai tirage à
     chaque exécution des tests. Un bug qu'il avait signalé comme un défaut
     produit le 14/08 venait de la suite de tests.
 

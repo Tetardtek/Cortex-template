@@ -828,7 +828,7 @@ def main():
 
     # `brain.db` n'est plus ouvert quand le backend déclaré n'est pas SQLite.
     #
-    # Tranché par Kevin le 06/09 : le fossile disparaît. Il ne
+    # Tranché par l'owner le 06/09 : le fossile disparaît. Il ne
     # suffisait pas de supprimer le fichier — `sqlite3.connect()` le RECRÉE, et
     # le hook `post-commit` appelle ce script dès qu'un handoff change. Le
     # fossile serait revenu au commit suivant, vide puis repeuplé.

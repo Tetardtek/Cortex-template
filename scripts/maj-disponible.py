@@ -15,7 +15,7 @@ longtemps).
 Le fork va lire les tags de son amont, à son rythme ; la forge ne pousse rien.
 Quand une version plus récente existe, le briefing le dit en UNE ligne : la
 version disponible, la sienne, la page à lire. Pas de rouge, pas d'insistance :
-chacun reste libre de mettre à jour, ou non (Kevin, 30/09).
+chacun reste libre de mettre à jour, ou non (l'owner, 30/09).
 
 L'amont est le remote que la page « Se mettre à jour » fait déclarer :
 

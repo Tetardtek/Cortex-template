@@ -85,7 +85,7 @@ def alertes() -> None:
     verifie("quatre mots alertent encore",
             alerte_requete("comment marche le brain") is not None, True)
     verifie("six mots passent",
-            alerte_requete("comment marche le brain de Kevin"), None)
+            alerte_requete("comment marche le brain du projet"), None)
     verifie("une longue requête passe",
             alerte_requete("expliquer le fonctionnement complet du moteur "
                            "de recherche sémantique du brain"), None)

@@ -166,7 +166,7 @@ fi
 # lit, il ne se pousse pas. Il était posé partout — et un fork qui avait cloné
 # SON dépôt ne pouvait plus pousser son propre brain. Une instance à plusieurs
 # machines se reconnaît à son `satellites.yml` ; un fork neuf n'en a pas.
-# Tranché par Kevin le 28/09.
+# Tranché par l'owner le 28/09.
 PUSH_VERROUILLE=false
 if [[ ! -f "$BRAIN_ROOT/satellites.yml" ]]; then
   info "pas de satellites.yml — brain autonome, push laissé ouvert"

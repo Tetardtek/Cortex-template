@@ -126,7 +126,7 @@ def parse_opts(args):
             i += 1
     return opts
 
-# L'energie de cloture a TROIS niveaux (BRAIN-046) — tranche par Kevin le
+# L'energie de cloture a TROIS niveaux (BRAIN-046) — tranche par l'owner le
 # 29/09. Rien ne le verifiait : mesure le meme jour, les claims portaient une
 # vingtaine de valeurs (« 5 », « high », « 4 », « haute », « 9 », « energized »,
 # « max »...) et aucune serie n'etait comparable. La valeur se normalise ici,
@@ -768,7 +768,7 @@ def cmd_close():
     # ── La fermeture passe par le moteur — etape 5 ─────────────────
     #
     # `cmd_open` y est passe le 11/09 ; `close` fermait encore en local, et
-    # Kevin l a releve le 12/09 : « si on a fait l open, on devra faire le
+    # L'owner l a releve le 12/09 : « si on a fait l open, on devra faire le
     # close aussi ». Une machine qui ouvre par le moteur et ferme en local
     # laisse le Dashboard croire la session vivante.
     #
@@ -993,7 +993,7 @@ def cmd_touch():
     Le probleme, mesure le 04/09 en auditant le BSI. Sur 52 claims fermes,
     DIX portent le resultat `stale-auto-closed` — et les dix sont de type
     `pilote`, de 9,6 h a 76,8 h. Aucune session courte oubliee dans le lot.
-    Or `pilote` est defini comme « long, multi-scope » ; Kevin confirme qu une
+    Or `pilote` est defini comme « long, multi-scope » ; l'owner confirme qu une
     session dure parfois plusieurs jours, compactages compris. Le mecanisme ne
     fermait donc pas des oublis : il fermait des sessions VIVANTES, et ecrasait
     leur vrai resultat par « stale-auto-closed ».

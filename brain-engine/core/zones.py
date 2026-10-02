@@ -4,7 +4,7 @@ Elle a été la dernière parce qu'elle n'attendait pas du code : elle attendait
 **décision**. Le registre de `KERNEL.md` disait quel type de session peut écrire
 dans quelle zone, et rien ne disait **quels chemins composent une zone**.
 
-Tranché le 07/09 par Kevin, après mesure :
+Tranché le 07/09 par l'owner, après mesure :
 
     invariant · programme   →   zone kernel
     tout le reste           →   zone instance

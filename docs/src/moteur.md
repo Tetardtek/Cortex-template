@@ -37,7 +37,7 @@ Tout passe par `bash scripts/brain-engine.sh <commande>` :
 | `logs` | suit le journal |
 | `embed` | indexe le corpus une fois (demande Ollama) |
 | `install systemd` | des unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp`, et le timer `brain-embed` (hors mode démo). Se rejoue sans risque : il réécrit les unités et les relance |
-| `install pm2` | l'API seule sous pm2, relancée si elle tombe — ni le MCP, ni au démarrage de la session |
+| `install pm2` | l'API et le serveur MCP sous pm2, par `brain serve`, relancés s'ils tombent — pas au démarrage de la session |
 
 `stop` n'arrête jamais un moteur qu'il n'a pas lancé : si systemd ou pm2 le
 fait tourner, il le dit, et c'est à eux de l'arrêter

@@ -64,7 +64,7 @@ BRAIN_TOKEN_MCP = os.getenv('BRAIN_TOKEN_MCP') or os.getenv('BRAIN_TOKEN')
 # Défaut restreint = public+work : un MCP EXPOSÉ ne doit rien montrer d'autre.
 # Le service LOCAL (7701) élargit via BRAIN_MCP_SCOPES — posé par l'unité
 # `brain-mcp` que génère `brain-engine.sh install systemd` (le rôle `mcp` de
-# server.py), comme le brain-mcp-local de la prod (Cortex-Template#9).
+# server.py), comme le MCP local de la prod (Cortex-Template#9).
 MCP_SCOPES = [s.strip() for s in (os.getenv('BRAIN_MCP_SCOPES') or 'public,work').split(',') if s.strip()]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')

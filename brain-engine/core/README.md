@@ -55,7 +55,7 @@ python3 core/test_persistance.py --dolt ~/Dev/Brain   # + lecture réelle, 35 ta
 **174 garanties tenues, 0 manquée — les six capacités de sont là, et elles s'emboîtent.**
 
 ✅ **La dernière a été débloquée le 07/09**, non par du code mais par une
-décision de Kevin : la zone d'écriture se dérive du niveau — `invariant` et
+décision de l'owner : la zone d'écriture se dérive du niveau — `invariant` et
 `programme` sont kernel — avec une exception déclarée, `profil/`, qui est
 donnée souveraine **et** zone d'autorité. Écrite dans `NIVEAUX.yml`.
 

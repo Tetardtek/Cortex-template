@@ -5,7 +5,7 @@ Les appels aux peers faisaient tous `cd ~/Dev/Brain` : le chemin de
 l'installation de l'owner. Un peer installé ailleurs (un fork cloné dans
 `~/src/mon-fork`) répondait « No such file », et sa section s'affichait en erreur.
 
-La règle, tranchée par Kevin le 28/09 : le peer déclare `brain_root` dans
+La règle, tranchée par l'owner le 28/09 : le peer déclare `brain_root` dans
 `brain-compose.local.yml` ; sinon, le chemin du brain LOCAL relatif à `$HOME`
 (`~/Dev/Brain` ici — rien ne change pour une instance déjà installée).
 

@@ -70,7 +70,7 @@ DOLT_DB     = os.getenv('BRAIN_DOLT_DB') or 'brain-dolt'
 # un `brain.db` vide à la racine, trouvé deux heures plus tard par `brain
 # doctor`. Le même mode de défaillance, par un autre chemin.
 #
-# Le défaut est `dolt` depuis le 27/09 — tranché par Kevin : Dolt est
+# Le défaut est `dolt` depuis le 27/09 — tranché par l'owner : Dolt est
 # le socle (BRAIN-074), et `scripts/dolt-setup.sh` sait désormais l'installer
 # chez un fork. SQLite reste possible, mais DÉCLARÉ : un fichier absent n'est plus
 # créé en silence par défaut. Et le défaut, quel qu'il soit, se déclare quand il
@@ -105,6 +105,7 @@ if not os.environ.get('BRAIN_DB_BACKEND'):   # absent OU vide : même repli, mê
 try:
     from core.persistance import DOLT, SQLITE, Config, Depot, traduire
     from core.traces import Journal, SansVersionnement, tables_ecrites
+    from core.bsi import VERROU_ACTIF
 except ImportError as _exc:                                # pragma: no cover
     raise ImportError(
         f"le CORE de Myéline est introuvable ({_exc}). Il s'installe depuis "
@@ -466,6 +467,72 @@ def claims_du_reseau(where: str = '1=1', params: tuple = (), colonnes: str = '*'
             r['_branche'] = b
         lignes += venues
     return lignes
+
+
+def branche_propre() -> str | None:
+    """La branche de CETTE machine, quand elle écrit sur une branche de la base
+    d'une autre (`brain-dolt/laptop` → `laptop`, BRAIN-078) ; None sinon."""
+    if BACKEND != 'dolt' or '/' not in DOLT_DB:
+        return None
+    return DOLT_DB.split('/', 1)[1]
+
+
+def verrous_du_reseau(where: str = '1=1', params: tuple = ()) -> list[dict]:
+    """Les verrous de fichier ACTIFS de tout le réseau. Chaque ligne porte
+    `_branche` : None pour `main`, sinon la branche de la machine qui le tient.
+   
+
+    Les claims voyaient déjà le réseau (`claims_du_reseau`) ; les verrous ne
+    lisaient que leur base, puis consultaient le pair en HTTP — sans jeton, à
+    travers un pare-feu : la consultation n'a jamais abouti (mesuré dans les
+    deux sens, le 2/10), chaque machine accordait le verrou chez elle, et deux
+    sessions pouvaient tenir le même fichier.
+
+    Un verrou appartient à la machine dont il porte le suffixe (`….laptop`,
+    comme les claims) : il se lit sur SA branche. `main` en garde parfois une
+    copie périmée (une ancienne fusion) — elle est écartée.
+
+        le fixe     `main` (sans les suffixes des branches) + chaque branche
+                    satellite (ses seuls verrous suffixés)
+        un laptop   sa branche (ses verrous) + `main` lu EN DIRECT
+                    (`brain-dolt/main`), pas au rafraîchissement horaire
+    """
+    colonnes = 'filepath, holder, claimed_at, expires_at'
+    propre = branche_propre()
+    if propre is None:
+        satellites = branches_satellites()
+        exclure = ''.join(" AND holder NOT LIKE %s" for _ in satellites)
+        lignes = query(f"SELECT {colonnes} FROM locks WHERE ({where}) AND {VERROU_ACTIF}{exclure}",
+                       tuple(params) + tuple(f'%.{b}' for b in satellites))
+        for r in lignes:
+            r['_branche'] = None
+        for b in satellites:
+            venues = query(f"SELECT {colonnes} FROM `{DOLT_DB}/{b}`.locks "
+                           f"WHERE ({where}) AND {VERROU_ACTIF} AND holder LIKE %s",
+                           tuple(params) + (f'%.{b}',))
+            for r in venues:
+                r['_branche'] = b
+            lignes += venues
+        return lignes
+    base = DOLT_DB.split('/', 1)[0]
+    siennes = query(f"SELECT {colonnes} FROM locks WHERE ({where}) AND {VERROU_ACTIF} AND holder LIKE %s",
+                    tuple(params) + (f'%.{propre}',))
+    for r in siennes:
+        r['_branche'] = propre
+    du_maitre = query(f"SELECT {colonnes} FROM `{base}/main`.locks "
+                      f"WHERE ({where}) AND {VERROU_ACTIF} AND holder NOT LIKE %s",
+                      tuple(params) + (f'%.{propre}',))
+    for r in du_maitre:
+        r['_branche'] = None
+    return siennes + du_maitre
+
+
+def sources_des_verrous() -> list[str]:
+    """Les bases que `verrous_du_reseau` consulte — pour le DIRE à l'appelant."""
+    propre = branche_propre()
+    if propre is None:
+        return ['main'] + branches_satellites()
+    return [propre, 'main']
 
 
 def ouverts_du_reseau() -> list[dict]:

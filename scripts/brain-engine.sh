@@ -372,7 +372,7 @@ cmd_stop() {
     autre=$(pid_en_cours)
     if [[ -n "$autre" ]]; then
       info "brain-engine tourne (PID $autre), mais pas lancé par ce script — non arrêté"
-      info "  systemd : systemctl --user stop brain-engine · pm2 : pm2 stop brain-engine"
+      info "  systemd : systemctl --user stop brain-engine · pm2 : pm2 stop brain-engine brain-mcp"
     else
       info "brain-engine n'est pas en cours"
     fi
@@ -573,40 +573,30 @@ cmd_install_pm2() {
   [[ -x "$PY_VENV" ]] || PY_VENV=$(command -v python3)
   local eco="$BRAIN_ROOT/ecosystem.config.js"
   cat > "$eco" << JSEOF
-// ecosystem.config.js — généré par brain-engine.sh
+// ecosystem.config.js — généré par brain-engine.sh install pm2
 // Usage : pm2 start ecosystem.config.js
-
-const fs   = require('fs')
-const path = require('path')
-
-function loadSecrets() {
-  const p = path.join(__dirname, 'brain-secrets', 'MYSECRETS')
-  if (!fs.existsSync(p)) return {}
-  return Object.fromEntries(
-    fs.readFileSync(p, 'utf8')
-      .split('\\n')
-      .filter(l => l && !l.startsWith('#') && l.includes('='))
-      .map(l => {
-        const idx = l.indexOf('=')
-        return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()]
-      })
-  )
-}
-
-const secrets = loadSecrets()
-
+//
+// Les deux portes passent par \`brain serve\` (brain-engine/serve.py) : ports,
+// mode, secrets et scopes du MCP local se déclarent là, une fois. Ce fichier
+// ne lit plus MYSECRETS et ne recopie plus aucun port. Avant, pm2 ne lançait
+// que l'API : un brain sous pm2 n'avait pas de serveur MCP.
 module.exports = {
   apps: [
     {
       name: 'brain-engine',
-      script: 'brain-engine/server.py',
+      script: 'brain-engine/serve.py',
+      args: 'http',
       interpreter: '${PY_VENV}',
       cwd: __dirname,
-      env: {
-        ...secrets,
-        BRAIN_MODE: '${mode}',
-        BRAIN_PORT: '${port}',
-      },
+      watch: false,
+      autorestart: true,
+    },
+    {
+      name: 'brain-mcp',
+      script: 'brain-engine/serve.py',
+      args: 'mcp',
+      interpreter: '${PY_VENV}',
+      cwd: __dirname,
       watch: false,
       autorestart: true,
     },
@@ -622,9 +612,9 @@ JSEOF
 
   pm2 start "$eco"
   pm2 save
-  ok "brain-engine installé via pm2 (mode: $mode, port: $port)"
-  info "pm2 logs brain-engine — pour voir les logs"
-  info "pm2 stop brain-engine — pour arrêter"
+  ok "brain-engine et brain-mcp installés via pm2 (mode: $mode, port: $port · mcp : $MCP_PORT)"
+  info "pm2 logs brain-engine · pm2 logs brain-mcp — pour voir les logs"
+  info "pm2 stop brain-engine brain-mcp — pour arrêter"
   info "Prochaine étape : brain-engine install systemd (quand tu es prêt)"
 }
 
@@ -705,10 +695,10 @@ WantedBy=default.target
 SVCEOF
 
   # Le service LOCAL voit ce que le rôle `mcp` de server.py voit — public, work,
-  # instance, satellite — comme le brain-mcp-local de la prod. Sans ces scopes,
+  # instance, satellite — comme le MCP local de la prod. Sans ces scopes,
   # le MCP d'un fork tombait sur le défaut ÉTROIT de mcp_server.py (prévu pour un
   # MCP exposé) : ni projets, ni focus, ni todo, ni learning dans brain_search,
-  # sans aucun signal (Cortex-Template#9, tranché par Kevin le 28/09).
+  # sans aucun signal (Cortex-Template#9, tranché par l'owner le 28/09).
   # Ils sont déclarés dans `serve.py` (DEFAUTS), plus ici ; MYSECRETS
   # (EnvironmentFile) l'emporte toujours s'il déclare BRAIN_MCP_SCOPES.
   cat > "$unites/brain-mcp.service" << SVCEOF

@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.5.0"
+version: "2.5.1"
 
 # ---
 # Ownership — kerneluser
@@ -151,3 +151,6 @@ changelog:
   - version: "2.5.0"
     date: "2026-10-02"
     notes: "Un brain demarre par une commande : brain serve. brain-engine/serve.py lance les deux portes (l'API et le serveur MCP) et porte leur declaration a un seul endroit : les ports, le mode et les scopes du MCP local se calculent au demarrage - les defauts, puis brain-engine/.env.local, puis MYSECRETS (sauf en demo), puis l'environnement deja pose - et ne sont plus recopies dans les unites systemd. MYSECRETS se lit comme un EnvironmentFile de systemd, ligne CLE=valeur : rien n'y est plus execute (brain-engine.sh faisait source). brain serve http et brain serve mcp remplacent leur processus par le serveur, le PID suivi est le sien ; brain serve seul tient les deux portes et arrete l'une si l'autre tombe ; brain serve --declaration dit ce qui serait lance, sans jamais une valeur de secret. scripts/brain est le point d'entree, pose dans ~/.local/bin par install systemd ; brain-engine.sh start et les unites passent par lui, et le script verifie les ports que les serveurs ouvriront. Le CORE dit pourquoi il s'abstient : un Python sans pymysql n'est plus annonce comme un service injoignable. Le dernier focus est rendu, date, quand l'API ne repond pas (focus_instantane.py, a chaque passage de l'indexeur). Mise a jour depuis la v2.4.3 : bash scripts/brain-engine.sh install systemd (reecrit les unites brain-engine et brain-mcp, garde les anciennes a cote, pose la commande brain, relance le moteur et le MCP)."
+  - version: "2.5.1"
+    date: "2026-10-02"
+    notes: "Les verrous de fichier voient toutes les machines. Sur un brain qui a des machines satellites (chacune ecrit sur sa branche de la base commune), POST /bsi/locks consultait le pair en HTTP - et la consultation n'aboutissait pas (sans jeton, a travers un pare-feu) : chaque machine accordait le verrou chez elle. db.verrous_du_reseau lit maintenant les verrous la ou ils sont ecrits, main et chaque branche satellite (une satellite lit main en direct) ; la route, le garde d'ecriture et le repli de file-lock.sh l'utilisent, et disent ce qu'ils ont lu. Un verrou appartient a la machine dont il porte le suffixe ; une base illisible refuse le verrou au lieu de l'accorder. install pm2 lance les deux portes par brain serve - il ne lancait que l'API, sans serveur MCP - et ne relit plus MYSECRETS en JavaScript. Le prenom de l'owner ne part plus avec le gabarit, et la synchro le refuse desormais. Les tests d'installation recoivent un HOME jetable : la suite reecrivait le vrai ~/.local/bin/brain. Mise a jour depuis la v2.5.0 : relancer le moteur - bash scripts/brain-engine.sh install systemd, ou install pm2 si pm2 fait tourner le brain."

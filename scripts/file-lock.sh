@@ -3,7 +3,7 @@
 # file-lock.sh — Mutex fichier BSI-v3-7 (BRAIN-036)
 # Empêche deux satellites d'écrire simultanément dans le même fichier.
 #
-# ── Deux chemins, et le script dit lequel a servi — 10/09, decision Kevin ────
+# ── Deux chemins, et le script dit lequel a servi — 10/09, decision de l'owner ────
 #
 # Mesure du 10/09 : ce script posait ses verrous en SQL direct, sans jamais
 # consulter les autres machines. La verification croisee existe — elle est dans
@@ -11,7 +11,7 @@
 # postes pouvaient donc verrouiller le meme fichier sans se voir, et le rsync
 # manuel de `brain-dolt-sync.sh` n'y change rien : ce n'est pas une replication.
 #
-# Kevin a tranche : les verrous DOIVENT coordonner plusieurs machines.
+# L'owner a tranche : les verrous DOIVENT coordonner plusieurs machines.
 #
 # Mais ce script part dans le template (`brain-distribuable: oui`), et un fork
 # n'a pas forcément de brain-engine qui tourne. « HTTP a la place » aurait
@@ -98,8 +98,8 @@ def par_le_moteur(methode, chemin, corps=None, timeout=3):
 
 
 MANQUE = {
-    "acquisition": "Les verrous des autres machines n'ont PAS ete consultes :\n"
-                   "    ce verrou n'engage que cette machine.",
+    "acquisition": "Le Dashboard n'a PAS ete notifie. Les verrous des autres\n"
+                   "    machines ont ete lus dans la base commune.",
     "liberation":  "Le Dashboard n'a PAS ete notifie : il croira le verrou\n"
                    "    tenu jusqu'a son expiration.",
 }
@@ -135,8 +135,7 @@ def cmd_acquire():
             print(f"🔴 LOCK — {filepath}")
             print(f"   {motif}")
             print("")
-            print("   Refus prononce par le moteur : les autres machines ont")
-            print("   ete consultees.")
+            print("   Refus prononce par le moteur, sur les verrous de tout le reseau.")
             sys.exit(1)
         if 200 <= code < 300:
             print(f"✅ Lock acquis : {filepath}")
@@ -152,6 +151,12 @@ def cmd_acquire():
             # distinguer « aucun peer muet » de « moteur qui ne sait pas le
             # dire ». Le `None` par defaut separe les deux cas, et le doute ne
             # s affiche pas comme une certitude.
+            # Le moteur dit les bases qu il a lues (`reseau`) : main et chaque
+            # branche satellite. Un moteur d avant ne le dit pas.
+            reseau = (donnees or {}).get("reseau")
+            if reseau:
+                print(f"   Chemin   : moteur — verrous du reseau lus ({', '.join(reseau)}), Dashboard notifie")
+                return
             muets = (donnees or {}).get("peers_injoignables")
             if muets:
                 print(f"   ⚠️  Chemin : moteur — {len(muets)} peer(s) NON consulte(s) : "
@@ -171,13 +176,10 @@ def cmd_acquire():
 
     avertir_repli("acquisition")
 
-    # Check existing active lock held by someone else
-    existing = db.query_one(f"""
-        SELECT holder, expires_at FROM locks
-        WHERE filepath = %s
-          AND {VERROU_ACTIF}
-          AND holder != %s
-    """, (filepath, sess_id))
+    # Le verrou actif d un autre, sur n importe quelle machine du reseau : la
+    # meme regle que le moteur, la meme fonction.
+    existing = next((r for r in db.verrous_du_reseau("filepath = %s", (filepath,))
+                     if r["holder"] != sess_id), None)
 
     if existing:
         print(f"🔴 LOCK — {filepath}")
@@ -200,7 +202,7 @@ def cmd_acquire():
     print(f"✅ Lock acquis : {filepath}")
     print(f"   Session  : {sess_id}")
     print(f"   Expire   : {expires}")
-    print("   Chemin   : LOCAL — ce verrou n'engage que cette machine")
+    print(f"   Chemin   : repli — verrous du reseau lus ({', '.join(db.sources_des_verrous())})")
 
 
 def cmd_release():

@@ -20,7 +20,7 @@
 #
 # Il n'installe pas Ollama : c'est un paquet du système, qui demande root et
 # dépend des pilotes GPU. Il donne la commande de CE système, il ne la lance
-# pas. Tranché par Kevin : déclarer, puis proposer.
+# pas. Tranché par l'owner : déclarer, puis proposer.
 #
 # Le modèle, lui, se tire par l'API d'Ollama (`/api/pull`) : ni root, ni
 # binaire local — un Ollama distant (`OLLAMA_URL`) marche aussi.

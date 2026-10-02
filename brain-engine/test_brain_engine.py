@@ -4535,14 +4535,29 @@ class TestInstallSystemd(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _installer(self, mode='prod'):
+        # HOME jetable : `install systemd` pose ~/.local/bin/brain. Sans lui, la
+        # suite réécrivait le VRAI lien de la machine — vers le worktree où elle
+        # tournait, supprimé ensuite : la commande `brain` était cassée (2/10).
         env = {**os.environ,
                'PATH': f'{self.bin}:{os.environ["PATH"]}',
+               'HOME': str(self.tmp / 'home'),
                'XDG_CONFIG_HOME': str(self.tmp / 'config'),
                'BRAIN_MODE': mode, 'BRAIN_PORT': '17799', 'BRAIN_MCP_PORT': '17798'}
         r = subprocess.run(['bash', str(self.SCRIPT), 'install', 'systemd'],
                            env=env, capture_output=True, text=True, timeout=60)
         appels = self.appels.read_text().splitlines() if self.appels.exists() else []
         return r, appels
+
+    def test_la_commande_brain_se_pose_dans_le_home_recu(self):
+        vrai = Path(os.path.expanduser('~/.local/bin/brain'))
+        avant = os.readlink(vrai) if vrai.is_symlink() else None
+        r, _ = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lien = self.tmp / 'home' / '.local' / 'bin' / 'brain'
+        self.assertTrue(lien.is_symlink(), r.stdout + r.stderr)
+        self.assertEqual(Path(os.readlink(lien)).name, 'brain')
+        apres = os.readlink(vrai) if vrai.is_symlink() else None
+        self.assertEqual(avant, apres, 'le vrai ~/.local/bin/brain a bougé pendant le test')
 
     def test_les_unites_actives_sont_relancees(self):
         # `enable --now` ne relance pas une unité déjà active : le nouvel
@@ -5686,6 +5701,61 @@ class TestFixeVoitLeLaptop(unittest.TestCase):
         r = subprocess.run([str(BRAIN_ROOT_PATH / 'brain-engine' / '.venv' / 'bin' / 'python3'), '-c', code],
                            cwd=BRAIN_ROOT_PATH, env=self._env(), capture_output=True, text=True, timeout=60)
         self.assertEqual(r.stdout.strip().splitlines()[-1], 'sess-k.laptop', r.stderr)
+
+    # ── Les verrous de fichier, eux aussi, voient le réseau — ──────
+    #
+    # Mesuré le 2/10 : la prise de verrou consultait le pair en HTTP, et la
+    # consultation n'aboutissait jamais (000, 401). Chaque machine accordait
+    # chez elle. Témoins : un verrou du fixe, un verrou du laptop sur SA branche,
+    # et la copie périmée d'un verrou du laptop restée dans `main`.
+    _verrou = ("INSERT INTO locks (filepath,holder,claimed_at,expires_at,ttl_min) VALUES "
+               "('{}','{}',UTC_TIMESTAMP(),DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE),30)")
+
+    def _verrous_poses(self):
+        self._sql('root', 'brain-dolt', self._verrou.format('a.md', 'sess-f1'),
+                  self._verrou.format('c.md', 'sess-l9.laptop'),     # copie périmée
+                  "CALL DOLT_COMMIT('-Am','verrous du fixe')")
+        self._sql('laptop', 'brain-dolt/laptop', "CALL DOLT_MERGE('main')",
+                  "DELETE FROM locks WHERE filepath = 'c.md'",       # le laptop l'a relâché
+                  self._verrou.format('b.md', 'sess-l1.laptop'),
+                  "CALL DOLT_ADD('locks')", "CALL DOLT_COMMIT('-m','verrou du laptop')")
+
+    def _verrous_vus(self, base='brain-dolt', user='root'):
+        code = ('import sys, json; sys.path.insert(0, "brain-engine"); import db; '
+                'print(json.dumps(sorted([r["filepath"], r["_branche"]] for r in db.verrous_du_reseau())))')
+        r = subprocess.run([str(BRAIN_ROOT_PATH / 'brain-engine' / '.venv' / 'bin' / 'python3'), '-c', code],
+                           cwd=BRAIN_ROOT_PATH, env=self._env(base, user), capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def test_le_fixe_voit_les_verrous_du_laptop(self):
+        self._verrous_poses()
+        # c.md : relâché sur SA branche — la copie périmée de main ne le rend pas tenu
+        self.assertEqual(self._verrous_vus(), [['a.md', None], ['b.md', 'laptop']])
+
+    def test_le_laptop_voit_les_verrous_du_fixe_en_direct(self):
+        self._verrous_poses()
+        # `main` lu en direct (pas au rafraîchissement) ; la copie périmée de son
+        # propre verrou n'y compte pas
+        self.assertEqual(self._verrous_vus('brain-dolt/laptop', 'laptop'), [['a.md', None], ['b.md', 'laptop']])
+
+    def _prendre(self, chemin, holder, base='brain-dolt', user='root'):
+        env = self._env(base, user)
+        env['BRAIN_PORT'] = '1'                                    # moteur injoignable : le repli
+        return subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'file-lock.sh'), 'acquire',
+                               chemin, holder, '5'], env=env, capture_output=True, text=True, timeout=60)
+
+    def test_le_repli_de_file_lock_refuse_le_verrou_de_l_autre_machine(self):
+        self._verrous_poses()
+        depuis_le_fixe = self._prendre('b.md', 'sess-f2')
+        self.assertEqual(depuis_le_fixe.returncode, 1, depuis_le_fixe.stdout + depuis_le_fixe.stderr)
+        self.assertIn('sess-l1.laptop', depuis_le_fixe.stdout)
+        depuis_le_laptop = self._prendre('a.md', 'sess-l1.laptop', 'brain-dolt/laptop', 'laptop')
+        self.assertEqual(depuis_le_laptop.returncode, 1, depuis_le_laptop.stdout + depuis_le_laptop.stderr)
+        self.assertIn('sess-f1', depuis_le_laptop.stdout)
+        # Témoin : un fichier libre partout se prend, et le dit
+        libre = self._prendre('d.md', 'sess-f2')
+        self.assertEqual(libre.returncode, 0, libre.stdout + libre.stderr)
+        self.assertIn('verrous du reseau lus (main, laptop)', libre.stdout)
 
     def test_le_repli_de_bsi_claim_refuse_aussi(self):
         # Moteur injoignable (port mort) : le repli local ouvre lui-même — avec
@@ -6945,6 +7015,69 @@ class TestBrainServe(unittest.TestCase):
         self.assertEqual(code, 1, 'une porte tombée : brain serve sort en erreur')
         self.assertIsNotNone(enfants['mcp'].poll(), "l'autre porte est arrêtée, pas laissée seule")
         self.assertLess(time.monotonic() - debut, 15)
+
+
+
+class TestInstallPm2(unittest.TestCase):
+    """`install pm2` lance les DEUX portes, par `brain serve`.
+
+    Avant, l'écosystème ne déclarait que l'API : un brain sous pm2 n'avait pas
+    de serveur MCP. Et il relisait MYSECRETS en JavaScript, une seconde lecture
+    de la déclaration. Joué dans un brain jetable, avec un faux `pm2` qui note
+    ses appels ; l'écosystème généré est lu par Node, comme pm2 le lirait."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='install-pm2-'))
+        self.brain = self.tmp / 'brain'
+        for rel in ('scripts/brain-engine.sh', 'scripts/lib/python.sh', 'brain-engine/serve.py',
+                    'brain-engine/racines.py'):
+            (self.brain / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(BRAIN_ROOT_PATH / rel, self.brain / rel)
+        for faux in ('server.py', 'mcp_server.py'):
+            (self.brain / 'brain-engine' / faux).write_text('import time\ntime.sleep(1)\n')
+        venv = BRAIN_ROOT_PATH / 'brain-engine' / '.venv'
+        if not (venv / 'bin' / 'python3').exists():
+            self.skipTest('pas de venv : `install pm2` vérifie les dépendances du moteur')
+        (self.brain / 'brain-engine' / '.venv').symlink_to(venv.resolve())
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        self.appels = self.tmp / 'appels'
+        pm2 = self.bin / 'pm2'
+        pm2.write_text(f'#!/bin/sh\necho "$*" >> {self.appels}\nexit 0\n')
+        pm2.chmod(0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _port_libre(self):
+        import socket as _s
+        with _s.socket() as so:
+            so.bind(('127.0.0.1', 0))
+            return so.getsockname()[1]
+
+    def test_les_deux_portes_par_brain_serve(self):
+        if not shutil.which('node'):
+            self.skipTest('node absent — l écosystème ne se lit pas')
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(PATH=f'{self.bin}:{env.get("PATH", "")}', HOME=str(self.tmp / 'home'),
+                   BRAIN_PORT=str(self._port_libre()), BRAIN_MCP_PORT=str(self._port_libre()))
+        r = subprocess.run(['bash', str(self.brain / 'scripts' / 'brain-engine.sh'), 'install', 'pm2'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        eco = self.brain / 'ecosystem.config.js'
+        lu = subprocess.run(['node', '-e', 'const a = require(process.argv[1]).apps;'
+                             'console.log(JSON.stringify(a.map(x => [x.name, x.script, x.args])))', str(eco)],
+                            capture_output=True, text=True, timeout=30)
+        self.assertEqual(lu.returncode, 0, lu.stderr)
+        self.assertEqual(json.loads(lu.stdout), [['brain-engine', 'brain-engine/serve.py', 'http'],
+                                                 ['brain-mcp', 'brain-engine/serve.py', 'mcp']])
+        texte = eco.read_text()
+        # Ce qui LIRAIT un fichier, pas le mot : le commentaire dit justement
+        # qu'il ne lit plus MYSECRETS.
+        for lecture in ("require('fs')", 'readFileSync', 'brain-secrets'):
+            self.assertNotIn(lecture, texte, 'la déclaration ne se relit pas ici')
+        self.assertIn('`brain serve`', texte, 'le commentaire garde ses accents graves')
+        self.assertIn('start ' + str(eco), self.appels.read_text())
 
 
 if __name__ == '__main__':

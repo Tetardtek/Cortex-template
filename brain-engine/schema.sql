@@ -5,7 +5,7 @@
 --     La chaîne est base → schema-dolt.sql → schema.sql : une seule
 --     déclaration à l'origine. Éditer ici la ferait diverger.
 --
--- Toutes les tables, aucune donnée — tranché par Kevin le 06/09 : un fork
+-- Toutes les tables, aucune donnée — tranché par l'owner le 06/09 : un fork
 -- reçoit tous les modules qu'on propose, vierges.
 --
 -- Les VUES sont écrites à la main et reprises telles quelles : elles

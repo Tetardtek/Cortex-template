@@ -47,7 +47,7 @@ EXEMPTES=()
 #   - le scan des chemins machine reste actif sur lui, sans exception ;
 #   - si le bloc disparait ou est renomme, l'exemption ne couvre plus rien —
 #     elle ne peut pas devenir un trou permanent, elle reste capable de rougir.
-# Tranche par Kevin le 04/09.
+# Tranche par l'owner le 04/09.
 lignes_exemptees() {
   local f="$1"
   [ "$(basename "$f")" = "KERNEL.md" ] || return 0
