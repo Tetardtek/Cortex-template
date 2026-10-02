@@ -22,7 +22,9 @@ niveaux:
 entrees:
   NIVEAUX.yml: invariant
   agents/: programme
-  brain-compose.local.yml: etat
+  brain-compose.local.yml:
+    niveau: etat
+    cree_par: le setup
   brain-compose.local.yml.example:
     niveau: programme
     indexe: non
@@ -30,11 +32,17 @@ entrees:
     niveau: programme
     indexe: non
   brain-constitution.md: invariant
-  brain-db-backup/: artefact
-  brain-dolt/: satellite
+  brain-db-backup/:
+    niveau: artefact
+    cree_par: la sauvegarde de la base
+  brain-dolt/:
+    niveau: satellite
+    cree_par: le setup
   brain-engine/: moteur
   BRAIN-INDEX.md: invariant
-  brain-secrets/: satellite
+  brain-secrets/:
+    niveau: satellite
+    cree_par: l'owner, à l'installation
   brain-ui/: moteur
   brain/:
     niveau: donnee
@@ -49,6 +57,9 @@ entrees:
   focus.md:
     niveau: donnee
     versionne: ici
+  focus.instantane.md:
+    niveau: etat
+    cree_par: l'indexeur
   handoffs/:
     niveau: donnee
     versionne: ici
@@ -101,3 +112,15 @@ entrees:
   workspace/:
     niveau: donnee
     versionne: ici
+  ARCHITECTURE.md:
+    niveau: programme
+    indexe: non
+  LICENSE.md:
+    niveau: programme
+    indexe: non
+  kernel.lock:
+    niveau: programme
+    indexe: non
+  reviews/:
+    niveau: donnee
+    versionne: depot-separe

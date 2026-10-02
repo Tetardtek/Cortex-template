@@ -30,9 +30,9 @@ L2:
   - agents/security.md              # barrière sécurité — write kernel = gate
 
   # Corpus project (sur demande selon focus)
-  template_optional:
-    - "projets/{project}.md"
-    - "todo/{project}.md"
+  - template_optional:
+      - "projets/{project}.md"
+      - "todo/{project}.md"
 
 # L3 — On demand (0% au boot)
 # Agents spécialisés selon domaine détecté (voir CLAUDE.md — Agents chauds)

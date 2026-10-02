@@ -37,7 +37,8 @@ tort — et c'est un défaut à signaler, pas à contourner.*
 - travailler sur `brain-engine/` — l'API, le serveur MCP, la recherche ;
 - lire ou écrire la base ;
 - écrire ou corriger la doc du brain ;
-- publier le gabarit.
+- publier le gabarit ;
+- savoir si le brain est sain : `brain doctor`.
 
 ## Les règles qui ne se discutent pas
 
@@ -61,6 +62,15 @@ tort — et c'est un défaut à signaler, pas à contourner.*
    services de la machine : on les lit dans le code, on ne les sonde pas pour
    voir. Un essai se fait dans un bac à sable : HOME jetable, ports décalés, rien
    de la machine en commun.
+
+## Le doctor : `brain doctor`
+
+Après une PR, une mise à jour, ou avant de dire « fini » : `brain doctor`
+(`bash scripts/brain doctor` sans la commande). Son **code de sortie** est le
+verdict — 0, aucune dérive. Une ligne ❌ dit ce qu'elle laisserait passer et ce
+qu'elle a constaté ; une ligne ⏭️ s'abstient, et dit pourquoi. **Un rouge se
+corrige à sa cause, jamais dans le contrôle** — et un contrôle qui s'abstient ne
+compte pas comme vert. Le détail : `docs/moteur.md`, « brain doctor ».
 
 ## Les pages
 

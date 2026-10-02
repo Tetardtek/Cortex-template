@@ -5,9 +5,10 @@
 # Usage :
 #   brain serve [http|mcp]       les portes réseau (HTTP + MCP), une seule déclaration
 #   brain serve --declaration    ce qui serait lancé, sans rien lancer
+#   brain doctor                 ce qui se dégrade en silence — le brain se contrôle
 #
-# Un verbe pour l'instant. Les autres viendront des scripts du brain, un par un
-# (`brain <verbe>`) — chacun le jour où il est prêt, pas avant.
+# Les autres verbes viendront des scripts du brain, un par un (`brain <verbe>`)
+# — chacun le jour où il est prêt, pas avant.
 #
 # Ce fichier peut être appelé par un lien (`~/.local/bin/brain`, posé par
 # `brain-engine.sh install`) : il retrouve son brain par le chemin RÉEL.
@@ -22,11 +23,28 @@ case "${1:-}" in
     shift
     exec python3 "$_ici/../brain-engine/serve.py" "$@"
     ;;
+  doctor)
+    # Le doctor livré avec le gabarit (`brain-engine/doctor/`) joue les contrôles
+    # de portée gabarit ; ses outils importent le CORE livré, d'où PYTHONPATH.
+    # Sans lui — le brain d'origine —, celui du dépôt de Myéline, complet.
+    shift
+    _brain="$(cd "$_ici/.." && pwd)"
+    if [ -f "$_brain/brain-engine/doctor/brain_doctor.py" ]; then
+      PYTHONPATH="$_brain/brain-engine${PYTHONPATH:+:$PYTHONPATH}" \
+        exec python3 "$_brain/brain-engine/doctor/brain_doctor.py" --brain "$_brain" --portee gabarit "$@"
+    fi
+    if [ -n "${MYELINE_ROOT:-}" ] && [ -f "$MYELINE_ROOT/tools/brain_doctor.py" ]; then
+      exec python3 "$MYELINE_ROOT/tools/brain_doctor.py" --brain "$_brain" "$@"
+    fi
+    echo "brain doctor : aucun doctor dans ce brain (brain-engine/doctor/ absent)." >&2
+    echo "  Le brain d'origine : MYELINE_ROOT=<dépôt de Myéline> brain doctor" >&2
+    exit 2
+    ;;
   ""|-h|--help|help)
-    sed -n '4,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '4,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
-    echo "brain : verbe inconnu « $1 » — connu : serve" >&2
+    echo "brain : verbe inconnu « $1 » — connus : serve, doctor" >&2
     exit 2
     ;;
 esac

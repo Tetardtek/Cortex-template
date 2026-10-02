@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.5.3"
+version: "2.6.0"
 
 # ---
 # Ownership — kerneluser
@@ -160,3 +160,6 @@ changelog:
   - version: "2.5.3"
     date: "2026-10-02"
     notes: "Un fork installe a ce que le brain d'origine a. Le setup pose les hooks git (etape 11) : le claim d'une session reste en vie, la base suit les handoffs, et un commit doit porter un type declare dans KERNEL.md - un message libre est refuse, en le disant. Le setup resout chaque marqueur de PATHS.md, <PROJECTS_ROOT> compris (le dossier ou le brain est clone, ou PROJECTS_ROOT=) ; un fork deja installe se corrige en relancant le setup. Le catalogue des agents est regenere sur le gabarit : il decrit les agents livres, et plus les agents prives de l'instance d'origine (nom et resume) ni ceux qu'un fork n'a pas. Mise a jour depuis la v2.5.2 : bash scripts/install-brain-hooks.sh, puis remplacer <PROJECTS_ROOT> dans la ligne projects/ de PATHS.md - sans relancer tout le setup, dont l'etape 2 reecrit ~/.claude/CLAUDE.md."
+  - version: "2.6.0"
+    date: "2026-10-02"
+    notes: "Un fork se controle lui-meme : brain doctor. Le gabarit livre le doctor (brain-engine/doctor/, avec ses ressources dans brain-engine/contrat/ et brain-engine/bench/) : une soixantaine de controles, chacun gardant une derive qui ne leve aucune erreur - un registre qui s'eloigne de sa source, un fichier declare au boot et disparu, un hook absent, une fiche de projet en double. Son code de sortie est le verdict ; un controle s'abstient, et le dit, quand ce qu'il mesure manque (Ollama, une sauvegarde)  ; les controles propres a l'instance d'origine ne partent pas. Un fork neuf est vert. La skill et docs/moteur.md disent quand le lancer et comment le lire. Le gabarit livre aussi kernel.lock (l'empreinte du noyau recu), NIVEAUX.yml declare ce qu'il porte et ce que l'installation cree, workspace/backlog/ existe, et la synchro refuse un YAML que le retrait des etiquettes casserait (un contexte d'archive casse depuis la V1 est repare). Mise a jour depuis la v2.5.3 : rien a migrer ; brain doctor pour voir."

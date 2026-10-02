@@ -3,6 +3,9 @@
 # kernel-lock-gen.sh — Génère kernel.lock
 # Checksums SHA-256 de tous les fichiers zone:kernel trackés
 # Usage : bash scripts/kernel-lock-gen.sh
+#         bash scripts/kernel-lock-gen.sh --avec-non-suivis
+#           compte aussi les fichiers non suivis mais NON ignorés : ce que la
+#           synchro du gabarit publiera, avant son `git add`.
 
 set -euo pipefail
 
@@ -47,8 +50,13 @@ done
 # .gitignore). Le lock dependait donc de la machine qui le generait — le
 # checkout principal y mettait neuf scripts Ventoy, un worktree propre les
 # retirait. L'en-tete disait deja « fichiers zone:kernel trackés ».
+AVEC_NON_SUIVIS=false
+[[ "${1:-}" == "--avec-non-suivis" ]] && AVEC_NON_SUIVIS=true
 suivis() {   # suivis <pathspec>... → chemins absolus, tries, separes par \0
-  git -C "$BRAIN_ROOT" ls-files -- "$@" | sort \
+  local options=()
+  $AVEC_NON_SUIVIS && options=(--cached --others --exclude-standard)
+  # `${t[@]+"${t[@]}"}` : un tableau vide sous `set -u` plante avant bash 4.4.
+  git -C "$BRAIN_ROOT" ls-files ${options[@]+"${options[@]}"} -- "$@" | sort -u \
     | while IFS= read -r rel; do
         [ -f "$BRAIN_ROOT/$rel" ] && printf '%s\0' "$BRAIN_ROOT/$rel"
       done

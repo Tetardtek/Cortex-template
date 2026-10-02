@@ -128,6 +128,32 @@ systemctl --user status brain-embed        # le dernier, et son échec éventuel
 
 ---
 
+## `brain doctor` — ce qui se dégrade en silence
+
+Un brain ne casse pas d'un coup : un registre s'éloigne de sa source, un fichier
+déclaré au boot disparaît, un hook n'est plus posé, et rien ne lève d'erreur.
+**`brain doctor`** lance une soixantaine de contrôles, chacun gardant une de ces
+dérives, et dit lesquelles sont arrivées.
+
+```bash
+brain doctor              # sans la commande `brain` : bash scripts/brain doctor
+```
+
+- **Le code de sortie est le verdict** : 0, aucune dérive ; 1, au moins une.
+  Chaque contrôle tient en une ligne, et une dérive dit ce qu'elle laisserait
+  passer (« sans lui : … ») et ce qu'elle a constaté.
+- **⏭️ n'est pas un vert** : un contrôle s'abstient quand ce qu'il mesure manque
+  (Ollama absent, aucune sauvegarde encore, un outil de l'instance d'origine) —
+  et il le dit. Un vert qui ne mesure rien serait pire qu'un rouge.
+- **Un rouge se corrige à sa cause**, jamais dans le contrôle : le doctor est
+  l'instrument, et un instrument qu'on règle pour qu'il se taise ne mesure plus.
+
+Lance-le après une mise à jour, après avoir touché au noyau ou aux agents, et
+avant de dire qu'un travail est fini. Une partie des contrôles a besoin du
+moteur et de la base : lance-le, moteur en marche.
+
+---
+
 ## Diagnostiquer
 
 - **`/health` répond 503** : le moteur n'atteint pas la base. Son message dit

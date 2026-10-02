@@ -6679,8 +6679,15 @@ class TestNiveauxDuGabarit(unittest.TestCase):
         # commentaire de la source.
         partent = {f'{n}/' for n, c in TestCouchesDuGabarit._table(self)['couches'].items()
                    if c['part'] in ('contenu', 'readme')}
-        absentes = [n for n in entrees if n != 'NIVEAUX.yml' and n not in self.INSTALLE
+        absentes = [n for n, v in entrees.items() if n != 'NIVEAUX.yml'
+                    and not (isinstance(v, dict) and v.get('cree_par'))
                     and n not in partent and not (rendu / n.rstrip('/')).exists()]
+        self.assertTrue(all(isinstance(entrees.get(n), dict) and entrees[n].get('cree_par')
+                            for n in self.INSTALLE), "ce que l'installation crée porte `cree_par:`")
+        # Et rien à la racine du rendu sans déclaration.
+        racine = {p.name + ('/' if p.is_dir() else '') for p in rendu.iterdir()
+                  if not p.name.startswith('.')}
+        self.assertEqual(sorted(racine - set(entrees)), [], 'à la racine, sans déclaration')
         self.assertEqual(absentes, [], 'des entrées que le fork n\'a pas')
         self.assertFalse(any(isinstance(v, dict) and 'note' in v for v in entrees.values()))
         source = (self.brain / 'NIVEAUX.yml').read_text(encoding='utf-8')
@@ -6744,6 +6751,90 @@ class TestCatalogueDuGabarit(unittest.TestCase):
                   and 'reviews' not in f.relative_to(agents).parts}
         self.assertEqual(sorted(ids - livres), [], 'des entrées sans fichier')
         self.assertEqual(sorted(livres - ids), [], 'des agents livrés sans entrée')
+
+
+class TestLockDuGabarit(unittest.TestCase):
+    """Le gabarit livre `kernel.lock`, et il décrit CE QUE LE FORK REÇOIT.
+
+    Il ne partait pas : un fork n'avait aucune empreinte de son noyau. Celui de
+    l'instance décrit l'instance ; la synchro génère donc le sien sur le rendu
+    achevé. Juge : chaque empreinte relue sur le fichier rendu."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+
+    def test_le_lock_livre_decrit_le_rendu(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        import hashlib
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        lock = (rendu / 'kernel.lock').read_text(encoding='utf-8')
+        version = re.search(r'^kernel_version: "([^"]+)"', lock, re.M).group(1)
+        compose = re.search(r'^version: "([^"]+)"', (rendu / 'brain-compose.yml').read_text(), re.M).group(1)
+        self.assertEqual(version, compose)
+        empreintes = dict(re.findall(r'^  (\S+): ([0-9a-f]{64})$', lock, re.M))
+        self.assertGreater(len(empreintes), 50, 'un lock presque vide ne décrit rien')
+        fausses = [c for c, h in empreintes.items()
+                   if not (rendu / c).is_file()
+                   or hashlib.sha256((rendu / c).read_bytes()).hexdigest() != h]
+        self.assertEqual(fausses, [], 'des empreintes qui ne décrivent pas le rendu')
+        # Témoin contraire : le lock de l'instance, lui, ne décrit pas le rendu.
+        source = dict(re.findall(r'^  (\S+): ([0-9a-f]{64})$',
+                                 (BRAIN_ROOT_PATH / 'kernel.lock').read_text(), re.M))
+        self.assertNotEqual(source, empreintes)
+
+
+class TestDoctorDuGabarit(unittest.TestCase):
+    """Le gabarit livre `brain doctor` : un fork se contrôle lui-même.
+
+    La synchro copie ce que le doctor dit emporter (`--lister-gabarit`). Le juge
+    est le doctor LIVRÉ : sa propre liste, relue dans le rendu, doit y être
+    entière, à l'endroit où ses outils la cherchent."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+
+    def test_le_doctor_livre_a_tout_ce_qu_il_dit_emporter(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        doctor = rendu / 'brain-engine' / 'doctor' / 'brain_doctor.py'
+        self.assertTrue(doctor.is_file(), 'le doctor n\'est pas livré')
+        liste = subprocess.run([sys.executable, str(doctor), '--lister-gabarit'],
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(liste.returncode, 0, liste.stderr)
+        manquants = []
+        for f in filter(None, liste.stdout.splitlines()):
+            cible = (rendu / 'brain-engine' / 'doctor' / f.removeprefix('tools/')
+                     if f.startswith('tools/') else rendu / 'brain-engine' / f)
+            if not cible.is_file():
+                manquants.append(f)
+        self.assertEqual(manquants, [], 'des fichiers que le doctor livré dit emporter')
+        self.assertGreater(len(liste.stdout.split()), 50)
+        aide = subprocess.run(['bash', str(rendu / 'scripts' / 'brain'), 'help'],
+                              capture_output=True, text=True, timeout=30)
+        self.assertIn('brain doctor', aide.stdout)
+
+    def test_un_yaml_casse_par_le_retrait_arrete_la_synchro(self):
+        """Une étiquette en début de ligne, dans un bloc YAML : au retrait, la
+        ligne perd un cran d'indentation. Le contrat livré avec le doctor ne se
+        lisait plus (2/10) ; le filet final le refuse désormais."""
+        etiquette = '[' + 'MY' + '-1]'
+        (self.brain / 'contexts' / 'casse.yml').write_text(
+            f'cle:\n  pourquoi: >-\n    une raison\n    {etiquette}. Une suite\n  autre: 1\n',
+            encoding='utf-8')
+        self._git('add', 'contexts/casse.yml', cwd=self.brain)
+        self._git('commit', '-q', '--no-verify', '-m', 'casse', cwd=self.brain)
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('YAML ILLISIBLE', r.stdout + r.stderr)
+        self.assertIn('contexts/casse.yml', r.stdout + r.stderr)
 
 
 class TestFocusInstantane(unittest.TestCase):

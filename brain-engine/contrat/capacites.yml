@@ -1,0 +1,414 @@
+# capacites.yml — ce que le brain expose, déclaré UNE fois —
+#
+# Neuf capacités sont écrites deux fois, dans `server.py` et dans
+# `mcp_server.py`, sans que rien ne vérifie qu'elles disent la même chose.
+#
+# 🔴 **CORRIGÉ le 10/09, quelques heures après l'écriture de ce fichier.**
+#
+# Ces lignes affirmaient d'abord : « le doublon n'est pas d'implémentation, le
+# MCP n'implémente rien, il appelle `127.0.0.1:7700` ». C'est **faux**, et la
+# phrase venait de `bench/parite_portes.py` et de la fiche — recopiée
+# sans être vérifiée, trois fois de suite.
+#
+# Mesuré : le MCP atteint la donnée par **trois mécanismes différents**.
+#
+#     6 outils   HTTP vers 127.0.0.1:7700
+#     2 outils   EN MÉMOIRE — `brain_search` et `brain_boot` importent `rag`
+#                et `search` et appellent le moteur en direct
+#     3 outils   DISQUE — `brain_decisions`, `brain_content`,
+#                `brain_content_promote` lisent l'arborescence eux-mêmes
+#
+# Ce n'est donc pas un doublon de déclaration au-dessus d'une implémentation
+# unique : ce sont **trois chemins qui peuvent diverger**. `brain_search` par le
+# MCP et `GET /search` par HTTP ne passent pas par le même code.
+#
+# Ce fichier est la source. Les portes s'y adossent ; `tools/parite_capacites.py`
+# rougit quand une surface réelle s'en écarte.
+#
+# ── Ce que ce fichier a révélé en étant écrit ────────────────────────────────
+#
+# Le banc rangeait dix routes en « HTTP seul » et les présentait comme une
+# asymétrie. En les déclarant une par une, il a fallu répondre à « quelle brique
+# du CORE sert celle-ci ? » — et pour la plupart, la réponse est **aucune**.
+#
+# Ce ne sont pas des capacités du CORE absentes du MCP. Ce sont des **services
+# d'instance** : servir des fichiers de doc, rendre une visualisation, notifier
+# un daemon. Le CORE n'a pas à les porter, et le MCP n'a pas à les exposer.
+#
+# L'asymétrie n'était donc pas un défaut à corriger, c'était une **frontière que
+# personne n'avait écrite**. C'est le même test, appliqué en amont : si une
+# porte a besoin de l'arborescence interne pour répondre, elle est mal placée.
+#
+# ── Champs ───────────────────────────────────────────────────────────────────
+#
+#   nature   core     | une des six capacités de — doit rester atteignable
+#                       par toute porte, et survivre au remplacement du moteur
+#            instance | un service de CETTE installation — ne part pas au CORE
+#            diagnostic | l'identité et la santé du service lui-même
+#
+#   brique   la brique de `core/` qui la sert. `~` quand ce n'est pas tranché —
+#            un point d'interrogation vaut mieux qu'une attribution inventée.
+#
+#   http / mcp   les surfaces réelles, mesurées le 10/09. `~` = pas exposée là,
+#                et le champ `pourquoi` dit alors si c'est un choix ou un trou.
+#
+#   mecanisme    par où l'outil MCP atteint la donnée — `http`, `memoire`,
+#                `disque`, ou `~` s'il n'est pas exposé au MCP. Vérifié contre le
+#                code : une capacité qui change de chemin d'accès sans le dire
+#                est exactement ce que ce contrat existe pour empêcher.
+#
+#   mecanisme_http   la même chose côté routes — `base`, `disque`, `modele`,
+#                `sousproc`, `env`. Union des routes de la capacité.
+#
+# ── Ce que la mesure HTTP a révélé, le 10/09 ────────────────────────────────
+#
+# **Cinq capacités lancent un sous-processus**, et un CORE portable ne le peut
+# pas :
+#
+#     pm2 jlist                        /state, /infra
+#     pm2 logs <projet> --lines 50     /logs/{project}
+#     git log -1 --oneline             /state
+#     python3 embed.py --file <cible>  PUT /brain/{path} — la reindexation
+#
+# `infra` et `logs` sont déclarés `instance` : cohérent. Les trois autres étaient
+# déclarés `core`. **Tranché le 10/09 — et les trois ne se ressemblaient pas.**
+#
+#   brain_state              → passe à `instance`. Elle ne lance pas seulement
+#                            un sous-processus : elle rend `hostname`, les ports
+#                            de la machine et un `git log` de cette copie. Elle
+#                            DÉCRIT une installation. Voir son `pourquoi`.
+#
+#   brain_write              → restent `core`, et c'était l'erreur inverse.
+#   brain_content_promote    « Écrire dans le brain sous garde de zone » est une
+#                            capacité du programme ; `python3 embed.py` n'est
+#                            que la façon dont la V1 réindexe derrière.
+#                            Mesuré : `core/indexation.py` n'importe pas
+#                            `subprocess` — il encode en mémoire via
+#                            `core.modele.Encodeur`. Le sous-processus meurt
+#                            avec la V1, la capacité non.
+#
+# Le critère qui en sort, et qui vaut au-delà de ces trois :
+#
+#     Ce n'est pas le MÉCANISME qui décide de la nature, c'est CE QUE LA
+#     CAPACITÉ RÉPOND. Une capacité qui rend l'état d'une machine est
+#     d'instance, même écrite en Python pur. Une capacité qui rend le contenu
+#     du brain est du CORE, même si la V1 la sert avec un `fork`.
+#
+# Le contrôle de parité continue de compter les sous-processus, mais il dit
+# désormais combien sont déclarés `core` — c'est ce nombre-là qui doit tomber à
+# zéro à la migration, pas l'autre.
+#
+# Le premier jeu de mécanismes n'avait que trois entrées et rendait « aucun »
+# pour sept routes sur vingt-sept. Trois l'étaient légitimement (`/health`,
+# `/ws`, `/ambient/notify`) ; les quatre autres lançaient des sous-processus que
+# le vocabulaire ne savait pas nommer.
+
+version: 1
+mesure_le: 2026-09-10
+source_http: brain-engine/server.py
+source_mcp: brain-engine/mcp_server.py
+
+capacites:
+
+  # ── Les neuf déclarées deux fois — le doublon à supprimer ───────
+
+  brain_search:
+    nature: core
+    brique: recherche
+    http: ["GET /search"]
+    mecanisme_http: [modele]
+    mcp: brain_search
+    mecanisme: memoire
+
+  brain_boot:
+    nature: core
+    brique: ~          # composite : lit plusieurs briques, à trancher
+    http: ["GET /boot"]
+    mecanisme_http: [modele]
+    mcp: brain_boot
+    mecanisme: [http, memoire]
+    pourquoi: >-
+      Composite, et c'est mesurable : il appelle `brain_state()` — donc HTTP —
+      puis `run_boot_queries()` en mémoire. C'est aussi la réponse partielle à
+      son `brique: ~` : il n'en sert pas une, il en compose.
+
+      Et depuis le 10/09, la composition est **hétérogène** : sa première
+      section est `brain_state`, désormais déclarée `instance`. Un boot du CORE
+      ne peut donc pas le reprendre tel quel — il devra soit recevoir cette
+      section de l'instance, soit s'en passer. C'est le même geste que le slot
+      `now.md` retiré le matin : une section d'instance câblée en dur dans une
+      capacité qui se croit portable.
+
+  brain_agents:
+    nature: core
+    brique: persistance
+    http: ["GET /agents"]
+    mecanisme_http: [disque, modele]
+    mcp: brain_agents
+    mecanisme: [disque, http]
+    pourquoi: >-
+      Deux chemins, et le code le dit : *« Fallback filesystem si brain-engine
+      indisponible »*. Avec un `name`, il lit `agents/{name}.md` directement,
+      sans passer par HTTP du tout. Déclarer `http` seul était une demi-vérité —
+      corrigé le 10/09.
+
+  brain_focus:
+    nature: core
+    brique: persistance
+    http: ["GET /focus"]
+    mecanisme_http: [base, disque]
+    mcp: brain_focus
+    mecanisme: [disque, http]
+    pourquoi: >-
+      Même motif que `brain_agents` : HTTP, avec repli sur le disque quand le
+      moteur ne répond pas.
+
+  brain_intentions:
+    nature: core
+    brique: persistance
+    http: ["GET /intentions", "GET /intentions/{intention_id}"]
+    mecanisme_http: [base]
+    mcp: brain_intentions
+    mecanisme: http
+
+  brain_state:
+    nature: instance      # corrigé le 10/09 — était `core`, à tort
+    brique: ~
+    http: ["GET /state"]
+    mecanisme_http: [env, sousproc]
+    mcp: brain_state
+    mecanisme: http
+    pourquoi: >-
+      **Tranché le 10/09 par la mesure, pas par le raisonnement.** Déclarée
+      `core` / `brique: persistance`, elle n'est ni l'un ni l'autre.
+
+      Appelée sur l'instance de référence, `GET /state` rend : le `hostname` de
+      la machine, un `git log -1` de CETTE copie du dépôt, trois numéros de port
+      lus dans l'environnement — et `pm2: []`, parce que **pm2 n'est pas
+      installé sur cette machine**. `subprocess.run(['pm2', …])` lève
+      `FileNotFoundError`, le `except` l'avale, et le MCP masque la section
+      derrière un `if pm2:`. La capacité est donc muette sur sa propre
+      dégradation : rien ne distingue « aucun service » de « pas de pm2 ».
+
+      Rien là-dedans ne survit au remplacement du moteur, et rien n'est
+      persisté — le docstring le dit lui-même : *« dérivé en temps réel, jamais
+      stocké »*. La route porte même déjà son propre aveu : `_is_localhost` la
+      restreint à Layer 2. Une capacité du CORE n'a pas besoin d'être locale.
+
+      Elle décrit une installation. Elle reste exposée au MCP, et c'est bien —
+      une session a besoin de savoir sur quelle machine elle tourne. Mais c'est
+      un service de CETTE installation, et il ne part pas au CORE.
+
+  brain_workflows:
+    nature: instance      # corrigé le 30/09 — était `core`, brique `persistance`
+    brique: ~
+    http: ["GET /workflows"]
+    mecanisme_http: [sousproc]
+    mcp: brain_workflows
+    mecanisme: http
+    pourquoi: >-
+      **Changée de nature le 30/09.** La route lisait les sprints dans la base ;
+      elle sert désormais le résumé de ce qui avance en autonomie, en lançant la
+      commande que la configuration locale déclare (`BRAIN_RESUME_AUTONOMIE_CMD`).
+      Sans cette commande, elle le dit et rend une liste vide. La création de
+      sprint (`POST /workflows/create`) est retirée avec la machinerie qu'elle
+      servait. Ce que la route rend dépend de ce que CETTE installation a
+      branché : c'est un service d'instance, il ne part pas au CORE.
+
+  brain_write:
+    nature: core
+    brique: traces      # écriture gouvernée — la garde de zone est dans zones.py
+    http: ["GET /brain/{path:path}", "PUT /brain/{path:path}"]
+    mecanisme_http: [base, disque]
+    mcp: brain_write
+    mecanisme: http
+    pourquoi: >-
+      Son `sousproc` est TOMBÉ le 11/09. Il valait `python3 embed.py
+      --file`, la réindexation de la V1 — jamais la capacité elle-même. Le
+      10/09 on avait conclu que `core` restait juste malgré lui ; désormais la
+      question ne se pose plus.
+
+      La route dépose le chemin dans une file, un worker unique la vide en
+      appelant `embed.run()` **en bibliothèque**. Le fork disparaît et la route
+      reste non bloquante — ce que remplacer le fork par un import nu aurait
+      cassé, la réindexation faisant un aller-retour vers Ollama par chunk.
+
+      Ce qui définit cette capacité est l'écriture gouvernée par `zones.py`, et
+      elle survit au remplacement du moteur.
+
+  brain_content_promote:
+    nature: core
+    brique: traces
+    http: ["GET /brain/{path:path}", "PUT /brain/{path:path}"]
+    mecanisme_http: [base, disque]
+    mcp: brain_content_promote
+    mecanisme: disque
+    pourquoi: >-
+      Partage sa route avec `brain_write` : deux outils MCP pour une même porte
+      HTTP. Le rapprochement par le nom ne les voit pas — `bench/parite_portes.py`
+      porte un ALIAS explicite pour les deux, plutôt que de deviner.
+
+      Partageait aussi son `sousproc`, tombé avec lui le 11/09 : la
+      route réindexe désormais par une file, sans lancer d'interpréteur.
+
+  # ── Deux exposées au MCP seul ─────────────────────────────────────────────
+
+  brain_content:
+    nature: core
+    brique: persistance
+    http: ~
+    mcp: brain_content
+    mecanisme: disque
+    pourquoi: >-
+      Ce n'est PAS un trou côté HTTP — c'est une capacité qui n'a jamais traversé
+      le moteur. Elle scanne `contenu/atelier/` et `contenu/publie/` (BRAIN-080) depuis le
+      processus MCP, avec un chemin déduit de la position du fichier. Corrigé le
+      10/09 : la première version de ce contrat la déclarait « trou, pas un
+      choix », en reprenant l'idée fausse que le MCP passait par HTTP.
+
+  brain_decisions:
+    nature: core
+    brique: persistance
+    http: ~
+    mcp: brain_decisions
+    mecanisme: disque
+    pourquoi: >-
+      Même cas : lit `profil/decisions/*.md` en direct, via
+      `Path(__file__).parent.parent`. C'est le motif que `core/README.md`
+      interdit en premier — « aucun module n'a le droit de déduire un chemin de
+      sa propre position ».
+
+  # ── Dix routes HTTP qui ne sont PAS des capacités du CORE ──────────────────
+  #
+  # Elles n'ont pas d'outil MCP, et c'est correct : elles servent cette
+  # installation, pas le programme.
+
+  docs:
+    nature: instance
+    brique: ~
+    http: ["GET /docs", "GET /docs/{filename}"]
+    mecanisme_http: [disque]
+    mcp: ~
+    mecanisme: ~
+    pourquoi: Sert des fichiers de documentation depuis le disque de l'instance.
+
+  visualize:
+    nature: instance
+    brique: ~
+    http: ["GET /visualize"]
+    mecanisme_http: [base, disque]
+    mcp: ~
+    mecanisme: ~
+    pourquoi: Rend une projection du corpus — une vue, pas une capacité.
+
+  # `teams` retirée le 2/10 (brain, décisions du 2/10) : `GET /teams` lisait
+  # `teams/*.yml`, des presets de mars qu'aucun appelant ne lisait, et qui ne
+  # partaient pas au gabarit. Les presets sont archivés dans le brain.
+
+  # `infra` et `logs` retirés le 29/09 (brain#294) : `GET /infra` et
+  # `GET /logs/{project}` ne lisaient que pm2 — absent sous systemd — et
+  # `/infra` rendait une liste de services écrite en dur (Apache, Gitea) qui
+  # ne tournent pas chez un fork. Aucun appelant. L'état des services :
+  # `brain_state` (`GET /state`), qui lit systemd.
+
+  ambient:
+    nature: instance
+    brique: ~
+    http: ["POST /ambient/notify"]
+    mecanisme_http: ~
+    mcp: ~
+    mecanisme: ~
+    pourquoi: >-
+      Notifie le daemon `ambient/`, qui consomme `identity/` — de la donnée
+      d'instance, sortie du dépôt le 10/09.
+
+  ws:
+    nature: instance
+    brique: ~
+    http: ["WEBSOCKET /ws"]
+    mecanisme_http: ~
+    mcp: ~
+    mecanisme: ~
+    pourquoi: >-
+      Depuis le 30/09, la boucle locale passe et le réseau montre un jeton : la
+      route rediffusait les événements de session à tout le réseau local.
+      La route `gate`, qui l'alimentait, est retirée avec la
+      machinerie archivée.
+      Transport, pas capacité. C'est aussi l'une des surfaces qu'il faudra
+      regarder le jour du homelab — origine WebSocket non vérifiée.
+
+  bsi:
+    nature: core
+    brique: bsi
+    http:
+      - GET /bsi/claims
+      - POST /bsi/claims
+      - "PATCH /bsi/claims/{sess_id}"
+      - POST /bsi/claims/touch
+      - POST /bsi/claims/close-stale
+      - GET /bsi/locks
+      - POST /bsi/locks
+      - "DELETE /bsi/locks/{filepath:path}"
+      - GET /bsi/network
+    mecanisme_http: [base, disque]
+    mcp: ~
+    mecanisme: ~
+    pourquoi: >-
+      `bsi.py` est une brique du CORE, exposée par NEUF routes HTTP et par AUCUN
+      outil MCP. L'asymétrie HTTP/MCP demeure ; celle qui comptait vraiment est
+      soldée.
+
+      **Renversé par, fusionné le 16/09 — et ce bloc a décrit le monde
+      d'avant pendant une journée.** Il affirmait : *« les quatre routes
+      d'écriture n'ont aucun appelant, toutes les écritures réelles passent en
+      SQL direct »*. Remesuré le 17/09, appel par appel :
+
+        POST   /bsi/claims                 bsi-claim.sh  cmd_open
+        PATCH  /bsi/claims/{sess_id}       bsi-claim.sh  cmd_close
+        POST   /bsi/claims/touch           bsi-claim.sh  cmd_touch
+        POST   /bsi/claims/close-stale     bsi-claim.sh  cmd_close_stale
+        POST   /bsi/locks                  file-lock.sh
+        DELETE /bsi/locks/{filepath:path}  file-lock.sh
+
+      **Les six routes d'écriture ont un appelant.** La porte gouvernée et la
+      porte empruntée sont devenues la même, et la conséquence qui était notée
+      ici tombe avec : `POST /bsi/locks` consulte les verrous du réseau avant
+      d'acquérir un verrou, et c'est désormais le chemin réel du verrou.
+
+      **Le 2/10, « consulte » est devenu vrai**. La route consultait chaque
+      pair en HTTP, et la consultation n'aboutissait jamais (000 à travers un
+      pare-feu, 401 sans jeton) : chaque machine accordait chez elle. Elle lit
+      maintenant les verrous là où ils sont écrits — `main` et chaque branche
+      satellite (`db.verrous_du_reseau`), comme les claims ; le repli de
+      `file-lock.sh` et le garde d'écriture lisent la même chose.
+
+      Une seule écriture reste locale, et par décision de l'owner le 17/09, pas
+      par oubli : `restore` répare la base quand le moteur ne démarre pas —
+      passer par lui serait demander à l'ampoule d'éclairer le compteur.
+
+      **Deux autres écritures sans route, déclarées le 1/10** (relevées en
+      remesurant) — directes, mais par le CORE ou sa règle :
+
+        bsi-claim.sh rattacher       `core.bsi.rattache()` — reporte les claims
+                                     d'une identité de session vers la suivante
+        file-lock.sh cleanup         `DELETE … WHERE VERROU_EXPIRE`, par `db.py`
+        brain-conciergerie.sh clean  idem, par la CLI `dolt` (branche-aware)
+
+      La règle « verrou expiré » vit dans `core.bsi` (`VERROU_ACTIF`,
+      `VERROU_EXPIRE`) ; les routes et les deux scripts l'importent. Elle était
+      écrite quatorze fois, dont cinq de travers dans la conciergerie.
+
+      ⚠️ Ce bloc a mis un jour à le savoir. C'est exactement ce que surveille le
+      contrôle « l'état annoncé vs la forge » — qui ne lit pas encore
+      ce fichier. L'étendre au contrat est la suite naturelle.
+
+      Deux questions restent à trancher sur le reste.
+
+  health:
+    nature: diagnostic
+    brique: ~
+    http: ["GET /health"]
+    mecanisme_http: ~
+    mcp: ~
+    mecanisme: ~
+    pourquoi: L'identité et la santé du service. Jamais une capacité.
