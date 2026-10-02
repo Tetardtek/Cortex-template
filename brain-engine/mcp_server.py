@@ -515,11 +515,15 @@ def brain_focus() -> str:
         instantane = focus_instantane.lire_instantane(BRAIN_ROOT)
         if instantane:
             return instantane
-        # 2. Sinon focus.md, le fallback statique : il renvoie vers l'API.
+        # 2. Sinon focus.md, tel qu'il est écrit. Le repli s'annonce lui-même : il
+        #    comptait sur le fichier pour le dire, et le focus.md d'un fork neuf
+        #    — qui n'a pas encore d'instantané — ne le dit pas.
+        avis = ('> ⚠️ **Repli statique** — moteur injoignable, et aucun instantané : '
+                "`focus.md` tel qu'il est écrit, peut-être en retard.\n\n")
         focus_path = BRAIN_ROOT / 'focus.md'
         if not focus_path.exists():
-            return 'focus.md non trouve.'
-        return focus_path.read_text(encoding='utf-8')
+            return avis + 'focus.md non trouve.'
+        return avis + focus_path.read_text(encoding='utf-8')
 
 
 @mcp.tool()

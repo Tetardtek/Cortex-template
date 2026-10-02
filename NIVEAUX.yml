@@ -1,0 +1,103 @@
+# NIVEAUX.yml — de quelle nature est chaque chose, à la racine de ton brain
+#
+# Le moteur en tire ses zones d'ÉCRITURE :
+#   - `invariant` : personne ne l'écrit par l'API, pas même un rôle kernel ;
+#   - `programme`, et ce qui porte `zone: kernel` (`profil/`, `scripts/`,
+#     `vie/`) : zone kernel. Un rôle sans ce scope — le MCP — n'y écrit pas ;
+#   - le reste, et ce qui n'est pas déclaré : zone libre.
+#
+# Rendu par la synchro depuis la source du brain d'origine, restreint à ce que
+# le gabarit porte. Il est à toi : déclare ici ce que tu ajoutes à la racine.
+
+version: 1
+niveaux:
+  invariant: ne change pas sans confirmation humaine explicite
+  programme: 'conçu, versionné, distribuable — et ombrable : une instance peut le surcharger'
+  moteur: du code qui s'exécute
+  donnee: appartient à l'utilisateur, ne se distribue jamais
+  etat: volatile, régénérable, ne se versionne pas
+  artefact: produit par une commande, jamais écrit à la main
+  satellite: monté à côté, vit hors du dépôt
+  vestige: n'a plus d'usage — la décision de retirer est prise, le geste reste à faire
+entrees:
+  NIVEAUX.yml: invariant
+  agents/: programme
+  brain-compose.local.yml: etat
+  brain-compose.local.yml.example:
+    niveau: programme
+    indexe: non
+  brain-compose.yml:
+    niveau: programme
+    indexe: non
+  brain-constitution.md: invariant
+  brain-db-backup/: artefact
+  brain-dolt/: satellite
+  brain-engine/: moteur
+  BRAIN-INDEX.md: invariant
+  brain-secrets/: satellite
+  brain-ui/: moteur
+  brain/:
+    niveau: donnee
+    versionne: ici
+  contenu/:
+    niveau: donnee
+    versionne: depot-separe
+  contexts/: programme
+  docs/:
+    niveau: programme
+    indexe: non
+  focus.md:
+    niveau: donnee
+    versionne: ici
+  handoffs/:
+    niveau: donnee
+    versionne: ici
+  infrastructure/:
+    niveau: donnee
+    versionne: ici
+  intentions/:
+    niveau: donnee
+    versionne: ici
+  KERNEL.md: invariant
+  learning/:
+    niveau: donnee
+    versionne: depot-separe
+  locks/:
+    niveau: etat
+    squelette: versionné
+  MYSECRETS.example:
+    niveau: programme
+    indexe: non
+  now.md:
+    niveau: donnee
+    versionne: ici
+  PATHS.md: invariant
+  profil/:
+    niveau: donnee
+    zone: kernel
+    versionne: depot-separe
+  progression/:
+    niveau: donnee
+    versionne: depot-separe
+  projets/:
+    niveau: donnee
+    versionne: ici
+  README.md: programme
+  scripts/:
+    niveau: moteur
+    zone: kernel
+  skills/:
+    niveau: programme
+    indexe: non
+  todo/:
+    niveau: donnee
+    versionne: depot-separe
+  toolkit/: programme
+  vie/:
+    niveau: donnee
+    zone: kernel
+    versionne: depot-separe
+    indexe: non
+  workspace/:
+    niveau: donnee
+    versionne: ici

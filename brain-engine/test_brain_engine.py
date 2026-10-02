@@ -1514,6 +1514,9 @@ class TestServerScript(unittest.TestCase):
 
     SERVER_SCRIPT = Path(__file__).parent.parent / 'scripts' / 'bsi-server.sh'
 
+    def setUp(self):
+        script_d_instance(self.SERVER_SCRIPT)
+
     def test_script_exists(self):
         self.assertTrue(self.SERVER_SCRIPT.exists())
 
@@ -1558,25 +1561,25 @@ class TestServerBe3c(unittest.TestCase):
 
     def test_systemd_service_file_exists(self):
         """brain-engine.service présent dans scripts/."""
-        svc = Path(__file__).parent.parent / 'scripts' / 'brain-engine.service'
+        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
         self.assertTrue(svc.exists(), f"Service absent : {svc}")
 
     def test_systemd_service_has_mysecrets_env(self):
         """Le service charge MYSECRETS via EnvironmentFile."""
-        svc = Path(__file__).parent.parent / 'scripts' / 'brain-engine.service'
+        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
         content = svc.read_text()
         self.assertIn('EnvironmentFile', content)
         self.assertIn('MYSECRETS', content)
 
     def test_systemd_service_has_brain_token(self):
         """Le service ne hardcode pas BRAIN_TOKEN — il vient de EnvironmentFile."""
-        svc = Path(__file__).parent.parent / 'scripts' / 'brain-engine.service'
+        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
         content = svc.read_text()
         self.assertNotIn('BRAIN_TOKEN=', content)  # jamais hardcodé dans le service
 
     def test_install_script_exists_and_executable(self):
         """install-brain-engine.sh existe et est exécutable."""
-        script = Path(__file__).parent.parent / 'scripts' / 'install-brain-engine.sh'
+        script = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'install-brain-engine.sh')
         self.assertTrue(script.exists())
         self.assertTrue(os.access(script, os.X_OK))
 
@@ -1593,7 +1596,9 @@ class TestServerBe3c(unittest.TestCase):
         `grep -q` repond a la meme question sans qu'aucune valeur ne quitte le
         disque : c'est la seule facon correcte de tester un fichier de secrets.
         """
-        mysecrets = Path(__file__).parent.parent / 'brain-secrets' / 'MYSECRETS'
+        # Un fork neuf n'a pas encore de MYSECRETS : il s'abstient. Le brain
+        # d'origine en a un, et son absence reste rouge.
+        mysecrets = script_d_instance(Path(__file__).parent.parent / 'brain-secrets' / 'MYSECRETS')
         self.assertTrue(mysecrets.exists(), f"MYSECRETS absent : {mysecrets}")
         trouve = subprocess.run(['grep', '-q', 'BRAIN_TOKEN', str(mysecrets)],
                                 capture_output=True)
@@ -1605,6 +1610,9 @@ class TestRagScript(unittest.TestCase):
     """Test existence et exécutabilité du script bash bsi-rag.sh."""
 
     RAG_SCRIPT = Path(__file__).parent.parent / 'scripts' / 'bsi-rag.sh'
+
+    def setUp(self):
+        script_d_instance(self.RAG_SCRIPT)
 
     def test_script_exists(self):
         self.assertTrue(self.RAG_SCRIPT.exists(), f"bsi-rag.sh absent : {self.RAG_SCRIPT}")
@@ -1632,6 +1640,67 @@ import subprocess
 BRAIN_ROOT_PATH = Path(__file__).parent.parent
 SYNC_SCRIPT     = BRAIN_ROOT_PATH / 'scripts' / 'brain-db-sync.sh'
 
+# ── Ce qui n'est que dans le brain d'origine — chez un fork, on s'abstient ─────
+#
+# Le gabarit livre cette suite, pas les scripts d'instance qu'une partie de ses
+# classes éprouve. Mesuré le 2/10 sur un fork installé : 34 tests rouges pour un
+# script absent, une suite qu'aucun fork ne pouvait voir verte.
+#
+# Mais dans le brain d'origine, un script absent n'est pas « d'instance » : il est
+# PERDU, et doit rester rouge. Le brain d'origine se reconnaît à
+# `scripts/sync-template.sh`, qui ne part jamais au gabarit.
+BRAIN_D_ORIGINE = (BRAIN_ROOT_PATH / 'scripts' / 'sync-template.sh').is_file()
+
+
+def absent_d_instance(chemin: Path) -> bool:
+    """Vrai si `chemin` manque chez un fork. Absent du brain d'origine : rouge."""
+    if chemin.exists():
+        return False
+    if BRAIN_D_ORIGINE:
+        raise AssertionError(f"{chemin} absent du brain d'origine — perdu, pas d'instance")
+    return True
+
+
+def script_d_instance(chemin: Path) -> Path:
+    """Le chemin, ou l'abstention du test chez un fork qui ne l'a pas."""
+    if absent_d_instance(chemin):
+        raise unittest.SkipTest(f'{chemin.name} absent — script d’instance')
+    return chemin
+
+
+def avec_le_core(moteur: Path) -> None:
+    """Un brain témoin reçoit le CORE quand le brain le livre (`brain-engine/core/`).
+
+    L'instance a le CORE installé en éditable : un `db.py` copié seul le trouve
+    partout. Un fork ne l'a que dans `brain-engine/core/` — sans ce lien, le
+    témoin meurt sur `No module named 'core'`."""
+    core = BRAIN_ROOT_PATH / 'brain-engine' / 'core'
+    if core.is_dir() and not (moteur / 'core').exists():
+        (moteur / 'core').symlink_to(core.resolve())
+
+class TestScriptDInstance(unittest.TestCase):
+    """L'abstention ne couvre que le fork : dans le brain d'origine, un script
+    absent est perdu, et le test reste rouge."""
+
+    ABSENT = BRAIN_ROOT_PATH / 'scripts' / 'jamais-ecrit-temoin.sh'
+
+    def test_chez_un_fork_le_test_s_abstient(self):
+        with patch(f'{__name__}.BRAIN_D_ORIGINE', False):
+            with self.assertRaises(unittest.SkipTest):
+                script_d_instance(self.ABSENT)
+
+    def test_dans_le_brain_d_origine_il_rougit(self):
+        with patch(f'{__name__}.BRAIN_D_ORIGINE', True):
+            with self.assertRaises(AssertionError):
+                script_d_instance(self.ABSENT)
+
+    def test_present_il_rend_le_chemin(self):
+        self.assertEqual(script_d_instance(SYNC_SCRIPT), SYNC_SCRIPT)
+
+    def test_ce_brain_se_sait_d_origine_ou_fork(self):
+        self.assertEqual(BRAIN_D_ORIGINE, (BRAIN_ROOT_PATH / 'scripts' / 'sync-template.sh').is_file())
+
+
 class TestBrainDbSyncScript(unittest.TestCase):
 
     def test_script_exists_and_executable(self):
@@ -1653,6 +1722,7 @@ class TestBrainDbSyncScript(unittest.TestCase):
         shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh', tmp / 'scripts' / 'lib' / 'python.sh')
         for f in ('migrate.py', 'db.py', 'racines.py', 'schema.sql'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, tmp / 'brain-engine' / f)
+        avec_le_core(tmp / 'brain-engine')
         venv = BRAIN_ROOT_PATH / 'brain-engine' / '.venv'
         if not venv.is_dir():
             # Sans le CORE, `db.py` ne s'importe pas : --check s'abstiendrait et
@@ -2245,7 +2315,8 @@ class TestSyncTemplate(unittest.TestCase):
 
     CHEMINS = ('scripts', 'agents', 'docs', 'contexts', 'workflows', 'brain-engine',
                'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
-               'MYSECRETS.example', 'brain-compose.local.yml.example')
+               'MYSECRETS.example', 'brain-compose.local.yml.example',
+               'NIVEAUX.yml')
     SATELLITES = ('profil', 'wiki', 'brain-ui')
 
     def setUp(self):
@@ -2620,6 +2691,7 @@ class TestTranscribeVoxtype(unittest.TestCase):
               'cp', 'rm', 'dirname', 'tail', 'cat', 'echo', 'printf')
 
     def setUp(self):
+        script_d_instance(self.SCRIPT)
         self.d = Path(tempfile.mkdtemp(prefix='transcribe-'))
         self.bin = self.d / 'bin'
         self.bin.mkdir()
@@ -2856,6 +2928,9 @@ class TestMoteurAutonome(unittest.TestCase):
 
     SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'moteur_autonome.py'
 
+    def setUp(self):
+        script_d_instance(self.SCRIPT)
+
     def _juge(self, contenu: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as tmp:
             moteur = Path(tmp) / 'brain-engine'
@@ -2977,6 +3052,7 @@ class TestDoltSetup(unittest.TestCase):
         shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'premieres.sh', self.brain / 'scripts' / 'lib')
         for f in ('schema-dolt.sql', 'views-dolt.sql', '.env.local.example', 'db.py', 'racines.py'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
+        avec_le_core(self.brain / 'brain-engine')
         (self.brain / 'brain-engine' / '.venv').symlink_to(venv)
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
@@ -3076,6 +3152,7 @@ class TestDefautDuBackend(unittest.TestCase):
             moteur.mkdir()
             for f in ('db.py', 'migrate.py', 'racines.py'):
                 shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, moteur / f)
+            avec_le_core(moteur)
             env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
             r = subprocess.run([str(venv / 'bin' / 'python3'), '-c',
                                 'import sys; sys.dont_write_bytecode=True; sys.path.insert(0, "brain-engine"); '
@@ -3917,6 +3994,7 @@ class TestPairsSansCompteDeLOwner(unittest.TestCase):
         self.assertIn('sauté', sortie)
 
     def test_bsi_peer_poll_cherche_le_brain_ou_il_est(self):
+        script_d_instance(BRAIN_ROOT_PATH / 'scripts' / 'bsi-peer-poll.sh')
         if not shutil.which('unshare'):
             self.skipTest("il faut unshare")
         with tempfile.TemporaryDirectory() as tmp:
@@ -4823,6 +4901,7 @@ class TestConceptScribeDestination(unittest.TestCase):
     SCRIPTS = BRAIN_ROOT_PATH / 'scripts' / 'concept-scribe'
 
     def setUp(self):
+        script_d_instance(self.SCRIPTS)
         self.tmp = Path(tempfile.mkdtemp(prefix='brain-concepts-'))
         for dest in ('workspace/concepts', 'vie/concepts'):
             d = self.tmp / dest / 'un-lot'
@@ -6352,12 +6431,14 @@ class TestRegleDesVerrous(unittest.TestCase):
 
     def test_aucun_predicat_d_expiration_ecrit_en_dur(self):
         for rel in self.FICHIERS:
+            if absent_d_instance(self.RACINE / rel):
+                continue
             texte = (self.RACINE / rel).read_text(encoding='utf-8')
             self.assertEqual(self.EN_DUR.findall(texte), [], f'{rel} réécrit la règle')
             self.assertIn('VERROU_', texte, f'{rel} ne lit plus la règle du CORE')
 
     def _regle_de_la_conciergerie(self, racine):
-        script = (self.RACINE / 'scripts' / 'brain-conciergerie.sh').read_text(encoding='utf-8')
+        script = script_d_instance(self.RACINE / 'scripts' / 'brain-conciergerie.sh').read_text(encoding='utf-8')
         fonction = re.search(r'^regle_des_verrous\(\) \{.*?^\}', script, re.S | re.M).group(0)
         return subprocess.run(
             ['bash', '-c', fonction + '\nRED=; NC=; regle_des_verrous && '
@@ -6504,6 +6585,76 @@ class TestCouchesDuGabarit(unittest.TestCase):
         self.assertFalse((rendu / 'modes').exists())
 
 
+class TestNiveauxDuGabarit(unittest.TestCase):
+    """Un fork reçoit les zones d'écriture du moteur : `NIVEAUX.yml`.
+
+    Le gabarit ne le portait pas. Le moteur d'un fork retombait sur ses listes en
+    dur, et `vie/` — zone kernel, que le rôle MCP ne peut pas écrire — y tombait
+    en zone libre. Mesuré le 2/10 en lançant la suite sur un fork installé. Le
+    juge est le moteur DU RENDU (`server._write_zone`), pas une relecture du
+    fichier."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+    INSTALLE = {'brain-compose.local.yml', 'brain-dolt/', 'brain-secrets/', 'brain-db-backup/'}
+
+    def _zones_du_rendu(self, rendu, *chemins):
+        r = subprocess.run(
+            [sys.executable, '-c',
+             'import sys; sys.dont_write_bytecode=True; sys.path.insert(0, "brain-engine"); '
+             'import server; print(" ".join(server._write_zone(c) for c in sys.argv[1:]))', *chemins],
+            cwd=rendu, capture_output=True, text=True, timeout=60,
+            env={**self.env, 'BRAIN_ROOT': str(rendu)})
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        return r.stdout.split()
+
+    def test_le_moteur_d_un_fork_garde_vie(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        import yaml
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        self.assertEqual(self._zones_du_rendu(rendu, 'vie/papiers/releve.md', 'scripts/x.sh',
+                                              'contenu/atelier/brouillon.md'),
+                         ['kernel', 'kernel', 'libre'],
+                         "vie/ et scripts/ en kernel chez le fork ; contenu/, le témoin voisin, libre")
+        texte = (rendu / 'NIVEAUX.yml').read_text(encoding='utf-8')
+        entrees = yaml.safe_load(texte)['entrees']
+        # Rien qui nomme cette instance : seules les entrées que le fork a, que
+        # la table fait partir ou que son installation crée — et ni note ni
+        # commentaire de la source.
+        partent = {f'{n}/' for n, c in TestCouchesDuGabarit._table(self)['couches'].items()
+                   if c['part'] in ('contenu', 'readme')}
+        absentes = [n for n in entrees if n != 'NIVEAUX.yml' and n not in self.INSTALLE
+                    and n not in partent and not (rendu / n.rstrip('/')).exists()]
+        self.assertEqual(absentes, [], 'des entrées que le fork n\'a pas')
+        self.assertFalse(any(isinstance(v, dict) and 'note' in v for v in entrees.values()))
+        source = (self.brain / 'NIVEAUX.yml').read_text(encoding='utf-8')
+        commentaires = {l.strip() for l in source.splitlines()
+                        if l.strip().startswith('#') and l.strip('# ')}
+        self.assertEqual([l for l in texte.splitlines() if l.strip() in commentaires], [],
+                         'un commentaire de la source est parti')
+
+    def test_sans_source_la_synchro_refuse(self):
+        """Témoin : un brain sans `NIVEAUX.yml` ne rend pas un gabarit sans zones."""
+        self._git('rm', '-q', 'NIVEAUX.yml', cwd=self.brain)
+        self._git('commit', '-q', '--no-verify', '-m', 'sans niveaux', cwd=self.brain)
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('NIVEAUX.yml introuvable', r.stdout + r.stderr)
+
+    def test_vie_hors_kernel_la_synchro_refuse(self):
+        """Témoin : une source où `vie/` a perdu sa zone — le rendu refuse."""
+        src = self.brain / 'NIVEAUX.yml'
+        src.write_text(src.read_text(encoding='utf-8').replace(
+            'vie/:\n    niveau: donnee\n    zone: kernel', 'vie/:\n    niveau: donnee'), encoding='utf-8')
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("vie/ n'est pas en zone kernel", r.stdout + r.stderr)
+
+
 class TestFocusInstantane(unittest.TestCase):
     """Moteur éteint, une session a le dernier focus, daté — pas un renvoi vers
     l'API qui ne répond pas.
@@ -6580,11 +6731,14 @@ class TestFocusInstantane(unittest.TestCase):
         self.assertNotIn('fallback statique', repli)
 
     def test_sans_instantane_le_fallback_statique(self):
+        """Le repli se dit repli, même quand `focus.md` ne le dit pas : celui d'un
+        fork neuf, sans instantané, ne le disait pas."""
         import mcp_server as m
-        (self.racine / 'focus.md').write_text('# Focus\n> Ce fichier est un fallback statique.\n')
+        (self.racine / 'focus.md').write_text('# Focus actuel\n\nmon cap\n')
         with patch.object(m, 'BRAIN_API', 'http://127.0.0.1:1'), patch.object(m, 'BRAIN_ROOT', self.racine):
             repli = getattr(m.brain_focus, 'fn', m.brain_focus)()
-        self.assertIn('fallback statique', repli)
+        self.assertIn('Repli statique', repli, 'le repli se dit repli')
+        self.assertIn('mon cap', repli, 'et rend le fichier tel qu il est écrit')
 
     def test_l_indexeur_ecrit_l_instantane_avant_l_embedding(self):
         """Ollama absent arrête l'embedding — pas le focus."""
@@ -6605,7 +6759,7 @@ class TestGardeCommandes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import importlib.util
-        spec = importlib.util.spec_from_file_location('garde_commandes', cls.SCRIPT)
+        spec = importlib.util.spec_from_file_location('garde_commandes', script_d_instance(cls.SCRIPT))
         cls.g = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.g)
 
@@ -6710,7 +6864,7 @@ class TestScratchNettoyable(unittest.TestCase):
 
     def setUp(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location('scratch_nettoyable', self.SCRIPT)
+        spec = importlib.util.spec_from_file_location('scratch_nettoyable', script_d_instance(self.SCRIPT))
         self.n = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.n)
         self._tmp = tempfile.TemporaryDirectory()
@@ -6777,6 +6931,7 @@ class TestDireAuTetard(unittest.TestCase):
     SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'dire.py'
 
     def setUp(self):
+        script_d_instance(self.SCRIPT)
         import http.server, threading
         self.recu, self.claims = [], []
         claims = self.claims
@@ -6847,7 +7002,7 @@ class TestClaimsOrphelins(unittest.TestCase):
     def setUpClass(cls):
         import importlib.util, collections
         spec = importlib.util.spec_from_file_location(
-            'claims_orphelins', BRAIN_ROOT_PATH / 'scripts' / 'claims-orphelins.py')
+            'claims_orphelins', script_d_instance(BRAIN_ROOT_PATH / 'scripts' / 'claims-orphelins.py'))
         cls.o = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.o)
         cls.Claim = collections.namedtuple('Claim', 'sess_id scope agent_session')
