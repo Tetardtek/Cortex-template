@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v2.6.0.
+> travail. Kernel v2.6.1.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -91,7 +91,9 @@ peut-être les tiennes. Exporte-les, vide la table, puis relance.
 
 **6. Lire les notes de version** : elles disent ce qui se fait à la main, par
 exemple une ligne à corriger dans ton `~/.claude/CLAUDE.md`, qui n'est pas dans
-le dépôt.
+le dépôt. Relancer `brain-setup.sh` pour une étape ne touche pas à ton
+`~/.claude/CLAUDE.md` : s'il diffère du modèle, le modèle est posé à côté
+(`CLAUDE.md.modele`), à comparer et fusionner à la main.
 
 **7. Le déclarer** : dans `brain-compose.local.yml`, passe `kernel_version` à
 la nouvelle version. C'est la trace que les étapes après la fusion sont faites :

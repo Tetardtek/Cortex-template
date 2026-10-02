@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v2.6.0.
+> machine. Kernel v2.6.1.
 
 ---
 
@@ -49,7 +49,7 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses on
 | Étape | Ce qu'elle fait |
 |---|---|
 | 1. Satellites | vérifie `profil/`, `todo/`, `toolkit/`, `progression/`, `reviews/` — les dossiers du gabarit. Rien n'est cloné. |
-| 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example` — l'ancien est sauvegardé en `CLAUDE.md.bak-<date>`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
+| 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
 | 3. Configuration | crée `brain-compose.local.yml` (ta machine), remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
 | 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
 | 5. Outils | vérifie Claude Code, Node et Python |
@@ -60,8 +60,11 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses on
 | 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |
 | 11. Les hooks git | installe les hooks du brain dans `.git/hooks` : le claim d'une session reste en vie, la base suit les handoffs, et **un commit doit porter un type déclaré dans `KERNEL.md`** (`feat:`, `fix:`, `todo:`…) — un message libre est refusé, en le disant |
 
-> ⚠️ **L'étape 2 remplace ton `~/.claude/CLAUDE.md`.** Si tu en avais un à toi,
-> il est dans `~/.claude/CLAUDE.md.bak-<date>` : fusionne à la main ce que tu veux garder.
+> **L'étape 2 ne remplace pas un `~/.claude/CLAUDE.md` qui existe déjà.** S'il
+> diffère du modèle, elle pose le modèle à côté (`~/.claude/CLAUDE.md.modele`) :
+> `diff -u ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.modele`, et tu fusionnes ce
+> que tu veux. `--reecrire-claude-md` le remplace (l'ancien est sauvegardé en
+> `CLAUDE.md.bak-<date>`). Relancer le setup est donc sans risque pour lui.
 
 > Ton fork est à toi : le setup laisse le push vers `origin` ouvert. Il ne le
 > verrouille (`write_mode: readonly_kernel`) que sur une machine de plus d'une

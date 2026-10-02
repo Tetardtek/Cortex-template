@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.6.0"
+version: "2.6.1"
 
 # ---
 # Ownership — kerneluser
@@ -163,3 +163,6 @@ changelog:
   - version: "2.6.0"
     date: "2026-10-02"
     notes: "Un fork se controle lui-meme : brain doctor. Le gabarit livre le doctor (brain-engine/doctor/, avec ses ressources dans brain-engine/contrat/ et brain-engine/bench/) : une soixantaine de controles, chacun gardant une derive qui ne leve aucune erreur - un registre qui s'eloigne de sa source, un fichier declare au boot et disparu, un hook absent, une fiche de projet en double. Son code de sortie est le verdict ; un controle s'abstient, et le dit, quand ce qu'il mesure manque (Ollama, une sauvegarde)  ; les controles propres a l'instance d'origine ne partent pas. Un fork neuf est vert. La skill et docs/moteur.md disent quand le lancer et comment le lire. Le gabarit livre aussi kernel.lock (l'empreinte du noyau recu), NIVEAUX.yml declare ce qu'il porte et ce que l'installation cree, workspace/backlog/ existe, et la synchro refuse un YAML que le retrait des etiquettes casserait (un contexte d'archive casse depuis la V1 est repare). Mise a jour depuis la v2.5.3 : rien a migrer ; brain doctor pour voir."
+  - version: "2.6.1"
+    date: "2026-10-02"
+    notes: "Les handoffs d'un fork, et un setup qu'on peut relancer. Le gabarit livre le modele de handoff (handoffs/_template.md) que trois fichiers distribues citent - le /checkpoint compris - et un README qui dit la frontiere : workspace/scratch/ pour la session en cours, handoffs/ pour une autre session, et la vie d'un handoff (active, consumed, archived). brain doctor le tient : un statut hors des trois rougit, un handoff active de plus de 14 jours aussi. scripts/scratch-nettoyable.py est livre : il liste, en lecture seule, ce qui peut partir de scratch/. L'etape 2 du setup ne remplace plus un ~/.claude/CLAUDE.md existant : s'il differe du modele, il reste intact et le modele est pose a cote (CLAUDE.md.modele) ; --reecrire-claude-md garde l'ancien geste. Le doctor d'un fork rougit aussi sur une fiche ouverte sous un projet archive. Mise a jour depuis la v2.6.0 : rien a migrer ; brain doctor pour voir."

@@ -1,7 +1,7 @@
 <!-- Généré depuis docs/src/README.md par scripts/docs-generer.py — ne pas éditer ici. -->
 # La doc du brain
 
-> Kernel v2.6.0 — 70 agents, 6 types de session.
+> Kernel v2.6.1 — 70 agents, 6 types de session.
 
 | Page | Pour |
 |---|---|

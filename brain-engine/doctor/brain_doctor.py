@@ -451,7 +451,7 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("index du backlog",
                  "un index écrit à la main, qui ne dit plus ce que les fiches disent",
                  [sys.executable, str(OUTILS / "index_backlog.py"),
-                  "--brain", str(brain), "--projet", "myeline", "--check"]),
+                  "--brain", str(brain), "--tous", "--check"]),
         Controle("index des décisions",
                  "un index d'ADR écrit à la main, arrêté à 052 quand le répertoire allait à 079",
                  [sys.executable, str(OUTILS / "index_decisions.py"),
@@ -459,7 +459,7 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("issues dérivées du backlog",
                  "un dérivé qui s'éloigne de sa source, encore",
                  [sys.executable, str(OUTILS / "backlog_issues.py"),
-                  "--brain", str(brain), "--check"]),
+                  "--brain", str(brain), "--tous", "--check"]),
         Controle("ancre du programme",
                  "une version déclarée qui ne désigne aucun état",
                  [sys.executable, str(OUTILS / "overlay.py"),
@@ -528,7 +528,7 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("rapports de clôture",
                  "un item soldé sans dire ce qu'il a mesuré ni ce qui le tient",
                  [sys.executable, str(OUTILS / "cloture_backlog.py"),
-                  "--brain", str(brain)]),
+                  "--brain", str(brain), "--tous"]),
         Controle("conventions temporelles",
                  "une horloge locale qui rentre par le schéma",
                  [sys.executable, str(OUTILS / "test_conventions_temporelles.py"),
@@ -552,6 +552,13 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("la base suit les handoffs",
                  "un handoff sur le disque que la base n'a jamais reçu",
                  ["bash", str(brain / "scripts" / "brain-db-sync.sh"), "--check"]),
+        # `handoffs/` est pour une AUTRE session ; rien ne disait qu'un handoff
+        # avait été repris : le 2/10, 43 sur 45 étaient `active`. Seuil tranché
+        # le 2/10 : 14 jours. Les candidats de `scratch/` sont affichés, pas
+        # jugés (tranché le même jour).
+        Controle("les handoffs disent s'ils sont attendus",
+                 "un handoff actif que plus personne ne reprendra, ou sans statut",
+                 [sys.executable, str(OUTILS / "handoffs_vivants.py"), "--brain", str(brain)]),
         # Rien ne tenait les satellites à jour hors de l'installation : le
         # laptop a booté avec un `profil/` en retard de 30 commits. Ici, sur le
         # fixe, le danger est l'inverse — un satellite DEVANT son amont, des

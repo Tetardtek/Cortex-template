@@ -69,6 +69,9 @@ entrees:
   intentions/:
     niveau: donnee
     versionne: ici
+  kernel.lock:
+    niveau: programme
+    indexe: non
   KERNEL.md: invariant
   learning/:
     niveau: donnee
@@ -116,9 +119,6 @@ entrees:
     niveau: programme
     indexe: non
   LICENSE.md:
-    niveau: programme
-    indexe: non
-  kernel.lock:
     niveau: programme
     indexe: non
   reviews/:

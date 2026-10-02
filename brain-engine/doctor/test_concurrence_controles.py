@@ -61,6 +61,17 @@ def verdict(code: int, sortie: str) -> str:
     return "vert" if code == 0 else "accuse"
 
 
+def raisons(sortie: str, maxi: int = 6) -> list[str]:
+    """Ce qu'un contrôle a dit en rougissant : ses lignes ❌ ou SKIP, sinon sa fin.
+
+    Le 2/10, « témoin du corpus — accuse même seul, rien à conclure » : la sortie
+    était jetée, et ce rouge n'a jamais pu être diagnostiqué — relancé seul, le
+    témoin était vert. Un rouge qu'on ne montre pas est perdu."""
+    lignes = [l.rstrip() for l in sortie.splitlines() if l.strip()]
+    dites = [l for l in lignes if "❌" in l or l.lstrip().startswith("SKIP")]
+    return (dites or lignes[-3:])[:maxi]
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -81,7 +92,9 @@ def main() -> int:
         code, sortie = joue(outil, brain, extra)
         seul = verdict(code, sortie)
         if seul != "vert":
-            print(f"  ⏭  {nom:30} {seul} même seul — rien à conclure")
+            print(f"  ⏭  {nom:30} {seul} même seul — rien à conclure sur la concurrence")
+            for l in raisons(sortie):
+                print(f"       │ {l.strip()}")
             continue
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -94,6 +107,10 @@ def main() -> int:
         print(f"  {etat} {nom:30} seul: vert · à deux: {', '.join(verdicts)}")
         if accuse:
             echecs.append(nom)
+            for code, sortie in (a, b):
+                if verdict(code, sortie) == "accuse":
+                    for l in raisons(sortie):
+                        print(f"       │ {l.strip()}")
 
     print()
     if echecs:

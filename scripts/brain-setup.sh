@@ -1,11 +1,12 @@
 #!/bin/bash
 # brain-distribuable: oui
 # brain-setup.sh — Setup complet brain sur une nouvelle machine
-# Usage : [BRAIN_MACHINE=laptop] [PROJECTS_ROOT=~/Dev] bash brain-setup.sh [brain_name] [brain_root] [--sans-service]
+# Usage : [BRAIN_MACHINE=laptop] [PROJECTS_ROOT=~/Dev] bash brain-setup.sh [brain_name] [brain_root] [--sans-service] [--reecrire-claude-md]
 # Ex    : bash brain-setup.sh my-brain ~/Dev/Brain
 #
 # Ce script est idempotent — safe à relancer si une étape a échoué.
 # `--sans-service` : tout sauf les unités systemd (conteneur, essai).
+# `--reecrire-claude-md` : remplacer un `~/.claude/CLAUDE.md` existant (sauvegardé).
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"  # python3 = celui du venv brain-engine
 
@@ -15,10 +16,12 @@ set -euo pipefail
 # `--sans-service` peut se glisser n'importe où : il passe à `dolt-setup.sh`
 # (conteneur, machine sans systemd, essai).
 SANS_SERVICE=false
+REECRIRE_CLAUDE_MD=false
 POSITIONNELS=()
 for a in "$@"; do
   case "$a" in
     --sans-service) SANS_SERVICE=true ;;
+    --reecrire-claude-md) REECRIRE_CLAUDE_MD=true ;;
     *) POSITIONNELS+=("$a") ;;
   esac
 done
@@ -82,18 +85,34 @@ CLAUDE_EXAMPLE="$BRAIN_ROOT/profil/CLAUDE.md.example"
 
 mkdir -p "$HOME/.claude"
 
-if [[ -f "$CLAUDE_TARGET" ]]; then
+# Le setup se dit idempotent : l'étape 2 le devient. Elle remplaçait le
+# `CLAUDE.md` à CHAQUE passage — sauvegardé, mais ce que l'utilisateur y avait
+# ajouté disparaissait de la session suivante (2/10 : 90 lignes sur la machine
+# de l'owner). Tranché par l'owner le 2/10 : un fichier existant n'est plus
+# touché ; le modèle rendu est posé à côté.
+CLAUDE_RENDU="$(mktemp)"
+sed -e "s|<BRAIN_ROOT>|$BRAIN_ROOT|g" -e "s|<BRAIN_NAME>|$BRAIN_NAME|g" \
+  "$CLAUDE_EXAMPLE" > "$CLAUDE_RENDU"
+if [[ ! -f "$CLAUDE_TARGET" ]]; then
+  cp "$CLAUDE_RENDU" "$CLAUDE_TARGET"
+  ok "~/.claude/CLAUDE.md écrit (brain_name=$BRAIN_NAME, brain_root=$BRAIN_ROOT)"
+elif cmp -s "$CLAUDE_RENDU" "$CLAUDE_TARGET"; then
+  ok "~/.claude/CLAUDE.md déjà à jour"
+elif [[ "$REECRIRE_CLAUDE_MD" == true ]]; then
   # Une sauvegarde par passage : un `.bak` unique était écrasé au second
   # lancement par le fichier généré au premier — l'original perdu.
   SAUVEGARDE="$CLAUDE_TARGET.bak-$(date +%Y%m%d-%H%M%S)"
   cp "$CLAUDE_TARGET" "$SAUVEGARDE"
-  warn "~/.claude/CLAUDE.md existe déjà — sauvegardé : $SAUVEGARDE"
+  cp "$CLAUDE_RENDU" "$CLAUDE_TARGET"
+  warn "~/.claude/CLAUDE.md remplacé (--reecrire-claude-md) — l'ancien : $SAUVEGARDE"
+else
+  cp "$CLAUDE_RENDU" "$CLAUDE_TARGET.modele"
+  warn "~/.claude/CLAUDE.md existe et diffère du modèle — laissé intact."
+  warn "  le modèle rendu : ~/.claude/CLAUDE.md.modele — comparer :"
+  warn "  diff -u ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.modele"
+  warn "  (ou relancer avec --reecrire-claude-md pour le remplacer, l'ancien sauvegardé)"
 fi
-
-cp "$CLAUDE_EXAMPLE" "$CLAUDE_TARGET"
-sed -i "s|<BRAIN_ROOT>|$BRAIN_ROOT|g" "$CLAUDE_TARGET"
-sed -i "s|<BRAIN_NAME>|$BRAIN_NAME|g" "$CLAUDE_TARGET"
-ok "~/.claude/CLAUDE.md configuré (brain_name=$BRAIN_NAME, brain_root=$BRAIN_ROOT)"
+rm -f "$CLAUDE_RENDU"
 
 # La skill `brain` — le mode d'emploi du brain pour l'agent, relié dans
 # ~/.claude/skills/. Un dossier `brain` déjà là n'est jamais écrasé.

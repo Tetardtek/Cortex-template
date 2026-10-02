@@ -1730,6 +1730,68 @@ class TestSetupResoutPaths(unittest.TestCase):
         self.assertIn('déjà configuré', sortie)
 
 
+class TestSetupGardeClaudeMd(unittest.TestCase):
+    """L'étape 2 du setup ne remplace plus un `~/.claude/CLAUDE.md` qui existe.
+
+    Elle le remplaçait à chaque passage — sauvegardé, mais les ajouts de
+    l'utilisateur disparaissaient de la session suivante (2/10 : 90 lignes chez
+    l'owner). Le setup se disait idempotent. L'étape est jouée SEULE,
+    extraite du script, dans un `HOME` jetable."""
+
+    MODELE = '# CLAUDE.md\nbrain_root: <BRAIN_ROOT>\nbrain_name: <BRAIN_NAME>\n'
+
+    def _etape(self):
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        return script[script.index('# ── Étape 2'):script.index('# La skill `brain`')]
+
+    def _jouer(self, existant=None, reecrire=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, brain = Path(tmp) / 'home', Path(tmp) / 'brain'
+            (brain / 'profil').mkdir(parents=True)
+            (brain / 'profil' / 'CLAUDE.md.example').write_text(self.MODELE, encoding='utf-8')
+            cible = home / '.claude' / 'CLAUDE.md'
+            if existant is not None:
+                cible.parent.mkdir(parents=True)
+                cible.write_text(existant, encoding='utf-8')
+            r = subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; warn(){ echo "warn $*"; }\n'
+                                + self._etape()],
+                               env={'PATH': os.environ['PATH'], 'HOME': str(home),
+                                    'BRAIN_ROOT': str(brain), 'BRAIN_NAME': 'mon-brain', 'ETAPES': '11',
+                                    'REECRIRE_CLAUDE_MD': 'true' if reecrire else 'false'},
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lire = lambda f: f.read_text(encoding='utf-8') if f.is_file() else None
+            return (lire(cible), lire(cible.with_name('CLAUDE.md.modele')),
+                    sorted(p.name for p in cible.parent.glob('CLAUDE.md.bak-*')), r.stdout, str(brain))
+
+    def test_absent_il_est_ecrit_et_resolu(self):
+        cible, modele, baks, _, brain = self._jouer()
+        self.assertIn(f'brain_root: {brain}', cible)
+        self.assertIn('brain_name: mon-brain', cible)
+        self.assertEqual((modele, baks), (None, []))
+
+    def test_un_claude_md_a_soi_survit_octet_pour_octet(self):
+        mien = '# le mien\nune règle que j ai ajoutée\n'
+        cible, modele, baks, sortie, brain = self._jouer(existant=mien)
+        self.assertEqual(cible, mien)
+        self.assertIn(f'brain_root: {brain}', modele, 'le modèle rendu est posé à côté')
+        self.assertEqual(baks, [])
+        self.assertIn('laissé intact', sortie)
+
+    def test_identique_rien_ne_bouge(self):
+        # Un modèle sans marqueur : son rendu est connu d'avance, égal à l'existant.
+        with patch.object(self, 'MODELE', 'fixe\n'):
+            cible, modele, baks, sortie, _ = self._jouer(existant='fixe\n')
+        self.assertEqual((cible, modele, baks), ('fixe\n', None, []))
+        self.assertIn('déjà à jour', sortie)
+
+    def test_reecrire_remplace_et_sauvegarde(self):
+        cible, modele, baks, _, brain = self._jouer(existant='# le mien\n', reecrire=True)
+        self.assertIn(f'brain_root: {brain}', cible)
+        self.assertEqual(len(baks), 1)
+        self.assertIsNone(modele)
+
+
 class TestScriptDInstance(unittest.TestCase):
     """L'abstention ne couvre que le fork : dans le brain d'origine, un script
     absent est perdu, et le test reste rouge."""
@@ -2368,7 +2430,7 @@ class TestSyncTemplate(unittest.TestCase):
     CHEMINS = ('scripts', 'agents', 'docs', 'contexts', 'workflows', 'brain-engine',
                'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
                'MYSECRETS.example', 'brain-compose.local.yml.example',
-               'NIVEAUX.yml')
+               'NIVEAUX.yml', 'handoffs/_template.md')
     SATELLITES = ('profil', 'wiki', 'brain-ui')
 
     def setUp(self):
@@ -6785,6 +6847,114 @@ class TestLockDuGabarit(unittest.TestCase):
         source = dict(re.findall(r'^  (\S+): ([0-9a-f]{64})$',
                                  (BRAIN_ROOT_PATH / 'kernel.lock').read_text(), re.M))
         self.assertNotEqual(source, empreintes)
+
+
+class TestMyelinePubliable(unittest.TestCase):
+    """La synchro n'emporte que le Myéline de `main` — à jour de la forge pour
+    publier.
+
+    Le garde est une fonction (`scripts/lib/myeline-publiable.sh`) : il s'éprouve
+    ici dans des dépôts jetables, une « forge » nue et son clone, sans qu'une
+    vraie publication soit jamais lancée."""
+
+    LIB = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'myeline-publiable.sh'
+
+    def setUp(self):
+        self.lib = script_d_instance(self.LIB)
+        self._tmp = tempfile.TemporaryDirectory()
+        base = Path(self._tmp.name)
+        self.env = {**os.environ, 'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t',
+                    'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t'}
+        self.env.pop('MYELINE_BRANCHE', None)
+        self.forge, self.clone = base / 'forge.git', base / 'clone'
+        self._git(base, 'init', '-q', '--bare', '-b', 'main', str(self.forge))
+        self._git(base, 'clone', '-q', str(self.forge), str(self.clone))
+        self._git(self.clone, 'switch', '-q', '-c', 'main')
+        (self.clone / 'a').write_text('a')
+        self._git(self.clone, 'add', 'a')
+        self._git(self.clone, 'commit', '-qm', 'a')
+        self._git(self.clone, 'push', '-q', 'origin', 'main')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _git(self, ou, *args):
+        subprocess.run(['git', '-C', str(ou), *args], check=True, capture_output=True, env=self.env)
+
+    def _juge(self, push='', dry='', branche=None):
+        env = dict(self.env)
+        if branche:
+            env['MYELINE_BRANCHE'] = branche
+        return subprocess.run(['bash', '-c', 'source "$1"; myeline_publiable "$2" "$3" "$4"', '_',
+                               str(self.lib), str(self.clone), push, dry],
+                              capture_output=True, text=True, env=env, timeout=60)
+
+    def test_main_passe_une_branche_refuse(self):
+        self.assertEqual(self._juge().returncode, 0)
+        self._git(self.clone, 'switch', '-q', '-c', 'travail')
+        r = self._juge()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('pas sur main', r.stdout)
+
+    def test_dry_dit_sans_refuser(self):
+        self._git(self.clone, 'switch', '-q', '-c', 'travail')
+        r = self._juge(dry='--dry')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('refuserait', r.stdout)
+
+    def test_le_banc_jamais_avec_push(self):
+        self._git(self.clone, 'switch', '-q', '-c', 'banc')
+        r = self._juge(branche='banc')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('ne se publie pas', r.stdout)
+        self.assertEqual(self._juge(branche='autre').returncode, 1)
+        self.assertEqual(self._juge(push='true', branche='banc').returncode, 1)
+
+    def test_publier_veut_main_a_jour_de_la_forge(self):
+        self.assertEqual(self._juge(push='true').returncode, 0)
+        (self.clone / 'b').write_text('b')
+        self._git(self.clone, 'add', 'b')
+        self._git(self.clone, 'commit', '-qm', 'b — pas sur la forge')
+        r = self._juge(push='true')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("n'est pas celui de la forge", r.stdout)
+        # sans --push, un main local en avance reste un main : le rendu passe
+        self.assertEqual(self._juge().returncode, 0)
+
+    def test_forge_injoignable_refuse_de_publier(self):
+        self._git(self.clone, 'remote', 'set-url', 'origin', str(self.forge.parent / 'disparue.git'))
+        r = self._juge(push='true')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('injoignable', r.stdout)
+
+
+class TestHandoffsDuGabarit(unittest.TestCase):
+    """Le gabarit livre le modèle de handoff que ses fichiers citent.
+
+    Trois fichiers distribués disent d'écrire un handoff « depuis
+    handoffs/_template.md » — le `/checkpoint` compris — et il ne partait pas ;
+    le README du gabarit décrivait un modèle périmé, sans statut."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+
+    def test_chaque_renvoi_au_modele_aboutit(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        modele = rendu / 'handoffs' / '_template.md'
+        self.assertTrue(modele.is_file(), 'le modèle de handoff n\'est pas livré')
+        self.assertIn('active | consumed | archived', modele.read_text(encoding='utf-8'))
+        citants = [f for f in rendu.rglob('*.md') if '.git' not in f.parts
+                   and 'handoffs/_template.md' in f.read_text(encoding='utf-8', errors='replace')]
+        self.assertTrue(citants, 'plus aucun fichier ne cite le modèle — le test ne mesure plus rien')
+        lisez = (rendu / 'handoffs' / 'README.md').read_text(encoding='utf-8')
+        for statut in ('active', 'consumed', 'archived', '14 jours'):
+            self.assertIn(statut, lisez, f'le README des handoffs ne dit pas « {statut} »')
+        self.assertNotIn('brief-<scope>', lisez, 'le modèle périmé est revenu')
 
 
 class TestDoctorDuGabarit(unittest.TestCase):

@@ -231,6 +231,7 @@ class Projet:
     issues: str | None      # `owner/depot` — `issues:` s'il est déclaré, sinon `repo:`
     palier: str
     depot: str | None = None  # `owner/depot` du CODE (`repo:`) — où vit `dev/autonome`
+    statut: str | None = None  # `status:` — `archived` gèle la liste (règle 4, 29/09)
 
 
 def _depot(valeur) -> str | None:
@@ -284,7 +285,19 @@ def projet(brain: Path, slug: str) -> Projet:
                   prefixe=str(prefixe) if prefixe else None,
                   issues=_depot(meta.get("issues") or meta.get("repo")),
                   palier=str(meta.get("palier") or "a"),
-                  depot=_depot(meta.get("repo")))
+                  depot=_depot(meta.get("repo")),
+                  statut=str(meta["status"]) if meta.get("status") else None)
+
+
+def projets_a_liste(brain: Path) -> list[str]:
+    """Les projets qui ont une liste : ceux dont la fiche déclare `prefixe:`,
+    archivés compris. Ni le gabarit (`_template`), ni un projet sans liste.
+    Un brain d'avant la zone projet n'en déclare aucun : `myeline` seul.
+    La seule définition — `--tous` des trois outils du backlog la lit."""
+    brain = Path(brain)
+    slugs = [f.stem for f in sorted((brain / "projets").glob("*.md"))
+             if not f.name.startswith("_") and projet(brain, f.stem).prefixe]
+    return slugs or ["myeline"]
 
 
 def prefixe_de(brain: Path, slug: str) -> str:

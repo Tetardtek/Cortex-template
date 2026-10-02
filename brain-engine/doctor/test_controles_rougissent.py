@@ -62,6 +62,9 @@ Garanties :
                           ne le touche pas ; sans `prefixe:` ⇒ rouge
     naissance / projet    à blanc n'écrit rien ; slug ou préfixe pris ⇒ refus avant
                           d'écrire ; créé ⇒ la zone tient
+    tous / listes         l'appel d'avant aveugle à l'autre liste ; `--tous` rougit
+    mort / projet         à blanc n'écrit rien ; déjà archivé ⇒ refus ; archivé ⇒ les
+                          ouvertes en pause, les closes intactes, la zone tient
 
 Chaque garantie vérifie **le code de sortie**, pas le texte : c'est ce que les
 appelants lisent, et c'était précisément le défaut d'origine.
@@ -953,6 +956,39 @@ def cmd_close_stale():
     else:
         print("  ⏭  La zone projet : un autre préfixe, lu dans la fich / outil d'instance absent de ce brain")
 
+    # ── `--tous` : chaque liste, pas seulement `myeline` — ───────
+    #
+    # Le doctor ne jugeait l'index et les clôtures que de `myeline` : sept listes
+    # portées, une seule regardée. Un brain jetable porte `myeline`, sain, et un
+    # second projet en défaut. L'appel d'avant (`--projet myeline`) reste vert —
+    # c'est l'angle mort ; `--tous` rougit.
+    if _outils_presents("index_backlog.py", "cloture_backlog.py"):
+        with tempfile.TemporaryDirectory(prefix="temoin-tous-") as tmp:
+            base = Path(tmp)
+            (base / "projets").mkdir()
+            for slug, pre in (("myeline", "MY"), ("demo", "DX")):
+                (base / "projets" / f"{slug}.md").write_text(
+                    f"---\nname: {slug}\nprefixe: {pre}\n---\n", encoding="utf-8")
+                (base / "workspace" / "backlog" / slug).mkdir(parents=True)
+            (base / "workspace" / "backlog" / "myeline" / ("MY" "-1.md")).write_text(
+                "### [MY" "-1] Close — ✅ livré le 1/10\n\n> **Clôture** — mesuré : x · tenu par : y\n",
+                encoding="utf-8")
+            demo = base / "workspace" / "backlog" / "demo" / "DX-1.md"
+            demo.write_text("### [DX-1] Ouverte\n", encoding="utf-8")
+            joue("index_backlog.py", base, "--tous", "--ecrire")
+            garantie("tous / les index écrits tiennent", joue("index_backlog.py", base, "--tous", "--check"), 0)
+            demo.write_text("### [DX-1] Close — ✅ livré le 1/10\n", encoding="utf-8")
+            garantie("tous / l'appel d'avant ne voit pas l'autre liste (index)",
+                     joue("index_backlog.py", base, "--projet", "myeline", "--check"), 0)
+            garantie("tous / l'index de l'autre liste rougit",
+                     joue("index_backlog.py", base, "--tous", "--check"), 1)
+            garantie("tous / l'appel d'avant ne voit pas l'autre liste (clôtures)",
+                     joue("cloture_backlog.py", base, "--projet", "myeline"), 0)
+            garantie("tous / une clôture sans rapport dans l'autre liste rougit",
+                     joue("cloture_backlog.py", base, "--tous"), 1)
+    else:
+        print("  ⏭  `--tous`, chaque liste / outil d'instance absent de ce brain")
+
     # ── Les doublons de projets — §5 ─────────────────────────────
     #
     # Né dans le générateur du menu d'une instance ; il mesure le brain. Le
@@ -1019,6 +1055,53 @@ def cmd_close_stale():
                 garantie("naissance / un slug déjà pris refuse", naitre("neuf", "--ecrire"), 1)
     else:
         print("  ⏭  La naissance d'un projet, d'un geste / outil d'instance absent de ce brain")
+
+    # ── La mort d'un projet, d'un geste ──────────────────────────
+    #
+    # Règle 4 du 29/09 : `archived` gèle la liste. Un brain jetable porte un
+    # projet vivant, une fiche ouverte et une close. L'archivage met l'ouverte en
+    # pause en AJOUTANT une entrée, ne touche pas la close, et la zone tient.
+    if _outils_presents("projet.py"):
+        with tempfile.TemporaryDirectory(prefix="temoin-mort-") as tmp:
+            base = Path(tmp)
+            (base / "projets").mkdir()
+            liste = base / "workspace" / "backlog" / "vivant"
+            liste.mkdir(parents=True)
+            (base / "projets" / "vivant.md").write_text(
+                "---\nname: vivant\nstatus: dev\nprefixe: VI\npalier: a\n---\n\n# Vivant\n",
+                encoding="utf-8")
+            (liste / "VI-1.md").write_text("### [VI-1] Une fiche ouverte\n\nSon texte.\n",
+                                          encoding="utf-8")
+            close = ("### [VI-2] Une fiche close — ✅ livré le 1/10\n\n"
+                     "> **Clôture** — mesuré : x · tenu par : y\n")
+            (liste / "VI-2.md").write_text(close, encoding="utf-8")
+
+            def mourir(*args: str) -> int:
+                return subprocess.run([sys.executable, str(OUTILS / "projet.py"), "archiver",
+                                       *args, "--brain", str(base)], capture_output=True).returncode
+
+            def statut() -> str:
+                return (base / "projets" / "vivant.md").read_text(encoding="utf-8")
+
+            garantie("mort / à blanc répond", mourir("vivant"), 0)
+            garantie("mort / à blanc n'écrit rien", int("status: dev" in statut()), 1)
+            garantie("mort / un projet sans fiche refuse", mourir("fantome", "--ecrire"), 1)
+            garantie("mort / elle archive, et la zone tient", mourir("vivant", "--ecrire"), 0)
+            garantie("mort / la fiche projet dit archived", int("status: archived" in statut()), 1)
+            garantie("mort / l'ouverte passe en pause",
+                     int("⏸️ projet archivé" in (liste / "VI-1.md").read_text(encoding="utf-8")), 1)
+            garantie("mort / l'ouverte garde son texte",
+                     int("Son texte." in (liste / "VI-1.md").read_text(encoding="utf-8")), 1)
+            garantie("mort / la close n'est pas touchée",
+                     int((liste / "VI-2.md").read_text(encoding="utf-8") == close), 1)
+            garantie("mort / déjà archivé refuse", mourir("vivant", "--ecrire"), 1)
+            # Le contrôle de la zone voit ce qu'archiver répare : la même liste,
+            # rouverte à la main sous un projet archivé, rougit.
+            (liste / "VI-3.md").write_text("### [VI-3] Rouverte à la main\n", encoding="utf-8")
+            garantie("mort / une fiche ouverte sous un projet archivé rougit la zone",
+                     joue("zone_projet.py", base), 1)
+    else:
+        print("  ⏭  La mort d'un projet, d'un geste / outil d'instance absent de ce brain")
 
     # ── L'éclatement et son index — ───────────────────────────────
     #

@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "2.6.0"
-generated_at: "2026-10-02T20:23"
+kernel_version: "2.6.1"
+generated_at: "2026-10-02T21:44"
 
 files:
   KERNEL.md: 157e6f89f937f02efb90fe3ad5b28801bd931b36360c7704702f96503dd261c8
-  brain-compose.yml: c33544011ce98479b1451097a2e09277cdbff9d2a230a42da5e8a66525232012
+  brain-compose.yml: d517f7cfbc0c7152b80e613ad4576992e3e577d92184a9f4a23c566ed15027bb
   brain-constitution.md: d7b4ff075dcbbc71bd6e3ea0a6a22b0c29f5f940a8ae922742e7cfcb043575f9
   agents/agent-review.md: 0f0940309f6d11f1ef4117223894e56db126740cbd17f49728153640a0c1aa8a
   agents/AGENTS.md: a60f8a30aafdc29520ac23f58718baa3654eb8ec4020b9b4a36a905b4c170019
@@ -86,7 +86,7 @@ files:
   scripts/brain-db-sync.sh: a32572dc06560ba6d84eb02e9f71483435590f7f26b9b42cc4e1e7f00b0cad76
   scripts/brain-engine.sh: 6988e5b7ce59ecc580a9a567a19bcea2cbe5f57b5f8e1e70d2e2c1b9cf74b595
   scripts/brain-satellites.py: 42fab3f9b0e6770c1f7cd2eb9ef4c6f295be5fa77e743fc86643c997552352c8
-  scripts/brain-setup.sh: 7c55180124d020be34d1e33f7f523233ad63c7ac49e3e11abd6e1f0144798bc1
+  scripts/brain-setup.sh: 660be17d3517cba184a456166d832d9a5d6e79bc231a88ba638573041623129a
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
   scripts/bsi-claim.sh: 9de8d0b9cc6ce6d99cc69eecab867e190157456572e6b8bd47be9775f97d793f
   scripts/bsi-query.sh: b17148b65dfc271e9aaa630bcf19134c82605a3fe18a5eb96db8c8f3d2a2b89b
@@ -110,3 +110,4 @@ files:
   scripts/ollama-setup.sh: 90e93f2dafac9e948b4350865308fa46148201ff00e65da596a68244aedc2b23
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
+  scripts/scratch-nettoyable.py: b99f52706b128c29eed7b4320f67535f39e353bae9fdc05392ac4db8da8d4082

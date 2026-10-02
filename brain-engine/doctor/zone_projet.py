@@ -12,6 +12,8 @@ ensemble. Ce qui pourrirait en silence sans lui :
     une fiche au mauvais préfixe       `DC-3.md` dans le dossier d'un autre projet
     un palier sans liste, ou inconnu   un lancement autonome sur rien (BRAIN-079)
     un dépôt illisible                 des issues sans maison
+    un projet archivé, une fiche       une liste qu'on dit gelée, et qui ne l'est pas
+      encore ouverte                   (règle 4 du 29/09 : les ouvertes passent ⏸️)
 
 **Les dossiers sans fiche d'aujourd'hui ne se devinent pas** : ils se rattachent
 un par un, avec l'humain. D'ici là, chacun est NOMMÉ, avec sa raison, dans
@@ -40,6 +42,7 @@ EXEMPTIONS = Path("workspace") / ".zone-projet-orphelins"
 PREFIXE = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 FICHE = re.compile(r"^([A-Z][A-Z0-9]*)-\d+\.md$")
 PALIERS = {"a", "b", "c"}
+AUTO_EPREUVE_CAS = 0                    # compté par l'auto-épreuve, pas écrit à la main
 
 
 def _meta(fiche: Path) -> dict:
@@ -138,6 +141,21 @@ def juger(brain: Path) -> list[str]:
             if m.group(1) != attendu:
                 defauts.append(f"workspace/backlog/{d}/{f.name} : préfixe {m.group(1)}, "
                                f"le projet déclare {attendu}")
+
+    # 6. un projet archivé a gelé sa liste : plus aucune fiche ouverte
+    for slug, m in fiches.items():
+        if str(m.get("status")) != "archived" or m.get("prefixe") is None or slug not in dossiers:
+            continue
+        try:
+            liste = _fiches.lire(brain, slug, str(m["prefixe"]))
+        except _fiches.Illisible:
+            continue                    # rien à geler, ou déjà dit par une autre règle
+        ouvertes = sorted((c for c, f in liste.items() if f.etat == "ouvert"),
+                          key=lambda c: int(c.rsplit("-", 1)[1]))
+        if ouvertes:
+            defauts.append(f"projets/{slug}.md est archivé, et {len(ouvertes)} fiche(s) "
+                           f"restent ouvertes ({', '.join(ouvertes[:4])}) — "
+                           f"`projet.py archiver {slug}` les met en pause")
     return defauts
 
 
@@ -158,7 +176,11 @@ def auto_epreuve() -> list[str]:
                                      {"a": ["BB-1.md"]}, ""),
         "fiche sans préfixe de projet": ({"a": "---\nname: a\n---\n"}, ["a"],
                                          {"a": ["AA-1.md"]}, ""),
+        "projet archivé, fiche ouverte": ({"a": "---\nstatus: archived\nprefixe: AA\n---\n"},
+                                          ["a"], {"a": ["AA-1.md"]}, ""),
     }
+    global AUTO_EPREUVE_CAS
+    AUTO_EPREUVE_CAS = len(cas)
     rates = []
     for nom, (projets, dossiers, fiches, exempt) in cas.items():
         with tempfile.TemporaryDirectory(prefix="zone-projet-") as tmp:
@@ -171,7 +193,8 @@ def auto_epreuve() -> list[str]:
                 (b / "workspace" / "backlog" / d).mkdir()
             for d, noms in fiches.items():
                 for n in noms:
-                    (b / "workspace" / "backlog" / d / n).write_text("x\n", encoding="utf-8")
+                    (b / "workspace" / "backlog" / d / n).write_text(
+                        f"### [{n[:-3]}] Une fiche\n", encoding="utf-8")
             if exempt:
                 (b / EXEMPTIONS).write_text(exempt, encoding="utf-8")
             if not juger(b):
@@ -184,6 +207,15 @@ def auto_epreuve() -> list[str]:
         (b / "projets" / "sain.md").write_text(
             "---\nprefixe: SA\npalier: a\nrepo: forge.example/o/sain\n---\n", encoding="utf-8")
         (b / "workspace" / "backlog" / "sain" / "SA-1.md").write_text("x\n", encoding="utf-8")
+        # un projet archivé dont la liste est gelée : une fiche close, une en pause
+        (b / "workspace" / "backlog" / "fini").mkdir()
+        (b / "projets" / "fini.md").write_text("---\nstatus: archived\nprefixe: FI\n---\n",
+                                               encoding="utf-8")
+        (b / "workspace" / "backlog" / "fini" / "FI-1.md").write_text(
+            "### [FI-1] Close — ✅ livré le 1/10\n", encoding="utf-8")
+        (b / "workspace" / "backlog" / "fini" / "FI-2.md").write_text(
+            "### [FI-2] Ouverte\n\n### [FI-2] Ouverte — ⏸️ projet archivé le 2/10\n",
+            encoding="utf-8")
         if juger(b):
             rates.append("témoin négatif : une zone saine rougit")
     return rates
@@ -196,6 +228,7 @@ def main() -> int:
     brain = p.parse_args().brain.expanduser().resolve()
 
     rates = auto_epreuve()
+    n_cas = AUTO_EPREUVE_CAS
     if rates:
         print("\nLA ZONE PROJET — l'auto-épreuve a échoué, rien n'est jugé :")
         for r in rates:
@@ -208,7 +241,7 @@ def main() -> int:
     defauts = juger(brain)
     nommes, _ = exemptions(brain)
     print("\nLA ZONE PROJET\n")
-    print(f"  auto-épreuve         10 défauts vus, une zone saine ne rougit pas")
+    print(f"  auto-épreuve         {n_cas} défauts vus, une zone saine ne rougit pas")
     print(f"  dossiers nommés      {len(nommes)} sans fiche, chacun avec sa raison")
     if not defauts:
         print("\n  ✅ fiches, dossiers, préfixes, paliers et dépôts tiennent ensemble")

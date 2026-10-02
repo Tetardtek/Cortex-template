@@ -66,5 +66,6 @@ handoff, `scratch/` suffit.
 que ses propres fichiers, **nommés un par un** — jamais par motif. Ce qui a plus
 de 30 jours, n'est cité par aucun fichier suivi, ne porte pas de travail git non
 poussé et n'est revendiqué par aucune session ouverte peut partir, après
-relecture.
+relecture. `python3 scripts/scratch-nettoyable.py` les liste, en lecture seule, et dit
+pourquoi le reste reste ; `brain doctor` les affiche sans les juger.
 
