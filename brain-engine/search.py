@@ -25,9 +25,7 @@ import struct
 import argparse
 import urllib.request
 import urllib.error
-from pathlib import Path
 
-BRAIN_ROOT  = Path(__file__).parent.parent
 OLLAMA_URL  = os.getenv('OLLAMA_URL') or 'http://localhost:11434'
 EMBED_MODEL = os.getenv('EMBED_MODEL') or 'nomic-embed-text'
 

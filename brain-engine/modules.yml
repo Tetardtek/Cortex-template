@@ -23,7 +23,6 @@ modules:
       - sessions
       - signals
       - handoffs
-      - circuit_breaker
       - claims_archive
       - sessions_archive
       - signals_archive

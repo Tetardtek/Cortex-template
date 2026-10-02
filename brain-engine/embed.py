@@ -40,7 +40,7 @@ import urllib.error
 from datetime import datetime
 from pathlib import Path
 
-BRAIN_ROOT   = Path(__file__).parent.parent
+from racines import DONNEES as BRAIN_ROOT   # reçue, ou le parent du programme
 DB_PATH      = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
 
 import db as brain_db
@@ -78,6 +78,7 @@ PRIVATE_PATHS = [
     # n'avait plus de raison d'être invisible au brain qui l'applique.
     'profil/identity/',       # BRAIN-056 — couche cognitive interprétation personnelle, owner-only absolu
     'profil/gaming/',         # BRAIN chill/gaming — profils gaming personnels, owner-only
+    'vie/',                   # BRAIN-080 — satellite de la vie de l'owner (admin, terrain, concepts perso), owner-only absolu
     'progression/',           # personal — journal + tout le répertoire
     'MYSECRETS',
 ]
@@ -272,7 +273,10 @@ CORPUS_PATHS = [
     # ── learning — 5eme couche cognitive (BRAIN-049) ─────────────────────────────
     ('learning',         '**/*.md', 'h2'),    # tracks + inbox + sous-dossiers (modele-du-monde/, …)
     # ── project — TTL 60 jours git-based ─────────────────────────────────────
-    ('projets',          '*.md',    'h2'),
+    # Récursif depuis le 1/10 (BRAIN-080, étape 4) : la connaissance d'un projet
+    # vit dans `projets/<slug>/`, à côté de sa fiche. À plat, elle sortait du
+    # corpus. Possible seulement après l'étape 1 — la vie a quitté `projets/`.
+    ('projets',          '**/*.md', 'h2'),
     ('handoffs',         '*.md',    'file'),
     ('workspace',        '**/*.md', 'h2'),
     # ── profil/decisions — scope par frontmatter (kernel | project) ──────────
@@ -334,15 +338,26 @@ def dans_un_brain_imbrique(filepath: Path) -> bool:
     TTL laisse passer. Mesuré le 28/09 : 14 751 chunks sur 30 453, presque la
     moitié de l'index, étaient trois worktrees.
 
-    Le critère : un dossier, sous la racine, qui porte son propre `KERNEL.md`.
-    Pas « `.git` est un fichier » : un sous-module (`wiki/`) en a un aussi.
+    Deux critères :
+    - un dossier, sous la racine, qui porte son propre `KERNEL.md` ;
+    - un dossier à partir du DEUXIÈME niveau qui porte son propre `.git`
+      (fichier : un worktree ; dossier : un clone). Le 30/09, un worktree de
+      `profil` posé dans `workspace/scratch/` n'avait pas de `KERNEL.md` : 187
+      fichiers indexés, dont `identity/` et `capital.md` — sous un chemin que
+      `PRIVATE_PATHS` ne reconnaît pas. Au premier niveau vivent les satellites
+      (des clones) et le sous-module `wiki/` (un `.git` fichier) : du corpus.
+
+    Le `.git` n'est pas mis en cache : le moteur tourne longtemps, et un
+    worktree ouvert après un premier passage doit être vu au suivant.
     """
     p = filepath if filepath.is_absolute() else BRAIN_ROOT / filepath
     try:
         parts = p.relative_to(BRAIN_ROOT).parts
     except ValueError:
         return False
-    return any(_porte_un_kernel(BRAIN_ROOT.joinpath(*parts[:i])) for i in range(1, len(parts)))
+    if any(_porte_un_kernel(BRAIN_ROOT.joinpath(*parts[:i])) for i in range(1, len(parts))):
+        return True
+    return any((BRAIN_ROOT.joinpath(*parts[:i]) / '.git').exists() for i in range(2, len(parts)))
 
 
 _KERNELS: dict[Path, bool] = {}

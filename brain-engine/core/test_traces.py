@@ -23,6 +23,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.tests import pourquoi_abstenue                    # noqa: E402
 from core.persistance import DOLT, SQLITE, Config, Depot     # noqa: E402
 from core.traces import Journal, SansVersionnement, tables_ecrites  # noqa: E402
 
@@ -113,7 +114,7 @@ def dolt_lecture() -> None:
     try:
         sales = journal.tables_sales()
     except Exception as exc:                               # noqa: BLE001
-        print(f"  ⏭  dolt sql-server injoignable ({type(exc).__name__}) — rien mesuré.\n")
+        print(f"  ⏭  ABSTENTION — {pourquoi_abstenue(exc)} — rien mesuré.\n")
         global _abstenu
         _abstenu = True
         return

@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.tests import pourquoi_abstenue                    # noqa: E402
 from core.persistance import DOLT, SQLITE, Config, Depot     # noqa: E402
 from core.modele import Encodeur                             # noqa: E402
 from core.recherche import (                                 # noqa: E402
@@ -220,8 +221,7 @@ def index_reel() -> None:
         # syntaxe SQL pendant tout un essai. Un mot réservé non échappé s'était
         # déguisé en panne de service. Le sens d'une erreur compte autant que
         # son existence — celle qui rassure ne déclenche aucune vérification.
-        print(f"  ⏭  l'index réel n'a pas pu être lu — {type(exc).__name__} : "
-              f"{str(exc)[:90]}")
+        print(f"  ⏭  ABSTENTION — l'index réel n'a pas pu être lu : {pourquoi_abstenue(exc)}")
         print("     Abstention, pas un vert. Si c'est une erreur de requête,")
         print("     c'est un défaut du CORE, pas du service.\n")
         global _abstenu

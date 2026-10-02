@@ -48,6 +48,27 @@ du brain.
 
 Pour que les unités systemd survivent à la déconnexion : `loginctl enable-linger $USER`.
 
+## `brain serve` — les deux portes, une seule déclaration
+
+`start` et les unités systemd lancent les serveurs par `brain serve` : leur
+configuration se décide à **un** endroit, `brain-engine/serve.py`.
+
+```bash
+brain serve                  # les deux portes, au premier plan ; si l'une tombe, l'autre s'arrête
+brain serve http             # l'API seule — ce que lance l'unité brain-engine
+brain serve mcp              # le serveur MCP seul — l'unité brain-mcp
+brain serve --declaration    # ce qui serait lancé (ports, mode, secrets), sans rien lancer
+```
+
+`install systemd` pose la commande `brain` dans `~/.local/bin`, en lien vers
+`scripts/brain`. Sans elle : `bash scripts/brain serve`.
+
+La déclaration se calcule dans cet ordre, la plus forte en dernier : les défauts
+(7700, 7701, les scopes du MCP local), `brain-engine/.env.local`,
+`brain-secrets/MYSECRETS` (sauf en démo), puis l'environnement déjà posé. Le
+fichier de secrets se **lit** comme un `EnvironmentFile` de systemd — des lignes
+`CLÉ=valeur` ; rien n'y est exécuté, et aucune valeur n'est jamais affichée.
+
 ---
 
 ## Les modes

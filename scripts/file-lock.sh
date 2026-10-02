@@ -57,6 +57,9 @@ args = sys.argv[3:]
 
 sys.path.insert(0, os.path.join(brain_root, "brain-engine"))
 import db
+# La frontière d'un verrou, écrite une fois dans le CORE — ce script en
+# portait cinq copies.
+from core.bsi import VERROU_ACTIF, VERROU_EXPIRE
 
 import json
 import urllib.error
@@ -169,10 +172,10 @@ def cmd_acquire():
     avertir_repli("acquisition")
 
     # Check existing active lock held by someone else
-    existing = db.query_one("""
+    existing = db.query_one(f"""
         SELECT holder, expires_at FROM locks
         WHERE filepath = %s
-          AND UTC_TIMESTAMP() < expires_at
+          AND {VERROU_ACTIF}
           AND holder != %s
     """, (filepath, sess_id))
 
@@ -255,9 +258,9 @@ def cmd_check():
 
     filepath = args[0]
 
-    row = db.query_one("""
+    row = db.query_one(f"""
         SELECT holder, expires_at,
-               CASE WHEN UTC_TIMESTAMP() < expires_at THEN 'active' ELSE 'expired' END AS status
+               CASE WHEN {VERROU_ACTIF} THEN 'active' ELSE 'expired' END AS status
         FROM locks WHERE filepath = %s
     """, (filepath,))
 
@@ -275,9 +278,9 @@ def cmd_check():
 
 
 def cmd_list():
-    rows = db.query("""
+    rows = db.query(f"""
         SELECT filepath, holder, expires_at,
-               CASE WHEN UTC_TIMESTAMP() < expires_at THEN 'actif' ELSE 'expiré' END AS status
+               CASE WHEN {VERROU_ACTIF} THEN 'actif' ELSE 'expiré' END AS status
         FROM locks ORDER BY claimed_at DESC
     """)
 
@@ -294,15 +297,16 @@ def cmd_list():
 
 def cmd_cleanup():
     # Count expired locks
-    row = db.query_one("""
-        SELECT COUNT(*) AS n FROM locks WHERE UTC_TIMESTAMP() >= expires_at
-    """)
+    row = db.query_one(f"SELECT COUNT(*) AS n FROM locks WHERE {VERROU_EXPIRE}")
     count = row['n'] if row else 0
 
     if count == 0:
         print("✅ Aucun lock expiré à nettoyer")
     else:
-        db.execute("DELETE FROM locks WHERE UTC_TIMESTAMP() >= expires_at")
+        # Un nettoyage est un événement : il se commite (sans `commit_msg`,
+        # l'écriture restait dans le working set Dolt). Ignoré en SQLite.
+        db.execute(f"DELETE FROM locks WHERE {VERROU_EXPIRE}",
+                   commit_msg=f"bsi: {count} verrou(s) expire(s) nettoye(s)", tables=["locks"])
         print(f"✅ {count} lock(s) nettoyé(s)")
 
 

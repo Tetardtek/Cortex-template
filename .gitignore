@@ -16,6 +16,9 @@ profil/*
 # Les specs du PROGRAMME partent avec le gabarit (tranché le 04/09) — ce sont
 # les données personnelles de profil/ qui restent au fork.
 !profil/specs/
+# La FORME de l'identité, sans contenu : un fork sait quoi remplir. `identity/`
+# lui-même ne part jamais (BRAIN-056).
+!profil/identity.exemple/
 progression/*
 !progression/README.md
 reviews/*
@@ -25,8 +28,19 @@ todo/*
 # Ce qu'écrit une session `learning` : un satellite comme les autres.
 learning/*
 !learning/README.md
+# BRAIN-080 — la vie (privée, jamais indexée) et la production (lue par le MCP).
+vie/*
+!vie/README.md
+contenu/*
+!contenu/README.md
 
+# Le brouillon des sessions : volatile, jamais versionne (le dossier, seulement)
+workspace/scratch/*
+!workspace/scratch/.gitkeep
 # Instance-specific (never committed)
+# L'instantane du focus, reecrit a chaque passage de l'indexeur (toutes les 2 h)
+focus.instantane.md
+focus.instantane.md.tmp
 brain-compose.local.yml
 MYSECRETS
 brain.db

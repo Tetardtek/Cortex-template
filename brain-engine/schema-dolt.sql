@@ -48,14 +48,6 @@ CREATE TABLE `chantiers` (
   `updated_at` datetime NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-DROP TABLE IF EXISTS `circuit_breaker`;
-CREATE TABLE `circuit_breaker` (
-  `sess_id` varchar(128) NOT NULL,
-  `fail_count` int NOT NULL DEFAULT '0',
-  `last_fail_at` datetime,
-  `updated_at` datetime NOT NULL,
-  PRIMARY KEY (`sess_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 DROP TABLE IF EXISTS `claims`;
 CREATE TABLE `claims` (
   `sess_id` varchar(128) NOT NULL,

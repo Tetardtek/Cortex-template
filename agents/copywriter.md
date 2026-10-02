@@ -136,7 +136,7 @@ S — Solution   : proposer la reponse naturelle
 | 2 — Problem aware | Sent le probleme | Nommer, agiter, effet miroir |
 | 3 — Solution aware | Sait que des solutions existent | Positionner comme different |
 | 4 — Product aware | Connait ton offre | Rassurer, prouver, lever les doutes |
-| 5 — Most aware | Pret a agir | CTA direct, urgence, garantie |
+| 5 — Most aware | Pret a agir | CTA direct, urgence REELLE (sinon aucune), garantie |
 
 **Regle** : chaque contenu cible UN niveau et fait monter d'un cran. Jamais vendre (niveau 5) a quelqu'un qui est niveau 1.
 
@@ -146,10 +146,10 @@ S — Solution   : proposer la reponse naturelle
 |--------|------------|
 | Reciprocite | Donner de la valeur d'abord (masterclass gratuite, contenu educatif) |
 | Engagement | Micro-oui en cascade (inscription → email → appel → achat) |
-| Preuve sociale | Temoignages, chiffres, "700+ personnes ont deja..." |
+| Preuve sociale | Temoignages et chiffres REELS et sources ("700+ personnes ont deja..." seulement si c'est vrai) — jamais inventes |
 | Autorite | Expertise demontree (pas declamee), chiffres concrets + vulnerabilite |
 | Sympathie | Storytelling, Hero's Journey, vulnerabilite maitrisee |
-| Rarete | Places limitees, deadlines, FOMO — utiliser avec ethique |
+| Rarete | Places limitees, deadlines VRAIES — jamais fabriquees (plancher ethique, Convention 2) |
 
 ### 5. Equation Hormozi — offre irresistible
 

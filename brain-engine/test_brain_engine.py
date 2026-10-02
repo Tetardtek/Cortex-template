@@ -1279,6 +1279,109 @@ class TestSansJetonLOwnerVoitTout(unittest.TestCase):
             self.assertNotIn('kernel', srv.check_auth('Bearer j-mcp'))
 
 
+class TestLectureZonePrivee(unittest.TestCase):
+    """🔴 `GET /brain/{path}` ne sert la zone privée qu'à l'owner.
+
+    Mesuré le 1/10 : la route servait tout `.md` à tout jeton valide — `mcp`
+    et `public` compris — sans regarder le chemin : `profil/identity/` (la
+    couche cognitive, BRAIN-056) et `vie/` (BRAIN-080) étaient lisibles avec le
+    jeton le plus faible. L'indexeur les protégeait (`PRIVATE_PATHS`), la
+    lecture directe non. La règle est désormais UNE liste : `embed.is_private`.
+
+    Joué dans un brain jetable (`srv.BRAIN_ROOT` redirigé). Le témoin : un
+    fichier hors zone privée reste lisible par le même jeton."""
+
+    JETONS = {'j-owner': 'owner', 'j-mcp': 'mcp', 'j-public': 'public'}
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-lecture-'))
+        for rel in ('profil/identity/career.md', 'vie/papiers.md',
+                    'profil/capital.md', 'agents/coach.md'):
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text(f'# {rel}\n')
+        self._racine = srv.BRAIN_ROOT
+        srv.BRAIN_ROOT = self.tmp
+        self.local = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        self.distant = TestClient(srv.app, raise_server_exceptions=False, client=('192.0.2.1', 50000))
+
+    def tearDown(self):
+        srv.BRAIN_ROOT = self._racine
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lire(self, client, chemin, jeton=None):
+        h = {'Authorization': f'Bearer {jeton}'} if jeton else {}
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            return client.get(f'/brain/{chemin}', headers=h).status_code
+
+    def test_un_jeton_non_owner_ne_lit_pas_la_zone_privee(self):
+        for jeton in ('j-mcp', 'j-public'):
+            for chemin in ('profil/identity/career.md', 'vie/papiers.md', 'profil/capital.md'):
+                self.assertEqual(self._lire(self.distant, chemin, jeton), 403, f'{jeton} lit {chemin}')
+
+    def test_le_meme_jeton_lit_hors_zone_privee(self):
+        self.assertEqual(self._lire(self.distant, 'agents/coach.md', 'j-public'), 200)
+
+    def test_l_owner_lit_la_zone_privee(self):
+        self.assertEqual(self._lire(self.distant, 'profil/identity/career.md', 'j-owner'), 200)
+        self.assertEqual(self._lire(self.local, 'vie/papiers.md'), 200, "la machine elle-même = owner")
+
+    def test_un_detour_par_le_chemin_ne_contourne_pas(self):
+        for chemin in ('agents/../profil/identity/career.md', 'profil/./identity/career.md',
+                       './vie/papiers.md'):
+            self.assertEqual(self._lire(self.distant, chemin, 'j-mcp'), 403, chemin)
+
+    def test_la_regle_est_celle_de_l_indexeur(self):
+        import embed
+        self.assertTrue(embed.is_private('vie/x.md') and embed.is_private('profil/identity/x.md'))
+
+
+class TestLectureParZone(unittest.TestCase):
+    """`GET /brain/{path}` applique à la lecture les zones de `_SCOPE_ACCESS`.
+
+    Hors zone privée, la route servait toutes les zones à tout jeton — un
+    jeton `public` lisait
+    `KERNEL.md` et `projets/`. L'écriture appliquait déjà les zones ; la lecture
+    non. `public` → la zone `public` ; `mcp` → tout sauf `kernel` ; l'owner et la
+    machine elle-même → tout."""
+
+    JETONS = {'j-owner': 'owner', 'j-mcp': 'mcp', 'j-public': 'public'}
+    FICHIERS = ('agents/coach.md', 'KERNEL.md', 'projets/mon-projet.md', 'workspace/note.md')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-lecture-zone-'))
+        for rel in self.FICHIERS:
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text(f'# {rel}\n')
+        self._racine = srv.BRAIN_ROOT
+        srv.BRAIN_ROOT = self.tmp
+        self.distant = TestClient(srv.app, raise_server_exceptions=False, client=('192.0.2.1', 50000))
+        self.local = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+
+    def tearDown(self):
+        srv.BRAIN_ROOT = self._racine
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lire(self, client, chemin, jeton=None):
+        h = {'Authorization': f'Bearer {jeton}'} if jeton else {}
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            return client.get(f'/brain/{chemin}', headers=h).status_code
+
+    def test_public_ne_lit_que_la_zone_public(self):
+        self.assertEqual(self._lire(self.distant, 'agents/coach.md', 'j-public'), 200, "le témoin : zone public")
+        for c in ('KERNEL.md', 'projets/mon-projet.md', 'workspace/note.md'):
+            self.assertEqual(self._lire(self.distant, c, 'j-public'), 403, c)
+
+    def test_mcp_lit_tout_sauf_le_kernel(self):
+        for c in ('agents/coach.md', 'projets/mon-projet.md', 'workspace/note.md'):
+            self.assertEqual(self._lire(self.distant, c, 'j-mcp'), 200, c)
+        self.assertEqual(self._lire(self.distant, 'KERNEL.md', 'j-mcp'), 403)
+
+    def test_l_owner_et_la_machine_lisent_tout(self):
+        for c in self.FICHIERS:
+            self.assertEqual(self._lire(self.distant, c, 'j-owner'), 200, c)
+            self.assertEqual(self._lire(self.local, c), 200, c)
+
+
 class TestServerAuth(unittest.TestCase):
     """Auth via Authorization: Bearer — sans token = dev, avec token = vérifié."""
 
@@ -1548,7 +1651,7 @@ class TestBrainDbSyncScript(unittest.TestCase):
         (tmp / 'handoffs').mkdir()
         shutil.copy(SYNC_SCRIPT, tmp / 'scripts' / 'brain-db-sync.sh')
         shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh', tmp / 'scripts' / 'lib' / 'python.sh')
-        for f in ('migrate.py', 'db.py', 'schema.sql'):
+        for f in ('migrate.py', 'db.py', 'racines.py', 'schema.sql'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, tmp / 'brain-engine' / f)
         venv = BRAIN_ROOT_PATH / 'brain-engine' / '.venv'
         if not venv.is_dir():
@@ -1993,8 +2096,10 @@ class TestBrainSatellites(unittest.TestCase):
         self._poste(voisin, fichier, 'amont')
         self._git('push', '-q', cwd=voisin)
 
-    def _lancer(self, brain: Path, *args) -> subprocess.CompletedProcess:
+    def _lancer(self, brain: Path, *args, home: Path | None = None) -> subprocess.CompletedProcess:
         env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        if home is not None:
+            env['HOME'] = str(home)
         return subprocess.run([sys.executable, str(self.SCRIPT), '--brain', str(brain), *args],
                               capture_output=True, text=True, env=env, timeout=120)
 
@@ -2047,6 +2152,42 @@ class TestBrainSatellites(unittest.TestCase):
             self.assertIn('LISEZ-MOI', r.stdout, "le refus nomme le fichier protégé, pas « Aborting »")
             self.assertEqual((brain / 'profil' / 'LISEZ-MOI').read_text(), 'travail en cours',
                              "le travail en cours n'est jamais écrasé")
+
+    def test_un_depot_hors_du_brain_se_clone_et_se_suit(self):
+        """`chemin:` — le CORE vit hors du brain (`myeline`), et le laptop tirait un
+        brain qui attendait un CORE plus récent que le sien (1/10). HOME jetable :
+        `~` ne désigne jamais le vrai dossier personnel."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._forge(tmp / 'f2', 'myeline-depot')
+            (forge / 'myeline-depot.git').parent.mkdir(exist_ok=True)
+            shutil.move(str(tmp / 'f2' / 'forge' / 'myeline-depot.git'), str(forge / 'myeline-depot.git'))
+            with (brain / 'satellites.yml').open('a') as f:
+                f.write('  myeline: {depot: myeline-depot, machines: [laptop], chemin: ~/Gitea/myeline}\n')
+            home = tmp / 'home'
+            home.mkdir()
+            r = self._lancer(brain, '--cloner', home=home)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            dehors = home / 'Gitea' / 'myeline'
+            self.assertTrue((dehors / 'LISEZ-MOI').exists(), "cloné à son chemin, hors du brain")
+            self.assertFalse((brain / 'myeline').exists(), "rien sous le brain")
+            self.assertEqual(self._lancer(brain, '--check', home=home).returncode, 0)
+            self._pousser(tmp, forge, 'myeline-depot', 'nouveau.py')
+            r = self._lancer(brain, '--check', home=home)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn('myeline', r.stdout)
+            self.assertIn('derrière', r.stdout, "un CORE en retard se voit")
+
+    def test_un_chemin_relatif_est_refuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, _ = self._brain(tmp)
+            with (brain / 'satellites.yml').open('a') as f:
+                f.write('  ailleurs: {depot: profil-depot, machines: [laptop], chemin: ../x}\n')
+            r = self._lancer(brain, '--check', home=tmp)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn('chemin relatif', r.stdout + r.stderr)
 
     def test_dossier_vide_se_clone_dossier_plein_jamais(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2103,7 +2244,7 @@ class TestSyncTemplate(unittest.TestCase):
     APRÈS le push — `--push` publiait, puis annonçait « sync interrompu »."""
 
     CHEMINS = ('scripts', 'agents', 'docs', 'contexts', 'workflows', 'brain-engine',
-               'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
+               'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
                'MYSECRETS.example', 'brain-compose.local.yml.example')
     SATELLITES = ('profil', 'wiki', 'brain-ui')
 
@@ -2168,6 +2309,25 @@ class TestSyncTemplate(unittest.TestCase):
         self.assertIn('cle: 1', (self.brain / 'contexts' / 'sonde.yml').read_text())
         self.assertIn(self.etiquette, (self.brain / 'contexts' / 'sonde.yml').read_text(),
                       "la SOURCE garde son étiquette")
+
+    def test_les_specs_de_brain_ui_ne_partent_pas(self):
+        """`brain-ui/docs/specs/` reste chez l'owner [BRAIN-080].
+
+        Les specs de l'interface (des visions de mars, qui nomment l'instance)
+        vivent dans le dépôt `brain-ui`, à côté du code. La synchro copie
+        `brain-ui/` en entier : sans exclusion, elles partaient au gabarit. Le
+        témoin : le reste de `brain-ui/`, `docs/` compris, part bien."""
+        ui = self.brain / 'brain-ui'
+        ui.unlink()
+        for rel, texte in (('src/main.ts', 'export {}\n'), ('package.json', '{}\n'),
+                           ('docs/lisez-moi.md', '# docs\n'), ('docs/specs/vision.md', '# une vision\n')):
+            (ui / rel).parent.mkdir(parents=True, exist_ok=True)
+            (ui / rel).write_text(texte)
+        rendu = self.tmp / 'rendu'
+        self._sync('--rendre', str(rendu))
+        self.assertTrue((rendu / 'brain-ui' / 'package.json').exists(), "le témoin : brain-ui part")
+        self.assertTrue((rendu / 'brain-ui' / 'docs' / 'lisez-moi.md').exists(), "docs/ hors specs part")
+        self.assertFalse((rendu / 'brain-ui' / 'docs' / 'specs').exists(), "les specs ne partent pas")
 
     def test_un_push_refuse_ne_publie_rien(self):
         nu = self.tmp / 'forge.git'
@@ -2290,7 +2450,8 @@ class TestSyncTemplate(unittest.TestCase):
         self.assertIn('profil/specs/', r.stdout)
 
     def test_un_gitignore_qui_laisse_passer_les_specs(self):
-        self._gabarit_publie('profil/*\n!profil/README.md\n!profil/CLAUDE.md.example\n!profil/specs/\n')
+        self._gabarit_publie('profil/*\n!profil/README.md\n!profil/CLAUDE.md.example\n!profil/specs/\n'
+                             '!profil/identity.exemple/\n')   #, comme le vrai
         r = self._sync('--rendre', str(self.tmp / 'rendu'))
         self.assertIn('tout ce que la synchro écrit, git le publie', r.stdout, r.stdout[-600:])
 
@@ -2314,7 +2475,9 @@ class TestSyncTemplate(unittest.TestCase):
         for attendu in ('brain-engine/db.py', 'profil/specs/collaboration.md',
                         'KERNEL.md', self.chemin_sonde, 'brain-ui/package.json'):
             self.assertIn(attendu, liste, f"{attendu} part au gabarit")
-        self.assertFalse(any(x.startswith('profil/identity') for x in liste), "BRAIN-056")
+        self.assertFalse(any(x.startswith('profil/identity/') for x in liste), "BRAIN-056")
+        # la forme part, sans contenu — un fork sait quoi remplir.
+        self.assertIn('profil/identity.exemple/INDEX.md', liste)
         # Le wiki ne part plus : six pages, 33 affirmations fausses.
         self.assertFalse(any(x.startswith('wiki/') for x in liste), "le wiki reste chez l'owner")
 
@@ -2812,7 +2975,7 @@ class TestDoltSetup(unittest.TestCase):
         # jetable doit la porter, comme le gabarit la porte.
         (self.brain / 'scripts' / 'lib').mkdir(exist_ok=True)
         shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'premieres.sh', self.brain / 'scripts' / 'lib')
-        for f in ('schema-dolt.sql', 'views-dolt.sql', '.env.local.example', 'db.py'):
+        for f in ('schema-dolt.sql', 'views-dolt.sql', '.env.local.example', 'db.py', 'racines.py'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
         (self.brain / 'brain-engine' / '.venv').symlink_to(venv)
         import socket
@@ -2911,7 +3074,7 @@ class TestDefautDuBackend(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             moteur = Path(tmp) / 'brain-engine'
             moteur.mkdir()
-            for f in ('db.py', 'migrate.py'):
+            for f in ('db.py', 'migrate.py', 'racines.py'):
                 shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, moteur / f)
             env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
             r = subprocess.run([str(venv / 'bin' / 'python3'), '-c',
@@ -3646,7 +3809,7 @@ kill %1 2>/dev/null
 
 class TestMoteurSansJetonResteLocal(unittest.TestCase):
     """Sans jeton, l'API du moteur ne répond qu'à la machine elle-même — la
-    règle du MCP, tranchée par Kevin le 28/09.
+    règle du MCP.
 
     Avant : `check_auth` rendait les trois zones à TOUT appelant, uvicorn
     écoute sur 0.0.0.0, et un fork neuf n'a pas de jeton : n'importe quelle
@@ -4255,16 +4418,20 @@ class TestScopesDuMcpLocal(unittest.TestCase):
         texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh').read_text()
         bloc = re.search(r'cat > "\$unites/brain-mcp\.service" << SVCEOF\n(.*?)\nSVCEOF', texte, re.S)
         self.assertIsNotNone(bloc, "l'unité brain-mcp n'a pas été trouvée")
-        ligne = re.search(r'^Environment=BRAIN_MCP_SCOPES=(\S+)$', bloc.group(1), re.M)
-        self.assertIsNotNone(ligne, "l'unité ne pose pas BRAIN_MCP_SCOPES")
-        self.assertEqual(set(ligne.group(1).split(',')), set(srv._SCOPE_ACCESS['mcp']))
+        # Depuis `brain serve`, les scopes sont DÉCLARÉS dans serve.py et
+        # l'unité passe par lui : les deux moitiés sont tenues, sinon le MCP local
+        # retomberait sur le défaut étroit sans aucun signal (Cortex-Template#9).
+        self.assertRegex(bloc.group(1), r'(?m)^ExecStart=\S+ \$SERVE mcp$',
+                         "l'unité MCP ne passe pas par serve.py — les scopes ne s'appliqueraient pas")
+        import serve
+        self.assertEqual(set(serve.DEFAUTS['BRAIN_MCP_SCOPES'].split(',')), set(srv._SCOPE_ACCESS['mcp']))
 
 
 class TestEchangesBoite(unittest.TestCase):
     """Le boot montre ce que l'autre brain a déposé — une fois, par machine.
 
     `echanges/` est partagé avec le brain d'une autre personne. Au boot, les
-    nouveautés de `boites/kevin/` et `rapports/` s'affichent, puis sont
+    nouveautés de `boites/moi/` et `rapports/` s'affichent, puis sont
     marquées vues dans la config LOCALE du clone (rien n'entre dans le dépôt)."""
 
     SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'echanges-boite.sh'
@@ -4276,10 +4443,12 @@ class TestEchangesBoite(unittest.TestCase):
         (self.tmp / 'scripts').mkdir()
         shutil.copy(self.SCRIPT, self.tmp / 'scripts' / 'echanges-boite.sh')
         self.e = self.tmp / 'echanges'
-        for d in ('boites/kevin', 'boites/blackstars', 'rapports'):
+        for d in ('boites/moi', 'boites/autre', 'rapports'):
             (self.e / d).mkdir(parents=True)
             (self.e / d / '.gitkeep').write_text('')
         self._git('init', '-q')
+        # La boîte de CE brain, déclarée comme `brain.vu` : dans la config du clone.
+        self._git('config', '--local', 'brain.boite', 'moi')
         self._depose('README.md', '# contrat\n')
 
     def tearDown(self):
@@ -4298,28 +4467,43 @@ class TestEchangesBoite(unittest.TestCase):
                               capture_output=True, text=True, timeout=30)
 
     def test_une_fois_puis_silence(self):
-        self._depose('boites/kevin/2026-09-28-salut.md', '# Salut\n\n— Claude, pour l’autre\n')
+        self._depose('boites/moi/2026-09-28-salut.md', '# Salut\n\n— Claude, pour l’autre\n')
         r = self._boite()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('boites/kevin/2026-09-28-salut.md — Salut', r.stdout)
+        self.assertIn('boites/moi/2026-09-28-salut.md — Salut', r.stdout)
         self.assertIn('— Claude, pour l’autre', r.stdout)
         self.assertNotIn('.gitkeep', r.stdout)
         self.assertEqual(self._boite().stdout, '', "déjà vu : plus rien au boot suivant")
 
     def test_seule_la_nouveaute_s_affiche(self):
-        self._depose('boites/kevin/a.md', '# A\n')
+        self._depose('boites/moi/a.md', '# A\n')
         self._boite()
         self._depose('rapports/2026-09-28-mesure.md', '# Mesure\n')
-        self._depose('boites/blackstars/pour-lui.md', '# pas pour Kevin\n')
+        self._depose('boites/autre/pour-lui.md', '# pas pour l’owner\n')
         sortie = self._boite().stdout
         self.assertIn('rapports/2026-09-28-mesure.md', sortie)
-        self.assertNotIn('boites/kevin/a.md', sortie)
+        self.assertNotIn('boites/moi/a.md', sortie)
         self.assertNotIn('pour-lui', sortie, "la boîte de l'autre ne s'affiche pas")
 
     def test_tout_ne_deplace_pas_le_vu(self):
-        self._depose('boites/kevin/a.md', '# A\n')
-        self.assertIn('boites/kevin/a.md', self._boite('--tout').stdout)
-        self.assertIn('boites/kevin/a.md', self._boite().stdout, "--tout n'a rien marqué vu")
+        self._depose('boites/moi/a.md', '# A\n')
+        self.assertIn('boites/moi/a.md', self._boite('--tout').stdout)
+        self.assertIn('boites/moi/a.md', self._boite().stdout, "--tout n'a rien marqué vu")
+
+    def test_boite_non_declaree_les_rapports_seuls_et_le_dire(self):
+        self._git('config', '--local', '--unset', 'brain.boite')
+        self._depose('boites/moi/a.md', '# A\n')
+        self._depose('rapports/r.md', '# R\n')
+        r = self._boite()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('rapports/r.md', r.stdout)
+        self.assertNotIn('boites/moi/a.md', r.stdout, "sans boîte déclarée, aucune boîte lue")
+        self.assertIn('brain.boite', r.stdout, "le script dit quoi poser")
+
+    def test_un_nom_de_boite_douteux_est_refuse(self):
+        self._git('config', '--local', 'brain.boite', '../rapports')
+        r = self._boite()
+        self.assertEqual(r.returncode, 2)
 
     def test_satellite_absent_silence(self):
         shutil.rmtree(self.e)
@@ -4397,7 +4581,7 @@ class TestInstallSystemd(unittest.TestCase):
     def test_une_unite_changee_est_gardee_a_cote(self):
         self._installer()
         mcp = self.unites / 'brain-mcp.service'
-        mcp.write_text(mcp.read_text().replace('Environment=BRAIN_MCP_SCOPES=', 'Environment=ANCIEN=1\n#'))
+        mcp.write_text(mcp.read_text().replace('ExecStart=', 'Environment=ANCIEN=1\nExecStart='))
         r, _ = self._installer()
         gardees = sorted(p.name for p in self.unites.glob('*.avant-*'))
         self.assertEqual(len(gardees), 1, gardees)
@@ -4414,12 +4598,13 @@ class TestInstallSystemd(unittest.TestCase):
         return r.stdout + r.stderr
 
     def test_status_voit_une_unite_d_une_version_passee(self):
-        # L'incident de #10 : l'unité MCP d'une v2.3.4, sans la ligne des
-        # scopes, relancée par un simple `restart` — sans aucun signal.
+        # L'incident de #10 : une unité MCP d'une version passée, relancée par un
+        # simple `restart` — sans aucun signal. Depuis `brain serve`, la
+        # version passée est celle qui lance mcp_server.py en direct, sans la
+        # déclaration (ni les scopes du MCP local).
         self._installer()
         mcp = self.unites / 'brain-mcp.service'
-        mcp.write_text(''.join(l for l in mcp.read_text().splitlines(True)
-                               if not l.startswith('Environment=BRAIN_MCP_SCOPES=')))
+        mcp.write_text(mcp.read_text().replace('serve.py mcp', 'mcp_server.py'))
         sortie = self._status()
         self.assertIn('brain-mcp.service', sortie)
         self.assertIn('install systemd', sortie)
@@ -4498,6 +4683,266 @@ class TestBrainImbrique(unittest.TestCase):
     def test_la_racine_n_est_pas_une_copie(self):
         self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'KERNEL.md'))
         self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'workspace/scratch/notes-de-travail.md'))
+
+
+class TestDepotImbriqueHorsIndex(unittest.TestCase):
+    """🔴 Un dépôt git posé sous le brain ne s'indexe pas, même sans `KERNEL.md`.
+
+    Le 30/09, un worktree du dépôt `profil` ouvert dans `workspace/scratch/`
+    pour relire une ADR a été indexé par l'embed de 22:04 : 187 fichiers, dont
+    17 privés — `identity/`, `capital.md`, `gaming/`. `PRIVATE_PATHS` protège
+    `profil/identity/`, pas une copie de `profil/` sous un autre chemin ; et le
+    filtre des copies ne reconnaissait qu'un brain, à son `KERNEL.md`. Purgés
+    à 22:27 par le doctor, sans être sortis de la machine.
+
+    Le critère : un dossier à partir du DEUXIÈME niveau qui porte son propre
+    `.git` — fichier (un worktree) ou dossier (un clone). Au premier niveau
+    vivent les satellites et le sous-module `wiki/` : du corpus.
+    Le premier cas est le chemin de l'incident, copié du journal Dolt."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-depot-imbrique-'))
+        self._racine = embed.BRAIN_ROOT
+        embed.BRAIN_ROOT = self.tmp
+        embed._KERNELS.clear()
+        def f(rel, texte='## Titre\n\nun contenu assez long pour un chunk.\n'):
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text(texte)
+        f('KERNEL.md')
+        f('workspace/scratch/notes-de-travail.md')
+        # L'incident : un worktree de `profil`, sans KERNEL.md.
+        f('workspace/scratch/wt-brain-080/.git',
+          'gitdir: ../../../profil/.git/worktrees/wt-brain-080\n')
+        f('workspace/scratch/wt-brain-080/identity/career.md')
+        f('workspace/scratch/wt-brain-080/capital.md')
+        # Un clone (`.git` dossier), relevé le même soir dans scratch.
+        (self.tmp / 'workspace/scratch/audit-192/sat-profil/.git').mkdir(parents=True)
+        f('workspace/scratch/audit-192/sat-profil/collaboration.md')
+        # Au premier niveau : un satellite (clone) et le sous-module restent du corpus.
+        (self.tmp / 'profil/.git').mkdir(parents=True)
+        f('profil/specs/regle.md')
+        f('wiki/.git', 'gitdir: ../.git/modules/wiki\n')
+        f('wiki/page.md')
+
+    def tearDown(self):
+        embed.BRAIN_ROOT = self._racine
+        embed._KERNELS.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_le_chemin_de_l_incident_est_exclu(self):
+        self.assertTrue(embed.should_exclude(
+            self.tmp / 'workspace/scratch/wt-brain-080/identity/career.md'))
+
+    def test_la_passe_complete_ne_prend_aucune_copie(self):
+        pris = {str(p.relative_to(self.tmp)) for p, _ in embed.collect_files()}
+        self.assertIn('workspace/scratch/notes-de-travail.md', pris,
+                      "le témoin voisin doit être pris, sinon « aucune copie » ne prouve rien")
+        self.assertEqual([x for x in pris if 'wt-brain-080' in x or 'sat-profil' in x], [])
+
+    def test_file_refuse_la_copie(self):
+        self.assertEqual(embed.collect_files('workspace/scratch/wt-brain-080/capital.md'), [])
+        self.assertEqual(embed.collect_files('workspace/scratch/audit-192/sat-profil/collaboration.md'), [])
+
+    def test_le_premier_niveau_reste_du_corpus(self):
+        self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'profil/specs/regle.md'))
+        self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'wiki/page.md'))
+        self.assertFalse(embed.dans_un_brain_imbrique(self.tmp / 'workspace/scratch/notes-de-travail.md'))
+
+
+class TestContenuSatellite(unittest.TestCase):
+    """Le pipeline de contenu vit dans le satellite `contenu/` [BRAIN-080].
+
+    L'atelier et le publié étaient à deux endroits du dépôt brain
+    (`workspace/content/`, `content/`) ; ils sont dans un seul satellite.
+    Joué dans un brain JETABLE : les racines du module sont redirigées, rien
+    ne touche le vrai `contenu/`."""
+
+    def setUp(self):
+        import mcp_server
+        self.m = mcp_server
+        self._sauve = (mcp_server.BRAIN_ROOT, mcp_server._BRAIN_ROOT,
+                       mcp_server.CONTENT_ATELIER, mcp_server.CONTENT_PUBLISHED)
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-contenu-'))
+        mcp_server.BRAIN_ROOT = mcp_server._BRAIN_ROOT = self.tmp
+        mcp_server.CONTENT_ATELIER = self.tmp / 'contenu' / 'atelier'
+        mcp_server.CONTENT_PUBLISHED = self.tmp / 'contenu' / 'publie'
+
+    def tearDown(self):
+        (self.m.BRAIN_ROOT, self.m._BRAIN_ROOT,
+         self.m.CONTENT_ATELIER, self.m.CONTENT_PUBLISHED) = self._sauve
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_les_racines_sont_dans_contenu(self):
+        atelier, publie = self._sauve[2], self._sauve[3]
+        self.assertEqual(atelier.relative_to(self._sauve[0]).as_posix(), 'contenu/atelier')
+        self.assertEqual(publie.relative_to(self._sauve[0]).as_posix(), 'contenu/publie')
+
+    def test_un_fork_sans_contenu_voit_un_pipeline_vide(self):
+        self.assertEqual(self.m._scan_content_zone(self.m.CONTENT_ATELIER, 'atelier'), [])
+
+    def test_la_promotion_passe_de_l_atelier_au_publie(self):
+        f = self.m.CONTENT_ATELIER / 'posts' / 'essai.md'
+        f.parent.mkdir(parents=True)
+        f.write_text('---\nstatus: ready\n---\n\n# essai\n')
+        promouvoir = getattr(self.m.brain_content_promote, 'fn', self.m.brain_content_promote)
+        r = json.loads(promouvoir('contenu/atelier/posts/essai.md', 'scheduled'))
+        self.assertEqual(r['path'], 'contenu/publie/posts/essai.md')
+        self.assertTrue((self.m.CONTENT_PUBLISHED / 'posts' / 'essai.md').exists())
+        self.assertFalse(f.exists())
+
+    def test_hors_du_pipeline_refuse(self):
+        (self.tmp / 'workspace').mkdir()
+        (self.tmp / 'workspace' / 'note.md').write_text('---\nstatus: ready\n---\n')
+        promouvoir = getattr(self.m.brain_content_promote, 'fn', self.m.brain_content_promote)
+        self.assertIn('hors du pipeline', promouvoir('workspace/note.md', 'scheduled'))
+
+
+class TestConceptScribeDestination(unittest.TestCase):
+    """Les scripts de concept-scribe écrivent là où on le leur dit [BRAIN-080].
+
+    L'étape 3 range les concepts là où ils agissent (`projets/<slug>/`, `vie/`,
+    `contenu/`) : les quatre scripts codaient `workspace/concepts` en dur.
+    `CONCEPTS_DIR` choisit la destination ; sans elle, rien ne change. Joué dans
+    un brain jetable (`BRAIN_ROOT`) : rien ne touche le vrai `workspace/concepts/`."""
+
+    SCRIPTS = BRAIN_ROOT_PATH / 'scripts' / 'concept-scribe'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-concepts-'))
+        for dest in ('workspace/concepts', 'vie/concepts'):
+            d = self.tmp / dest / 'un-lot'
+            d.mkdir(parents=True)
+            (d / 'une-idee.md').write_text('---\ndefinition: une idée\n---\n\n# une idée\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _index(self, **env):
+        return subprocess.run(['bash', str(self.SCRIPTS / 'build-index.sh')], capture_output=True, text=True,
+                              env={**os.environ, 'BRAIN_ROOT': str(self.tmp), **env}, timeout=60)
+
+    def test_la_destination_choisie_recoit_l_index(self):
+        r = self._index(CONCEPTS_DIR=str(self.tmp / 'vie' / 'concepts'))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((self.tmp / 'vie' / 'concepts' / 'INDEX.md').exists())
+        self.assertFalse((self.tmp / 'workspace' / 'concepts' / 'INDEX.md').exists(),
+                         "l'ancien dossier n'est pas touché quand une destination est donnée")
+
+    def test_sans_destination_rien_ne_change(self):
+        r = self._index()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((self.tmp / 'workspace' / 'concepts' / 'INDEX.md').exists())
+
+    def test_le_statut_traite_se_lit_dans_la_destination(self):
+        """`list.sh` dit « traité » quand le lot existe dans la destination choisie —
+        sinon `run.sh --all-unprocessed` referait ce qui est déjà rangé ailleurs."""
+        (self.tmp / 'workspace' / 'scratch').mkdir(parents=True)
+        (self.tmp / 'workspace' / 'scratch' / 'un-lot.md').write_text('# un lot\n')
+        shutil.rmtree(self.tmp / 'workspace' / 'concepts')
+        r = subprocess.run(['bash', str(self.SCRIPTS / 'list.sh')], capture_output=True, text=True, timeout=60,
+                           env={**os.environ, 'BRAIN_ROOT': str(self.tmp),
+                                'CONCEPTS_DIR': str(self.tmp / 'vie' / 'concepts')})
+        ligne = next(l for l in r.stdout.splitlines() if 'un-lot.md' in l)
+        self.assertIn('traité', ligne)
+        self.assertNotIn('non traité', ligne)
+
+
+class TestProjetsRecursif(unittest.TestCase):
+    """La connaissance d'un projet, dans `projets/<slug>/`, est du corpus [BRAIN-080].
+
+    L'étape 4 range la connaissance des backlogs à côté de la fiche du projet.
+    `projets/` n'était indexé qu'à plat : ce qui descendait d'un niveau sortait
+    du RAG. Joué dans un brain jetable ; le témoin : la fiche à plat reste prise,
+    et un clone posé sous un projet reste dehors (#447)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-projets-'))
+        self._racine = embed.BRAIN_ROOT
+        embed.BRAIN_ROOT = self.tmp
+        embed._KERNELS.clear()
+        def f(rel):
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text('## Titre\n\nun contenu assez long pour un chunk.\n')
+        f('KERNEL.md')
+        f('projets/mon-projet.md')
+        f('projets/mon-projet/cadrage-separation.md')
+        f('projets/mon-api/decisions/0001-choix.md')
+        (self.tmp / 'projets/mon-projet/depot/.git').mkdir(parents=True)
+        f('projets/mon-projet/depot/README.md')
+
+    def tearDown(self):
+        embed.BRAIN_ROOT = self._racine
+        embed._KERNELS.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_la_connaissance_d_un_projet_est_prise(self):
+        pris = {str(p.relative_to(self.tmp)) for p, _ in embed.collect_files()}
+        self.assertIn('projets/mon-projet.md', pris, "le témoin : la fiche à plat")
+        self.assertIn('projets/mon-projet/cadrage-separation.md', pris)
+        self.assertIn('projets/mon-api/decisions/0001-choix.md', pris)
+        self.assertNotIn('projets/mon-projet/depot/README.md', pris, "un clone sous un projet reste dehors")
+
+
+class TestVieJamaisIndexee(unittest.TestCase):
+    """🔴 `vie/` n'entre jamais dans l'index, par aucun des deux chemins [BRAIN-080].
+
+    Le satellite de la vie de l'owner (l'administratif, le terrain, les
+    concepts personnels). Ne pas le déclarer à l'indexeur ne suffit pas :
+    un fichier écrit par `PUT /brain/{path}` passe par `--file`, et tout
+    fichier ni exclu ni privé retombe sur la portée par défaut — il serait
+    lisible par le MCP. Rien n'entre dans `vie/` avant que ce test soit vert.
+
+    Le témoin tient dans la paire : un fichier de `vie/` est refusé, un
+    fichier voisin hors de `vie/` est pris. Sans le second, « refusé »
+    pourrait venir d'un indexeur qui ne prend plus rien."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-vie-'))
+        self._racine = embed.BRAIN_ROOT
+        embed.BRAIN_ROOT = self.tmp
+        embed._KERNELS.clear()
+        def f(rel, texte='## Titre\n\nun contenu assez long pour un chunk.\n'):
+            (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / rel).write_text(texte)
+        f('KERNEL.md')
+        f('vie/papiers/releve.md')
+        f('vie/concepts/perso/INDEX.md')
+        f('vie/README.md')
+        f('workspace/scratch/notes-de-travail.md')
+
+    def tearDown(self):
+        embed.BRAIN_ROOT = self._racine
+        embed._KERNELS.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_vie_est_prive(self):
+        self.assertTrue(embed.is_private('vie/papiers/releve.md'))
+        self.assertTrue(embed.should_exclude(self.tmp / 'vie/README.md'))
+
+    def test_la_passe_complete_ne_prend_rien_de_vie(self):
+        pris = {str(p.relative_to(self.tmp)) for p, _ in embed.collect_files()}
+        self.assertIn('workspace/scratch/notes-de-travail.md', pris,
+                      "le témoin voisin doit être pris, sinon « rien de vie » ne prouve rien")
+        self.assertEqual([x for x in pris if x.startswith('vie/')], [])
+
+    def test_file_refuse_un_fichier_de_vie(self):
+        """Le chemin de `PUT /brain/{path}` : la file de réindexation → `--file`."""
+        self.assertEqual(embed.collect_files('vie/papiers/releve.md'), [])
+        self.assertEqual(len(embed.collect_files('workspace/scratch/notes-de-travail.md')), 1,
+                         "le témoin voisin passe par --file")
+
+    def test_un_nom_qui_commence_par_vie_n_est_pas_vie(self):
+        # `vie/` avec sa barre : `vieux-projet.md` n'est pas privé.
+        self.assertFalse(embed.is_private('projets/vieux-projet.md'))
+        self.assertFalse(embed.is_private('video/notes.md'))
+
+
+    def test_l_api_n_ecrit_pas_dans_vie(self):
+        """`NIVEAUX.yml` déclare `vie/` en `zone: kernel` : le MCP, qui n'a pas ce
+        scope, ne peut pas y écrire. `contenu/` reste libre — le MCP y travaille."""
+        self.assertEqual(srv._write_zone('vie/papiers/releve.md'), 'kernel')
+        self.assertEqual(srv._write_zone('contenu/atelier/posts/brouillon.md'), 'libre',
+                         "le témoin voisin : une zone libre reste libre")
 
 
 class TestForgeWhoami(unittest.TestCase):
@@ -5736,6 +6181,770 @@ class TestMajDisponible(unittest.TestCase):
         self._run()
         apres = subprocess.run(['git', 'for-each-ref'], cwd=self.fork, capture_output=True, text=True).stdout
         self.assertEqual(avant, apres)
+
+
+class TestDeuxRacines(unittest.TestCase):
+    """La data est REÇUE, le programme se sait où il est — une seule source.
+
+    Jusqu'au 1/10, sept modules déduisaient chacun la racine du brain de leur
+    propre position, et cette racine désignait à la fois la data et le
+    programme. Poser `BRAIN_ROOT` n'aurait été suivi par personne ; en changer
+    un seul aurait fait diverger les autres sans un mot.
+    """
+
+    MOTEUR = Path(__file__).parent
+    MODULES = ('server', 'db', 'embed', 'search', 'distill', 'migrate', 'mcp_server')
+
+    def _python(self, code, racine=None):
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        if racine is not None:
+            env['BRAIN_ROOT'] = str(racine)
+        env['PYTHONDONTWRITEBYTECODE'] = '1'
+        return subprocess.run([sys.executable, '-c', code], cwd=self.MOTEUR, env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def test_sans_variable_la_data_est_le_parent_du_programme(self):
+        r = self._python('import racines; print(racines.DONNEES); print(racines.ORIGINE)')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        donnees, origine = r.stdout.strip().splitlines()[-2:]
+        self.assertEqual(Path(donnees), self.MOTEUR.parent)
+        self.assertEqual(origine, 'position du programme')
+
+    def test_la_variable_est_suivie_par_tous_les_modules_et_le_programme_reste(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._python(
+                'import json, db, embed, migrate, server, mcp_server\n'
+                'print(json.dumps({"db": str(db.BRAIN_ROOT), "embed": str(embed.BRAIN_ROOT),'
+                ' "migrate": migrate.BRAIN_ROOT, "server": str(server.BRAIN_ROOT),'
+                ' "mcp": str(mcp_server._BRAIN_ROOT), "mcp_alias": str(mcp_server.BRAIN_ROOT),'
+                ' "env_local": str(db._env_local), "schema": migrate.SCHEMA_PATH,'
+                ' "ui": str(server._UI_DIST)}))', racine=tmp)
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            vu = json.loads(r.stdout.strip().splitlines()[-1])
+            for nom in ('db', 'embed', 'migrate', 'server', 'mcp', 'mcp_alias'):
+                self.assertEqual(Path(vu[nom]).resolve(), Path(tmp).resolve(),
+                                 f'{nom} ne suit pas BRAIN_ROOT')
+            # Le programme ne suit PAS la data : il reste là où il est.
+            self.assertEqual(Path(vu['env_local']).parent, self.MOTEUR)
+            self.assertEqual(Path(vu['schema']).parent, self.MOTEUR)
+            self.assertEqual(Path(vu['ui']).parent.parent, self.MOTEUR.parent)
+
+    def test_une_variable_qui_ne_designe_rien_arrete_l_import(self):
+        absent = self.MOTEUR / 'pas-un-brain-qui-existe'
+        r = self._python('import db', racine=absent)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('BRAIN_ROOT', r.stderr)
+        self.assertIn('refuse', r.stderr)
+
+    def test_aucun_module_ne_deduit_sa_racine(self):
+        """Lu dans l'AST, pas dans le texte : un commentaire qui RACONTE l'ancien
+        `Path(__file__).parent.parent` n'est pas une déduction."""
+        import ast
+        fautifs = []
+        for f in sorted(self.MOTEUR.glob('*.py')):
+            if f.name in ('racines.py',) or f.name.startswith('test_'):
+                continue
+            arbre = ast.parse(f.read_text(encoding='utf-8'))
+            for n in ast.walk(arbre):
+                # Path(__file__)…parent.parent  ·  dirname(dirname(…__file__…))
+                if isinstance(n, ast.Attribute) and n.attr == 'parent' \
+                        and isinstance(n.value, ast.Attribute) and n.value.attr == 'parent' \
+                        and any(isinstance(m, ast.Name) and m.id == '__file__' for m in ast.walk(n)):
+                    fautifs.append(f'{f.name}:{n.lineno}')
+                if isinstance(n, ast.Call) and getattr(n.func, 'attr', getattr(n.func, 'id', '')) == 'dirname' \
+                        and n.args and isinstance(n.args[0], ast.Call) \
+                        and getattr(n.args[0].func, 'attr', getattr(n.args[0].func, 'id', '')) == 'dirname' \
+                        and any(isinstance(m, ast.Name) and m.id == '__file__' for m in ast.walk(n)):
+                    fautifs.append(f'{f.name}:{n.lineno}')
+        self.assertEqual(fautifs, [], 'racine déduite hors de racines.py')
+
+
+class TestRegleDesVerrous(unittest.TestCase):
+    """La frontière d'un verrou est écrite UNE fois, dans `core.bsi`.
+
+    Jusqu'au 1/10 elle l'était quatorze fois — le CORE, trois routes, cinq fois
+    dans `file-lock.sh`, cinq dans la conciergerie — et la conciergerie disait
+    `>` / `<=` là où tout le reste disait `>=` / `<`.
+    """
+
+    RACINE = BRAIN_ROOT_PATH
+    FICHIERS = ('brain-engine/server.py', 'scripts/file-lock.sh', 'scripts/brain-conciergerie.sh')
+    EN_DUR = re.compile(r"(UTC_TIMESTAMP\(\)|NOW\(\)) *(<=|>=|<|>) *expires_at"
+                        r"|expires_at *(<=|>=|<|>) *(UTC_TIMESTAMP|NOW)")
+
+    def _env(self, **extra):
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith('BRAIN_') and k != 'CLAUDE_CODE_SESSION_ID'}
+        env['PATH'] = f"{Path(sys.executable).parent}:{env.get('PATH', '')}"
+        env['PYTHONDONTWRITEBYTECODE'] = '1'
+        env.update(extra)
+        return env
+
+    def test_aucun_predicat_d_expiration_ecrit_en_dur(self):
+        for rel in self.FICHIERS:
+            texte = (self.RACINE / rel).read_text(encoding='utf-8')
+            self.assertEqual(self.EN_DUR.findall(texte), [], f'{rel} réécrit la règle')
+            self.assertIn('VERROU_', texte, f'{rel} ne lit plus la règle du CORE')
+
+    def _regle_de_la_conciergerie(self, racine):
+        script = (self.RACINE / 'scripts' / 'brain-conciergerie.sh').read_text(encoding='utf-8')
+        fonction = re.search(r'^regle_des_verrous\(\) \{.*?^\}', script, re.S | re.M).group(0)
+        return subprocess.run(
+            ['bash', '-c', fonction + '\nRED=; NC=; regle_des_verrous && '
+             'printf "%s|%s" "$VERROU_ACTIF" "$VERROU_EXPIRE"'],
+            env=self._env(BRAIN_ROOT=str(racine)), capture_output=True, text=True, timeout=60)
+
+    def test_la_conciergerie_lit_la_regle_du_core(self):
+        from core.bsi import VERROU_ACTIF, VERROU_EXPIRE
+        r = self._regle_de_la_conciergerie(self.RACINE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, f'{VERROU_ACTIF}|{VERROU_EXPIRE}')
+
+    def test_regle_illisible_la_conciergerie_s_arrete(self):
+        """Témoin : un `core.bsi` sans la règle — la conciergerie refuse, ne devine pas."""
+        with tempfile.TemporaryDirectory() as tmp:
+            faux = Path(tmp) / 'brain-engine' / 'core'
+            faux.mkdir(parents=True)
+            (faux / '__init__.py').write_text('')
+            (faux / 'bsi.py').write_text('# pas de regle ici\n')
+            r = self._regle_de_la_conciergerie(tmp)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('illisible', r.stderr)
+
+    def test_file_lock_nettoie_l_expire_et_garde_l_actif(self):
+        from datetime import timedelta, timezone
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / 'brain.db'
+            con = sqlite3.connect(base)
+            con.executescript((self.RACINE / 'brain-engine' / 'schema.sql').read_text())
+            maintenant = datetime.now(timezone.utc)
+            fmt = '%Y-%m-%d %H:%M:%S'
+            for chemin, decalage in (('mort.md', -10), ('vivant.md', 30)):
+                con.execute('INSERT INTO locks (filepath, holder, claimed_at, expires_at, ttl_min) '
+                            'VALUES (?,?,?,?,30)', (chemin, 'sess-t', maintenant.strftime(fmt),
+                                                    (maintenant + timedelta(minutes=decalage)).strftime(fmt)))
+            con.commit(); con.close()
+            env = self._env(BRAIN_DB_BACKEND='sqlite', BRAIN_DB_PATH=str(base),
+                            BRAIN_PORT='1', HOME=tmp)
+            r = subprocess.run(['bash', str(self.RACINE / 'scripts' / 'file-lock.sh'), 'cleanup'],
+                               env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('1 lock(s) nettoyé(s)', r.stdout)
+            restants = [x[0] for x in sqlite3.connect(base).execute('SELECT filepath FROM locks')]
+            self.assertEqual(restants, ['vivant.md'])
+
+
+class TestCouchesDuGabarit(unittest.TestCase):
+    """Le gabarit porte exactement ce que dit `gabarit/couches.yml`.
+
+    La question était sans réponse écrite : « le gabarit a-t-il toutes les
+    couches ? » `modes/` partait encore six mois après la fin des modes ;
+    `vie/` et `contenu/` n'arrivaient pas. Le rendu part du gabarit PUBLIÉ
+    (`brain-template/`) — c'est lui que le fork reçoit, c'est lui qu'on juge.
+    """
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    tearDown = TestSyncTemplate.tearDown
+    _git, _sync = TestSyncTemplate._git, TestSyncTemplate._sync
+
+    def setUp(self):
+        TestSyncTemplate.setUp(self)
+        # La sonde de renvoi arrête le rendu, exprès : ici, on veut un rendu
+        # qui va AU BOUT — un rendu interrompu satisfaisait la table (1/10).
+        self._git('rm', '-q', 'contexts/sonde.yml', cwd=self.brain)
+        self._git('commit', '-q', '--no-verify', '-m', 'sans sonde', cwd=self.brain)
+    BASE = BRAIN_ROOT_PATH / 'brain-template'
+
+    def _table(self, racine=BRAIN_ROOT_PATH):
+        import yaml
+        return yaml.safe_load((racine / 'gabarit' / 'couches.yml').read_text(encoding='utf-8'))
+
+    def _rendre(self, base):
+        self.env['GABARIT_DEPOT'] = str(base)
+        rendu = self.tmp / 'rendu'
+        r = self._sync('--rendre', str(rendu))
+        return rendu, r
+
+    def test_le_rendu_porte_exactement_la_table(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        table = self._table()
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        ecarts = []
+        for nom, c in table['couches'].items():
+            d = rendu / nom
+            if c['part'] == 'contenu' and not (d.is_dir() and any(f.is_file() for f in d.rglob('*'))):
+                ecarts.append(f'{nom}/ devait partir avec son contenu')
+            elif c['part'] == 'readme' and not (d / 'README.md').is_file():
+                ecarts.append(f'{nom}/ devait partir avec son README')
+            elif c['part'] == 'non' and d.exists():
+                ecarts.append(f'{nom}/ ne devait pas partir')
+        for nom in table.get('retire') or {}:
+            if (rendu / nom).exists():
+                ecarts.append(f'{nom}/ est retiré et part encore')
+        # Et rien de non déclaré au premier niveau du rendu.
+        declares = set(table['couches']) | set(table.get('retire') or {})
+        for d in rendu.iterdir():
+            if d.is_dir() and d.name != '.git' and d.name not in declares:
+                ecarts.append(f'{d.name}/ part sans figurer dans la table')
+        self.assertEqual(ecarts, [], r.stdout[-400:])
+
+    def test_tout_dossier_du_brain_a_une_decision(self):
+        """Une couche nouvelle — un dossier suivi, un satellite déclaré — n'arrive
+        chez les forks, ni n'en est oubliée, sans une ligne dans la table."""
+        import yaml
+        suivis = subprocess.run(['git', '-C', str(BRAIN_ROOT_PATH), 'ls-tree', '-d', '--name-only', 'HEAD'],
+                                capture_output=True, text=True, check=True).stdout.split()
+        satellites = list((yaml.safe_load((BRAIN_ROOT_PATH / 'satellites.yml').read_text()) or {})
+                          .get('satellites') or {})
+        table = self._table()
+        sans = sorted(set(suivis + satellites) - set(table['couches']) - set(table.get('retire') or {}))
+        self.assertEqual(sans, [], 'dossiers du brain sans décision dans gabarit/couches.yml')
+
+    def test_la_doc_dit_ce_que_dit_la_table(self):
+        """`docs/src/satellites.md` montre ce qu'un fork reçoit vide : la même liste
+        que les lignes `part: readme` — la table ne part pas (ses lignes « non »
+        nomment les projets de l'owner), la doc si."""
+        texte = (BRAIN_ROOT_PATH / 'docs' / 'src' / 'satellites.md').read_text(encoding='utf-8')
+        section = texte[texte.index('## Les dossiers à part'):texte.index('## Les versionner à part')]
+        dans_la_doc = set(re.findall(r'^\| `([a-z-]+)/` \|', section, re.M))
+        readme = {n for n, c in self._table()['couches'].items() if c['part'] == 'readme'}
+        self.assertEqual(dans_la_doc, readme)
+
+    def test_un_nom_de_retrait_dangereux_arrete_la_synchro(self):
+        """`rm -rf` sur un nom lu dans un fichier : `../x` ou `a/b` arrêtent tout."""
+        table = (self.brain / 'gabarit' / 'couches.yml')
+        table.write_text(table.read_text().replace('retire:\n', 'retire:\n  ../profil: "piège"\n'))
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('nom refusé dans retire', r.stderr + r.stdout)
+
+    def test_un_retire_present_dans_la_base_est_retire(self):
+        """Témoin : une base qui porte encore `modes/` — le rendu ne l'a plus."""
+        base = self.tmp / 'base'
+        (base / 'modes').mkdir(parents=True)
+        (base / 'modes' / 'README.md').write_text('# modes\n')
+        (base / 'README.md').write_text('# base\n')
+        self._git('init', '-q', cwd=base)
+        self._git('add', '-A', cwd=base)
+        self._git('commit', '-q', '--no-verify', '-m', 'b', cwd=base)
+        rendu, r = self._rendre(base)
+        self.assertIn('modes/ — retiré du gabarit', r.stdout, r.stdout[-600:])
+        self.assertFalse((rendu / 'modes').exists())
+
+
+class TestFocusInstantane(unittest.TestCase):
+    """Moteur éteint, une session a le dernier focus, daté — pas un renvoi vers
+    l'API qui ne répond pas.
+
+    Un faux `/focus` sur un port libre, un brain jetable : ni le vrai moteur ni
+    le vrai `focus.md` ne sont touchés."""
+
+    DONNEES = {'cap': 'Direction : essai', 'front': [{'id': 'i-1', 'project': 'p', 'total_sessions': 2,
+                                                     'next_step': 'la suite'}],
+               'active': [], 'stasis_count': 0, 'projects': [{'project': 'p', 'active_count': 1}],
+               'last_session': None}
+
+    def setUp(self):
+        import focus_instantane
+        self.f = focus_instantane
+        self._tmp = tempfile.TemporaryDirectory()
+        self.racine = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _serveur(self):
+        import http.server, threading
+        corps = json.dumps(self.DONNEES).encode()
+
+        class Focus(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200 if self.path == '/focus' else 404)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(corps)))
+                self.end_headers()
+                self.wfile.write(corps)
+
+            def log_message(self, *a):
+                pass
+
+        serveur = http.server.HTTPServer(('127.0.0.1', 0), Focus)
+        threading.Thread(target=serveur.serve_forever, daemon=True).start()
+        self.addCleanup(serveur.server_close)
+        self.addCleanup(serveur.shutdown)
+        return f'http://127.0.0.1:{serveur.server_address[1]}'
+
+    def test_l_instantane_porte_le_focus_et_sa_date(self):
+        ecrit, message = self.f.ecrire(self.racine, self._serveur())
+        self.assertTrue(ecrit, message)
+        texte = (self.racine / self.f.NOM).read_text()
+        self.assertIn('# Focus — instantané du ', texte)
+        self.assertIn('Direction : essai', texte)
+        self.assertIn('la suite', texte)
+        self.assertFalse(list(self.racine.glob('*.tmp')), 'rien de provisoire ne reste')
+
+    def test_moteur_injoignable_l_instantane_precedent_reste(self):
+        (self.racine / self.f.NOM).write_text('# Focus — instantané d avant\n')
+        ecrit, message = self.f.ecrire(self.racine, 'http://127.0.0.1:1')
+        self.assertFalse(ecrit)
+        self.assertIn('précédent reste', message)
+        self.assertEqual((self.racine / self.f.NOM).read_text(), '# Focus — instantané d avant\n')
+
+    def test_brain_focus_live_rend_le_meme_texte_que_l_instantane(self):
+        import mcp_server as m
+        api = self._serveur()
+        with patch.object(m, 'BRAIN_API', api):
+            live = getattr(m.brain_focus, 'fn', m.brain_focus)()
+        self.assertEqual(live, self.f.rendre(self.DONNEES))
+
+    def test_moteur_eteint_brain_focus_rend_l_instantane_et_le_dit(self):
+        import mcp_server as m
+        self.f.ecrire(self.racine, self._serveur())
+        (self.racine / 'focus.md').write_text('# Focus\n> Ce fichier est un fallback statique.\n')
+        with patch.object(m, 'BRAIN_API', 'http://127.0.0.1:1'), patch.object(m, 'BRAIN_ROOT', self.racine):
+            repli = getattr(m.brain_focus, 'fn', m.brain_focus)()
+        self.assertIn('Repli', repli, 'le repli se dit repli')
+        self.assertIn('Direction : essai', repli, 'le vrai focus, pas un renvoi vers l API')
+        self.assertNotIn('fallback statique', repli)
+
+    def test_sans_instantane_le_fallback_statique(self):
+        import mcp_server as m
+        (self.racine / 'focus.md').write_text('# Focus\n> Ce fichier est un fallback statique.\n')
+        with patch.object(m, 'BRAIN_API', 'http://127.0.0.1:1'), patch.object(m, 'BRAIN_ROOT', self.racine):
+            repli = getattr(m.brain_focus, 'fn', m.brain_focus)()
+        self.assertIn('fallback statique', repli)
+
+    def test_l_indexeur_ecrit_l_instantane_avant_l_embedding(self):
+        """Ollama absent arrête l'embedding — pas le focus."""
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh').read_text()
+        corps = script[script.index('cmd_embed() {'):]
+        self.assertLess(corps.index('focus_instantane.py'), corps.index('command -v ollama'))
+
+
+class TestGardeCommandes(unittest.TestCase):
+    """Le hook `PreToolUse` refuse trois gestes, chacun un incident.
+
+    Un brain jetable (un dépôt git, son `workspace/scratch/`, un worktree), un
+    dépôt étranger. Le premier cas de chaque motif est la commande de l'incident,
+    mot pour mot ; chaque motif a son témoin qui passe."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'garde-commandes.py'
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('garde_commandes', cls.SCRIPT)
+        cls.g = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.g)
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        t = Path(self._tmp.name)
+        self.brain, self.autre = t / 'Brain', t / 'autre'
+        for d in (self.brain, self.autre):
+            (d / 'workspace' / 'scratch').mkdir(parents=True)
+            subprocess.run(['git', 'init', '-q'], cwd=d, check=True)
+            (d / 'a.md').write_text('a')
+            subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', 'a.md'], cwd=d, check=True)
+            subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'a', '--no-verify'],
+                           cwd=d, check=True)
+        self.wt = self.brain / 'workspace' / 'scratch' / 'wt-x'
+        subprocess.run(['git', 'worktree', 'add', '-q', '-b', 'x', str(self.wt)], cwd=self.brain, check=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def refuse(self, ligne, cwd=None):
+        return self.g.juger(ligne, cwd or self.brain, self.brain)
+
+    def test_rm_par_motif_dans_scratch(self):
+        self.assertIsNotNone(self.refuse('rm -f workspace/scratch/pr-*.md'), "l'incident du 30/09")
+        self.assertIsNotNone(self.refuse('cd workspace/scratch && rm -f *.md'), 'le cd est suivi')
+        self.assertIsNotNone(self.refuse(f'rm -rf {self.brain}/workspace/scratch/wt-?'))
+        # Témoins : nommé un par un, ou un motif ailleurs.
+        self.assertIsNone(self.refuse('rm -f workspace/scratch/mon-brouillon.md'))
+        self.assertIsNone(self.refuse(f'rm -f {self.autre}/tmp-*.txt'))
+        self.assertIsNone(self.refuse('echo "rm -f workspace/scratch/pr-*.md"'), 'une citation n\'est pas un geste')
+
+    def test_git_add_tout_dans_le_brain(self):
+        self.assertIsNotNone(self.refuse('git add -A'), "l'incident des 09-10/09")
+        self.assertIsNotNone(self.refuse(f'git -C {self.brain} add .', cwd=self.autre), '-C est suivi')
+        self.assertIsNotNone(self.refuse('git add -Av', cwd=self.wt), 'un worktree partage le dépôt du brain')
+        self.assertIsNotNone(self.refuse('git add --all && git commit -m x'))
+        # Témoins : par chemins dans le brain, ou -A dans un autre dépôt.
+        self.assertIsNone(self.refuse('git add a.md && git commit -m x -- a.md'))
+        self.assertIsNone(self.refuse('git add -A', cwd=self.autre))
+
+    def test_executer_mysecrets(self):
+        self.assertIsNotNone(self.refuse('set -a; . brain-secrets/MYSECRETS; set +a'), "l'incident du 28/09")
+        self.assertIsNotNone(self.refuse('source ~/Dev/Brain/brain-secrets/MYSECRETS && python3 x.py'))
+        self.assertIsNotNone(self.refuse('bash brain-secrets/MYSECRETS'))
+        # Témoin : l'extraction d'une clé, celle que la règle recommande.
+        self.assertIsNone(self.refuse("grep -m1 '^CLE=' brain-secrets/MYSECRETS | cut -d= -f2-"))
+
+    def test_un_heredoc_est_du_texte_sauf_pour_un_shell(self):
+        """Le faux positif du 2/10 : le garde a refusé une commande dont le heredoc
+        ÉCRIVAIT une proposition qui citait la règle. Construit à l'exécution."""
+        secret = 'MY' + 'SECRETS'
+        texte = ("cat > note.md <<'FIN'\n- " + secret + " : jamais `@`, jamais `source`/`.`, jamais affiché.\n"
+                 "- filtrer PASSWORD|SECRET|KEY|TOKEN d'emblée.\nFIN\necho fait")
+        self.assertIsNone(self.refuse(texte), "le texte d'un heredoc n'est pas une commande")
+        self.assertIsNone(self.refuse("cat > n.md <<'FIN'\nrm -f workspace/scratch/pr-*.md\nFIN"))
+        self.assertIsNotNone(self.refuse("bash <<'FIN'\nrm -f workspace/scratch/pr-*.md\nFIN"),
+                             'un heredoc lu par un shell s\'exécute : il est jugé')
+        self.assertIsNotNone(self.refuse('cd workspace/scratch\nrm -f *.md'),
+                             'deux lignes sont deux commandes, et le cd est suivi')
+
+    def test_un_heredoc_passe_a_un_shell_par_un_tube_est_juge(self):
+        """`cat <<FIN | bash` exécute le corps : il passait, avant comme après le
+        correctif des heredocs (relevé à la relecture du 2/10)."""
+        corps = "\nrm -f workspace/scratch/pr-*.md\nFIN"
+        self.assertIsNotNone(self.refuse("cat <<'FIN' | bash" + corps), 'le tube mène à bash')
+        self.assertIsNotNone(self.refuse("cat <<'FIN' | tee x.log | sh" + corps), 'un shell plus loin dans le tube')
+        self.assertIsNotNone(self.refuse("cat <<'FIN' | FOO=1 /bin/bash" + corps), 'chemin et affectation')
+        # Témoins : le tube s'arrête à `;` et `&&`, et un tube sans shell reste du texte.
+        self.assertIsNone(self.refuse("cat <<'FIN' > n.md; bash -c true" + corps))
+        self.assertIsNone(self.refuse("cat <<'FIN' > n.md && bash -c true" + corps))
+        self.assertIsNone(self.refuse("cat <<'FIN' | tee n.md" + corps))
+
+    def _hook(self, entree):
+        return subprocess.run([sys.executable, str(self.SCRIPT), 'hook'], input=json.dumps(entree),
+                              capture_output=True, text=True, timeout=30)
+
+    def test_le_hook_refuse_par_json_et_sort_toujours_en_zero(self):
+        r = self._hook({'tool_name': 'Bash', 'cwd': str(BRAIN_ROOT_PATH),
+                        'tool_input': {'command': 'set -a; . brain-secrets/MYSECRETS'}})
+        self.assertEqual(r.returncode, 0)
+        sortie = json.loads(r.stdout)['hookSpecificOutput']
+        self.assertEqual(sortie['permissionDecision'], 'deny')
+        self.assertIn('MYSECRETS', sortie['permissionDecisionReason'])
+
+    def test_le_hook_ne_dit_rien_quand_rien_ne_va_mal(self):
+        for entree in ({'tool_name': 'Bash', 'cwd': '/', 'tool_input': {'command': 'ls'}},
+                       {'tool_name': 'Edit', 'tool_input': {'file_path': 'x'}},
+                       {'tool_name': 'Bash', 'cwd': '/', 'tool_input': {'command': 'echo "pas fermé'}}):
+            r = self._hook(entree)
+            self.assertEqual((r.returncode, r.stdout.strip()), (0, ''), entree)
+
+
+class TestScratchNettoyable(unittest.TestCase):
+    """La règle du 1/10, outillée : ce qui peut quitter `scratch/`, et pourquoi le
+    reste reste. Lecture seule.
+
+    Chaque clause garde une entrée vieille ; le témoin, vieux et rien d'autre,
+    sort candidat — sans lui, un outil qui ne propose jamais rien passerait."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'scratch-nettoyable.py'
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('scratch_nettoyable', self.SCRIPT)
+        self.n = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.n)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.brain = Path(self._tmp.name) / 'Brain'
+        s = self.brain / 'workspace' / 'scratch'
+        s.mkdir(parents=True)
+        (self.brain / 'scripts').mkdir()
+        git = lambda *a, cwd=self.brain: subprocess.run(
+            ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=cwd, check=True, capture_output=True)
+        git('init', '-q')
+        (self.brain / 'note.md').write_text('voir workspace/scratch/cite.md\n')
+        git('add', 'note.md'); git('commit', '-qm', 'n', '--no-verify')
+        (self.brain / 'scripts' / 'bsi-query.sh').write_text(
+            '[ "$1" = open ] && echo "sess-x | work/revendique | 2026-10-01 | age 1h"\n')
+        for nom in ('vieux.md', 'cite.md', 'neuf.md', 'revendique'):
+            (s / nom).write_text('x')
+        (s / 'wt-x').mkdir(); (s / 'wt-x' / 'f').write_text('x')
+        depot = s / 'vieux-depot'
+        depot.mkdir(); git('init', '-q', cwd=depot); (depot / 'en-cours.md').write_text('pas commité')
+        vieux = time.time() - 40 * 86400
+        for p in s.rglob('*'):
+            if p.name != 'neuf.md':
+                os.utime(p, (vieux, vieux))
+        for p in (s / 'wt-x', s / 'vieux-depot'):
+            os.utime(p, (vieux, vieux))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_chaque_clause_garde_et_le_temoin_sort(self):
+        candidats, gardes, alerte = self.n.trier(self.brain, 30)
+        self.assertIsNone(alerte)
+        self.assertEqual([c[0] for c in candidats], ['vieux.md'], 'le témoin, et lui seul')
+        raisons = dict(gardes)
+        self.assertIn('cité par note.md', raisons['cite.md'])
+        self.assertIn('récent', raisons['neuf.md'])
+        self.assertIn('claim', raisons['revendique'])
+        self.assertIn('worktree', raisons['wt-x'])
+        self.assertIn('non poussé', raisons['vieux-depot'])
+
+    def test_sans_claims_lisibles_rien_n_est_candidat(self):
+        (self.brain / 'scripts' / 'bsi-query.sh').unlink()
+        candidats, gardes, alerte = self.n.trier(self.brain, 30)
+        self.assertEqual(candidats, [])
+        self.assertIn('illisible', alerte)
+        self.assertIn('claims illisibles', dict(gardes)['vieux.md'])
+
+    def test_l_outil_ne_supprime_rien(self):
+        avant = sorted(p.name for p in (self.brain / 'workspace' / 'scratch').iterdir())
+        r = subprocess.run([sys.executable, str(self.SCRIPT), '--brain', str(self.brain)],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('vieux.md', r.stdout)
+        self.assertEqual(sorted(p.name for p in (self.brain / 'workspace' / 'scratch').iterdir()), avant)
+
+
+class TestDireAuTetard(unittest.TestCase):
+    """Le point d'appel du brain vers le têtard : il parle quand il y a un têtard,
+    il se tait sinon, et ne fait jamais échouer la session.
+
+    Un faux moteur sur un port libre enregistre ce qu'il reçoit ; aucun vrai
+    têtard ne bouge."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'dire.py'
+
+    def setUp(self):
+        import http.server, threading
+        self.recu, self.claims = [], []
+        claims = self.claims
+
+        class Moteur(http.server.BaseHTTPRequestHandler):
+            def _rendre(self, corps):
+                b = json.dumps(corps).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(b))); self.end_headers()
+                self.wfile.write(b)
+
+            def do_GET(self):
+                self._rendre(claims)
+
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0))
+                moi.recu.append(json.loads(self.rfile.read(n)))
+                self._rendre({'ok': True})
+
+            def log_message(self, *a):
+                pass
+
+        moi = self
+        self.serveur = http.server.HTTPServer(('127.0.0.1', 0), Moteur)
+        threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.plugin = Path(self._tmp.name) / 'tetard'
+        self.plugin.mkdir()
+
+    def tearDown(self):
+        self.serveur.shutdown(); self.serveur.server_close(); self._tmp.cleanup()
+
+    def _dire(self, *args, plugin=True, port=None):
+        env = {**{k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')},
+               'TETARD_PLUGIN': str(self.plugin if plugin else Path(self._tmp.name) / 'absent'),
+               'BRAIN_PORT': str(port or self.serveur.server_address[1]),
+               'CLAUDE_CODE_SESSION_ID': 'agent-moi'}
+        return subprocess.run([sys.executable, str(self.SCRIPT), *args], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_la_session_parle_a_son_tetard(self):
+        self.claims += [{'sess_id': 'sess-moi', 'agent_session': 'agent-moi'},
+                        {'sess_id': 'sess-autre', 'agent_session': 'agent-autre'}]
+        r = self._dire('PR prête', '--attention')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.recu, [{'type': 'tetard:dire', 'context': 'sess-moi',
+                                      'message': 'PR prête', 'level': 'attention'}])
+
+    def test_sans_tetard_il_se_tait(self):
+        self.claims.append({'sess_id': 'sess-moi', 'agent_session': 'agent-moi'})
+        r = self._dire('PR prête', plugin=False)
+        self.assertEqual((r.returncode, r.stdout, r.stderr, self.recu), (0, '', '', []))
+
+    def test_une_panne_ne_fait_jamais_echouer_la_session(self):
+        r = self._dire('PR prête', port=1)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('injoignable', r.stderr)
+        self.claims += [{'sess_id': 'a', 'agent_session': 'agent-moi'}, {'sess_id': 'b', 'agent_session': 'agent-moi'}]
+        r = self._dire('PR prête')
+        self.assertEqual((r.returncode, self.recu), (0, []), 'ambigu : rien dit')
+        self.assertIn('ambigu', r.stderr)
+
+
+class TestClaimsOrphelins(unittest.TestCase):
+    """Un claim ouvert dont la session n'a plus de processus est NOMMÉ, jamais
+    fermé ; une session parquée puis reprise n'en fait pas un orphelin."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util, collections
+        spec = importlib.util.spec_from_file_location(
+            'claims_orphelins', BRAIN_ROOT_PATH / 'scripts' / 'claims-orphelins.py')
+        cls.o = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.o)
+        cls.Claim = collections.namedtuple('Claim', 'sess_id scope agent_session')
+
+    def test_vivant_mort_repris_et_non_juges(self):
+        C = self.Claim
+        claims = [C('sess-vivant', 'brain', 'agent-vivant'),
+                  C('sess-mort', 'explore', 'agent-mort'),
+                  C('sess-parque', 'work/x', 'agent-ancien'),
+                  C('sess-x.laptop', 'work/y', 'agent-ailleurs'),
+                  C('sess-sans', 'chill', None)]
+        sessions = [{'sessionId': 'agent-vivant', 'pid': 100},
+                    {'sessionId': 'agent-mort', 'pid': 200},
+                    {'sessionId': 'agent-ancien', 'pid': 300, 'parkedJobId': 'repris'},
+                    {'sessionId': 'repris-1234', 'pid': 400}]
+        vivant = {100: True, 200: False, 300: False, 400: True}.get
+        orphelins, non_juges = self.o.juger(claims, sessions, vivant)
+        self.assertEqual([c.sess_id for c, _ in orphelins], ['sess-mort'])
+        self.assertEqual(sorted(c.sess_id for c, _ in non_juges), ['sess-sans', 'sess-x.laptop'])
+
+    def test_sessions_illisibles_rien_n_est_orphelin(self):
+        orphelins, non_juges = self.o.juger([self.Claim('s', 'b', 'a')], None)
+        self.assertEqual((orphelins, len(non_juges)), ([], 1))
+
+
+class TestStatutDesHandoffs(unittest.TestCase):
+    """Le statut d'un handoff se lit sans son commentaire.
+
+    `status: consumed        # active | consumed | archived` — la ligne réelle de
+    `session-liseur-omarchy-20260927.md` — était refusée et retombait `active` :
+    la base disait les 43 handoffs de la racine tous actifs."""
+
+    def _lire(self, entete):
+        import migrate
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'handoffs').mkdir()
+            (Path(tmp) / 'handoffs' / 'h.md').write_text(f'---\n{entete}\n---\n# h\n')
+            with patch.object(migrate, 'BRAIN_ROOT', tmp):
+                return {l[0]: l[3] for l in migrate.lire_handoffs()}['h.md']
+
+    def test_le_commentaire_ne_fait_plus_tomber_le_statut(self):
+        self.assertEqual(self._lire('status: consumed        # active | consumed | archived'), 'consumed')
+        self.assertEqual(self._lire('status: consumed'), 'consumed')
+        self.assertEqual(self._lire('status: PERIME — voir autre.md'), 'active', 'inconnu : active, comme avant')
+
+
+
+class TestBrainServe(unittest.TestCase):
+    """`brain serve` — les deux portes, une seule déclaration.
+
+    La déclaration était écrite trois fois (les unités, `brain-engine.sh`, les
+    serveurs) ; les secrets étaient EXÉCUTÉS par `source`. Ces garanties tiennent
+    l'ordre de la déclaration, la lecture des secrets comme du texte, et le
+    contrat d'un processus par porte."""
+
+    def setUp(self):
+        import serve
+        self.serve = serve
+        self.tmp = Path(tempfile.mkdtemp())
+        self.donnees = self.tmp / 'brain'
+        self.programme = self.donnees / 'brain-engine'
+        self.programme.mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _secrets(self, texte):
+        (self.donnees / 'brain-secrets').mkdir(exist_ok=True)
+        (self.donnees / 'brain-secrets' / 'MYSECRETS').write_text(texte)
+
+    def _declarer(self, environ=None):
+        return self.serve.declarer(environ or {}, self.donnees, self.programme)
+
+    def test_l_ordre_de_la_declaration(self):
+        d = self._declarer()
+        self.assertEqual((d.port_http, d.port_mcp), ('7700', '7701'), 'les défauts')
+        self.assertEqual(d.environ['BRAIN_MCP_SCOPES'], 'public,work,instance,satellite',
+                         'le MCP lancé ici est local : il ne retombe pas sur le défaut étroit')
+        (self.programme / '.env.local').write_text('BRAIN_PORT=7800\nBRAIN_MCP_PORT="7801"\n')
+        d = self._declarer()
+        self.assertEqual((d.port_http, d.port_mcp), ('7800', '7801'), '.env.local, guillemets compris')
+        d = self._declarer({'BRAIN_PORT': '7900'})
+        self.assertEqual(d.port_http, '7900', "l'environnement l'emporte sur .env.local")
+        self.assertEqual(d.environ['BRAIN_ROOT'], str(self.donnees), 'la racine des données est posée')
+
+    def test_le_mode(self):
+        self.assertEqual(self._declarer().mode, 'dev', 'sans rien : dev, comme brain-engine.sh')
+        (self.donnees / 'brain-compose.local.yml').write_text('instance:\n    mode: prod\n')
+        self.assertEqual(self._declarer().mode, 'prod', 'le premier mode: indenté du compose')
+        self.assertEqual(self._declarer({'BRAIN_MODE': 'template'}).mode, 'template', 'BRAIN_MODE gagne')
+
+    def test_les_secrets_se_lisent_et_ne_s_executent_pas(self):
+        temoin = self.tmp / 'execute'
+        self._secrets(f'# un commentaire\nBRAIN_TOKEN_OWNER=jeton-a\n'
+                      f'export BRAIN_TOKEN_MCP="jeton-b"\nPIEGE=$(touch {temoin})\n')
+        d = self._declarer()
+        self.assertEqual(d.secrets, 'chargés')
+        self.assertEqual(d.environ['BRAIN_TOKEN_OWNER'], 'jeton-a')
+        self.assertEqual(d.environ['BRAIN_TOKEN_MCP'], 'jeton-b', '`export` et les guillemets, comme systemd')
+        self.assertEqual(d.environ['PIEGE'], f'$(touch {temoin})', 'du texte, pas une commande')
+        self.assertFalse(temoin.exists(), 'rien du fichier de secrets ne s’exécute')
+
+    def test_en_demo_les_secrets_ne_sont_pas_lus(self):
+        self._secrets('BRAIN_TOKEN_OWNER=jeton-a\n')
+        d = self._declarer({'BRAIN_MODE': 'demo'})
+        self.assertEqual(d.secrets, 'non requis (demo)')
+        self.assertNotIn('BRAIN_TOKEN_OWNER', d.environ)
+        sans_fichier = self.serve.declarer({}, self.tmp / 'vide', self.programme)
+        self.assertEqual(sans_fichier.secrets, 'absents', 'pas de fichier : dit, pas deviné')
+
+    def test_l_environnement_l_emporte_sur_mysecrets(self):
+        self._secrets('BRAIN_MCP_SCOPES=public\n')
+        self.assertEqual(self._declarer().environ['BRAIN_MCP_SCOPES'], 'public', 'MYSECRETS sur le défaut')
+        d = self._declarer({'BRAIN_MCP_SCOPES': 'public,work'})
+        self.assertEqual(d.environ['BRAIN_MCP_SCOPES'], 'public,work', "ce qui est posé (une unité) gagne")
+
+    def test_la_declaration_n_affiche_aucun_secret(self):
+        self._secrets('BRAIN_TOKEN_OWNER=valeur-qui-ne-doit-pas-sortir\n')
+        lignes = '\n'.join(self.serve.resume(self._declarer(), self.programme))
+        self.assertNotIn('valeur-qui-ne-doit-pas-sortir', lignes)
+        self.assertIn('secrets  : chargés', lignes)
+
+    def test_ports_rend_les_ports_de_la_declaration_et_rien_d_autre(self):
+        """Ce que brain-engine.sh vérifie (« port déjà tenu ? ») est ce que les
+        serveurs ouvriront — MYSECRETS compris. Avant, le script relisait
+        .env.local de son côté, sans MYSECRETS : deux lectures, deux réponses."""
+        self._secrets('BRAIN_PORT=17777\nBRAIN_TOKEN_OWNER=valeur-qui-ne-doit-pas-sortir\n')
+        sortie = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env['BRAIN_ROOT'] = str(self.donnees)
+        import importlib
+        with patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(sortie):
+            import racines
+            importlib.reload(racines)
+            try:
+                # Le programme aussi est le jetable : le `.env.local` du VRAI
+                # programme (qui existe dans une instance) ne doit rien décider ici.
+                with patch.object(racines, 'PROGRAMME', self.programme):
+                    code = self.serve.main(['--ports'])
+            finally:
+                os.environ.pop('BRAIN_ROOT', None)
+                importlib.reload(racines)
+        self.assertEqual(code, 0)
+        self.assertEqual(sortie.getvalue().split(), ['BRAIN_PORT=17777', 'BRAIN_MCP_PORT=7701'])
+        self.assertNotIn('valeur-qui-ne-doit-pas-sortir', sortie.getvalue())
+
+    def test_une_porte_remplace_le_processus(self):
+        """Le PID du serveur est celui que systemd et le fichier de PID suivent."""
+        d = self._declarer()
+        with patch.object(self.serve.os, 'execve') as execve, patch.object(self.serve.os, 'chdir'):
+            self.serve.lancer_une('mcp', d, self.programme)
+        cmd, argv, env = execve.call_args[0]
+        self.assertEqual(argv[1], str(self.programme / 'mcp_server.py'))
+        self.assertEqual(cmd, argv[0])
+        self.assertEqual(env['BRAIN_MCP_PORT'], '7701')
+
+    def test_si_une_porte_tombe_l_autre_est_arretee(self):
+        import subprocess as sp
+        enfants = {
+            'http': sp.Popen([sys.executable, '-c', 'import sys; sys.exit(3)']),
+            'mcp': sp.Popen([sys.executable, '-c', 'import time; time.sleep(60)']),
+        }
+        debut = time.monotonic()
+        code = self.serve.surveiller(enfants, dire=lambda _m: None)
+        self.assertEqual(code, 1, 'une porte tombée : brain serve sort en erreur')
+        self.assertIsNotNone(enfants['mcp'].poll(), "l'autre porte est arrêtée, pas laissée seule")
+        self.assertLess(time.monotonic() - debut, 15)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# brain — le point d'entrée unique du brain.
+#
+# Usage :
+#   brain serve [http|mcp]       les portes réseau (HTTP + MCP), une seule déclaration
+#   brain serve --declaration    ce qui serait lancé, sans rien lancer
+#
+# Un verbe pour l'instant. Les autres viendront des scripts du brain, un par un
+# (`brain <verbe>`) — chacun le jour où il est prêt, pas avant.
+#
+# Ce fichier peut être appelé par un lien (`~/.local/bin/brain`, posé par
+# `brain-engine.sh install`) : il retrouve son brain par le chemin RÉEL.
+
+set -euo pipefail
+
+_ici="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+source "$_ici/lib/python.sh"   # python3 = celui du venv de brain-engine
+
+case "${1:-}" in
+  serve)
+    shift
+    exec python3 "$_ici/../brain-engine/serve.py" "$@"
+    ;;
+  ""|-h|--help|help)
+    sed -n '4,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    ;;
+  *)
+    echo "brain : verbe inconnu « $1 » — connu : serve" >&2
+    exit 2
+    ;;
+esac

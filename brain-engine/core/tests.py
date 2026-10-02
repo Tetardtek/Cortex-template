@@ -36,6 +36,23 @@ SUITES = [
 ]
 
 COMPTE = re.compile(r"(\d+) garantie\(s\) tenue\(s\), (\d+) manquée")
+# La ligne qu'une sous-suite imprime quand elle s'abstient : sa raison, relayée telle quelle.
+ABSTENTION = re.compile(r"ABSTENTION — (.+)")
+
+
+def pourquoi_abstenue(exc: BaseException) -> str:
+    """Ce qu'une sous-suite dit quand la base vivante ne se lit pas. Pur.
+
+    Le sens d'une erreur compte autant que son existence. Le 27/09 puis le 2/10,
+    un Python sans `pymysql` s'est annoncé « dolt sql-server injoignable », et
+    l'on a cherché un service en panne : le service allait bien, c'était le
+    Python. Seule une erreur de connexion dit « injoignable »."""
+    if isinstance(exc, ModuleNotFoundError):
+        return (f"ce Python n'a pas le module « {exc.name} » ({sys.executable}) — "
+                f"le doctor lance la suite avec le Python du moteur")
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        return f"dolt sql-server injoignable ({type(exc).__name__})"
+    return f"{type(exc).__name__} : {str(exc)[:90]}"
 
 
 def main() -> int:
@@ -78,8 +95,9 @@ def main() -> int:
         manquees += ko
         if r.returncode == 3 and not ko:
             abstenues.append(fichier)
-            print(f"  ⏭  {fichier:<22} {ok:>3} tenue(s) — ABSTENUE : un service "
-                  f"demandé n'a pas répondu")
+            raison = ABSTENTION.search(r.stdout)
+            print(f"  ⏭  {fichier:<22} {ok:>3} tenue(s) — ABSTENUE : "
+                  + (raison.group(1).strip() if raison else "un service demandé n'a pas répondu"))
             continue
         if ko or r.returncode:
             echecs.append(fichier)

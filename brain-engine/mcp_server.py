@@ -15,7 +15,7 @@ Outils exposés :
   brain_decisions(last)     → dernières décisions architecturales (ADRs)
   brain_focus()             → focus actuel du brain (direction + projets + blockers)
   brain_write(path, content)→ écrire un fichier dans le brain via PUT /brain/{path}
-  brain_content(filter)     → pipeline contenu (workspace/content + content/)
+  brain_content(filter)     → pipeline contenu (contenu/atelier + contenu/publie)
   brain_content_promote()   → promouvoir un contenu (draft→ready→scheduled→published)
 
 Usage :
@@ -88,7 +88,10 @@ mcp = FastMCP(
 
 # ── Confinement des chemins ────────────────────────────────────────────────────
 
-_BRAIN_ROOT = Path(__file__).resolve().parent.parent
+# La data, reçue ou déduite par `racines.py` — résolue ici, pour la
+# raison que dit le bloc « Content pipeline » plus bas.
+from racines import DONNEES as _DONNEES, annonce as _annonce_racines
+_BRAIN_ROOT = _DONNEES.resolve()
 
 
 def _resolve_under(base: Path, *parts: str) -> Path:
@@ -490,72 +493,29 @@ def brain_focus() -> str:
 
     Returns:
         Bloc markdown avec le cap, front rotatif, intentions actives et projets.
-        Fallback sur focus.md si brain-engine/Dolt indisponible.
+        Moteur injoignable : le dernier instantané (focus.instantane.md, écrit
+        toutes les 2 h par l'indexeur), annoncé comme un repli ; sinon focus.md.
     """
     import json
     import urllib.request
+    import focus_instantane
     log.info('brain_focus')
     try:
         url = f'{BRAIN_API}/focus'
         with urllib.request.urlopen(url, timeout=5) as resp:
             data = json.loads(resp.read())
-
-        lines = []
-
-        # Cap
-        cap = data.get('cap')
-        if cap:
-            lines.append('## Cap\n')
-            lines.append(cap)
-            lines.append('')
-
-        # Front rotatif
-        front = data.get('front', [])
-        if front:
-            lines.append('## Front rotatif\n')
-            for i, item in enumerate(front, 1):
-                ns = item.get('next_step', '')
-                sessions = item.get('total_sessions', 0)
-                lines.append(f"**#{i}** {item['id']} — {item.get('project', '')} ({sessions}s)")
-                if ns:
-                    lines.append(f"  → {ns}")
-            lines.append('')
-
-        # Active (non-front)
-        active = data.get('active', [])
-        if active:
-            lines.append(f"## Actives ({len(active)} + {len(front)} front)\n")
-            for item in active:
-                lines.append(f"- **{item['id']}** [{item.get('project', '')}]")
-            lines.append('')
-
-        # Stasis summary
-        stasis_count = data.get('stasis_count', 0)
-        if stasis_count:
-            lines.append(f"## Stasis ({stasis_count})\n")
-            lines.append(f"> {stasis_count} intentions en pause — `brain_intentions(status=\"stasis\")` pour le detail.")
-            lines.append('')
-
-        # Projects
-        projects = data.get('projects', [])
-        if projects:
-            lines.append('## Projets\n')
-            lines.append('| Projet | Actives | Stasis |')
-            lines.append('|--------|---------|--------|')
-            for p in projects:
-                lines.append(f"| {p['project']} | {p.get('active_count', 0)} | {p.get('stasis_count', 0)} |")
-            lines.append('')
-
-        # Last session
-        last = data.get('last_session')
-        if last:
-            lines.append(f"Derniere session : **{last.get('sess_id', '?')}** — {last.get('duration_min', '?')}min, energy {last.get('energy', '?')}")
-
-        return '\n'.join(lines) if lines else 'Focus vide.'
+        # Le rendu vit dans `focus_instantane` : l'instantané écrit au passage de
+        # l'indexeur et la réponse live sont le MÊME texte.
+        return focus_instantane.rendre(data)
 
     except Exception as exc:
         log.warning('brain_focus Dolt failed, fallback fichier: %s', exc)
-        # Fallback: lire focus.md statique
+        # 1. Le dernier instantané (depuis le 2/10) : le vrai focus, daté, au plus
+        #    2 h de retard — annoncé comme un repli.
+        instantane = focus_instantane.lire_instantane(BRAIN_ROOT)
+        if instantane:
+            return instantane
+        # 2. Sinon focus.md, le fallback statique : il renvoie vers l'API.
         focus_path = BRAIN_ROOT / 'focus.md'
         if not focus_path.exists():
             return 'focus.md non trouve.'
@@ -629,8 +589,11 @@ def brain_write(path: str, content: str) -> str:
 # `relative_to` leverait un ValueError. Le nom est conserve, ses quatre usages
 # n'ont pas a changer.
 BRAIN_ROOT = _BRAIN_ROOT
-CONTENT_ATELIER  = BRAIN_ROOT / 'workspace' / 'content'
-CONTENT_PUBLISHED = BRAIN_ROOT / 'content'
+# Le satellite `contenu/` (BRAIN-080) : l'atelier et le publié dans un seul dépôt.
+# Un fork sans `contenu/` voit un pipeline vide — `_scan_content_zone` rend une
+# liste vide quand sa racine manque.
+CONTENT_ATELIER  = BRAIN_ROOT / 'contenu' / 'atelier'
+CONTENT_PUBLISHED = BRAIN_ROOT / 'contenu' / 'publie'
 
 # Statuts valides et leur ordre de progression
 CONTENT_STATUSES = ['draft', 'ready', 'scheduled', 'published', 'recycled']
@@ -724,7 +687,7 @@ def brain_content(platform: str = '', status: str = '', zone: str = '') -> str:
     """
     Pipeline contenu du brain — vue unifiée atelier + publié.
 
-    Scanne workspace/content/ (atelier — drafts, matière) et content/ (livré — publié).
+    Scanne contenu/atelier/ (drafts, matière) et contenu/publie/ (livré — publié).
     Parse les frontmatters pour extraire status, série, plateforme, dates.
 
     Args:
@@ -793,14 +756,14 @@ def brain_content_promote(path: str, target_status: str) -> str:
     Promouvoir un contenu dans le pipeline.
 
     Gère deux types de transitions :
-    - Dans la même zone : draft→ready (reste dans workspace/content/)
-    - Cross-zone : ready→scheduled (move workspace/content/ → content/)
+    - Dans la même zone : draft→ready (reste dans contenu/atelier/)
+    - Cross-zone : ready→scheduled (move contenu/atelier/ → contenu/publie/)
     - Dans zone publiée : scheduled→published, published→recycled
 
     Le frontmatter est mis à jour automatiquement (status + dates).
 
     Args:
-        path          : Chemin relatif dans le brain (ex: "workspace/content/posts/btb-001-postiz-timezone.md")
+        path          : Chemin relatif dans le brain (ex: "contenu/atelier/posts/btb-001-postiz-timezone.md")
         target_status : Status cible (ready, scheduled, published, recycled)
 
     Returns:
@@ -826,7 +789,7 @@ def brain_content_promote(path: str, target_status: str) -> str:
                for root in (CONTENT_ATELIER, CONTENT_PUBLISHED)):
         log.warning('brain_content_promote : chemin hors pipeline contenu (%r)', path)
         return (f'Chemin hors du pipeline contenu : {path} — '
-                f'attendu sous workspace/content/ ou content/.')
+                f'attendu sous contenu/atelier/ ou contenu/publie/.')
     if not source.is_file():
         return f'Fichier introuvable : {path}'
 
@@ -908,7 +871,7 @@ def brain_content_promote(path: str, target_status: str) -> str:
 
     # Écrire le fichier (même emplacement ou nouveau)
     if needs_move:
-        # Calculer le chemin destination dans content/
+        # Calculer le chemin destination dans contenu/publie/
         rel_to_atelier = source.relative_to(CONTENT_ATELIER)
         dest = CONTENT_PUBLISHED / rel_to_atelier
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1005,6 +968,7 @@ if __name__ == '__main__':
     auth_status = 'token actif' if BRAIN_TOKEN_MCP else 'auth désactivée (dev)'
     log.info('Brain MCP BE-4 — port %d — %s — scopes: %s',
              BRAIN_MCP_PORT, auth_status, MCP_SCOPES)
+    log.info(_annonce_racines())
     # Les en-têtes de proxy ne sont crus que d'un proxy LOCAL : `'*'` laissait
     # n'importe quelle machine réécrire l'adresse du client (relecture du 28/09).
     uvicorn.run(mcp_app, host='0.0.0.0', port=BRAIN_MCP_PORT,

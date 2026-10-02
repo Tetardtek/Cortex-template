@@ -25,9 +25,14 @@ import sys
 import argparse
 from datetime import datetime, timezone
 
-BRAIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Deux racines, une source : `racines.py`. La data (le corpus à
+# migrer) est reçue ; le schéma, `.env.local` et `db` sont du PROGRAMME.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from racines import DONNEES, PROGRAMME
+BRAIN_ROOT = str(DONNEES)
+_PROGRAMME = str(PROGRAMME)
 DB_PATH = os.getenv('BRAIN_DB_PATH') or os.path.join(BRAIN_ROOT, 'brain.db')
-SCHEMA_PATH = os.path.join(BRAIN_ROOT, 'brain-engine', 'schema.sql')
+SCHEMA_PATH = os.path.join(_PROGRAMME, 'schema.sql')
 
 
 def backend_declare() -> str:
@@ -53,7 +58,7 @@ def backend_declare() -> str:
     depuis_env = os.getenv('BRAIN_DB_BACKEND')
     if depuis_env:
         return depuis_env.strip()
-    env = os.path.join(BRAIN_ROOT, 'brain-engine', '.env.local')
+    env = os.path.join(_PROGRAMME, '.env.local')
     if os.path.isfile(env):
         for ligne in open(env, encoding='utf-8', errors='replace'):
             if ligne.startswith('BRAIN_DB_BACKEND'):
@@ -236,7 +241,7 @@ def migrate_signals_backend(dry_run: bool = False) -> int:
     Une seule requête, donc un seul commit.
     """
     try:
-        sys.path.insert(0, os.path.join(BRAIN_ROOT, 'brain-engine'))
+        sys.path.insert(0, _PROGRAMME)
         import db
     except Exception as exc:                               # noqa: BLE001
         print(f"  ⚠️  backend indisponible ({type(exc).__name__}) — SQLite seul.")
@@ -407,7 +412,10 @@ def lire_handoffs() -> list[tuple]:
         if not fm_match:
             continue
         fm = fm_match.group(1)
-        status = parse_yml_field(fm, 'status', 'active')
+        # Le statut sans son commentaire : `status: consumed   # active | consumed`
+        # — la forme même du gabarit — était lu en entier, refusé, et le handoff
+        # retombait `active` : les 43 de la racine l’étaient tous, le 2/10.
+        status = re.split(r'\s+#', parse_yml_field(fm, 'status', 'active'))[0]
         if status not in ('active', 'consumed', 'archived'):
             status = 'active'
         # L'emplacement fait foi : un fichier dans `archive/` est archivé, quel
@@ -446,7 +454,7 @@ def migrate_handoffs_backend(dry_run: bool = False) -> int:
     noieraient l'historique, et a montré ce que chaque écriture coûte.
     """
     try:
-        sys.path.insert(0, os.path.join(BRAIN_ROOT, 'brain-engine'))
+        sys.path.insert(0, _PROGRAMME)
         import db
     except Exception as exc:                               # noqa: BLE001
         print(f"  ⚠️  backend indisponible ({type(exc).__name__}) — SQLite seul.")
@@ -507,7 +515,7 @@ def verifier_handoffs() -> int:
         print(f"SKIP base SQLite absente ({DB_PATH}) — rien à comparer.")
         return 0
     try:
-        sys.path.insert(0, os.path.join(BRAIN_ROOT, 'brain-engine'))
+        sys.path.insert(0, _PROGRAMME)
         import db
         base = {r['filename']: r['status']
                 for r in db.query("SELECT filename, status FROM handoffs")}
@@ -564,7 +572,7 @@ def migrate_sessions_archive_backend(dry_run: bool = False) -> int:
     131 + 389 = 520, pour 521 claims archivés. Le compte tombe.
     """
     try:
-        sys.path.insert(0, os.path.join(BRAIN_ROOT, 'brain-engine'))
+        sys.path.insert(0, _PROGRAMME)
         import db
     except Exception as exc:                               # noqa: BLE001
         print(f"  ⚠️  backend indisponible ({type(exc).__name__}) — SQLite seul.")
@@ -643,7 +651,7 @@ def migrate_sessions_backend(dry_run: bool = False) -> int:
     elle a sa propre vie.
     """
     try:
-        sys.path.insert(0, os.path.join(BRAIN_ROOT, 'brain-engine'))
+        sys.path.insert(0, _PROGRAMME)
         import db
     except Exception as exc:                               # noqa: BLE001
         print(f"  ⚠️  backend indisponible ({type(exc).__name__}) — SQLite seul.")

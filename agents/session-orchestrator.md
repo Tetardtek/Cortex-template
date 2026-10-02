@@ -122,6 +122,19 @@ close(session_type, sess_id):
 - `session_significant` = au moins 1 commit OU 1 agent forgé OU spec changée
 - `todos_emerged` = au moins 1 todo identifié non réalisé
 
+### Le têtard — dire à l'humain qu'une session l'attend
+
+Si l'instance a un point d'appel `scripts/dire.py` (si présent — sans têtard il se
+tait, et une panne ne fait jamais échouer la session) :
+
+| Quand | Appel |
+|---|---|
+| la session **attend l'humain** — un gate, une question bloquante | `python3 scripts/dire.py "<ce qui attend>" --attention` |
+| une **PR est prête** à relire | `python3 scripts/dire.py "PR #<n> prête"` |
+| une **passe autonome est finie** | `python3 scripts/dire.py "<ce qui est fait>"` |
+
+Une liste courte, pas un bruit de fond : rien d'autre ne fait parler le têtard.
+
 ### Composition
 
 | Avec | Pour quoi |
@@ -457,3 +470,4 @@ Invoquer explicitement pour fermer la session quand les déclencheurs naturels n
 | 2026-09-03 | Remise à niveau V2 — types alignés sur les six réels (quatre des six déclarés n'existaient plus, quatre des six réels étaient inconnus) · `manifest.yml` remplacé par `contexts/session-<type>.yml` · claims lus par requête et non dans `BRAIN-INDEX.md` · `session-types.md`, cité dans le Périmètre, avait été supprimé avec la V1. |
 | 2026-09-27 | Étapes 6 et 6.5 sur le BSI réel : `live-states.md` est généré (rien à écrire), un `BLOCKED_ON` se lève par `ack` — `UNBLOCK` n'a jamais existé. <!-- bsi-v1 --> |
 | 2026-03-28 | Data alignment — step 4.5 (decision tree) + step 5.5 (close protocol) : projet-update, todo-promotion, vision-sync. Convention 4 couches ancrée. |
+| 2026-10-02 | Le têtard : `dire.py` (si présent) quand une session attend l'humain, qu'une PR est prête ou qu'une passe autonome est finie. |

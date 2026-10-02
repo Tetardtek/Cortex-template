@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.tests import pourquoi_abstenue                    # noqa: E402
 from core.persistance import (                             # noqa: E402
     DOLT, SQLITE, Config, Depot, traduire,
 )
@@ -211,7 +212,7 @@ def dolt_lecture(brain: Path) -> None:
     try:
         tables = depot.query("SHOW TABLES")
     except Exception as exc:                               # noqa: BLE001
-        print(f"  ⏭  dolt sql-server injoignable ({type(exc).__name__}) — rien mesuré.")
+        print(f"  ⏭  ABSTENTION — {pourquoi_abstenue(exc)} — rien mesuré.")
         print("     C'est une abstention, pas un vert : `systemctl --user status`.\n")
         global _abstenu
         _abstenu = True

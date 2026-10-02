@@ -27,7 +27,17 @@ Deux serveurs, deux rôles :
 Deux processus distincts, mais pas indépendants : plusieurs outils MCP
 (`brain_state`, `brain_workflows`, `brain_agents`, `brain_focus`, `brain_write`,
 `brain_intentions`) appellent l'API sur `BRAIN_PORT`. Le MCP sans l'API ne sait
-faire que la recherche.
+faire que la recherche — et rendre le dernier focus : à chaque passage de
+l'indexeur (toutes les 2 h), `focus_instantane.py` l'écrit dans
+`focus.instantane.md`, et `brain_focus` le rend, daté et annoncé comme un repli,
+quand l'API ne répond pas.
+
+**Quel brain il sert.** Par défaut, celui qui le contient : le dossier parent de
+`brain-engine/`. Pour servir un autre brain, poser `BRAIN_ROOT` — l'API, le MCP
+et l'indexation la suivent tous, et chacun écrit au démarrage la racine qu'il
+sert et d'où il la tient. Une `BRAIN_ROOT` qui ne désigne pas un dossier arrête
+le moteur plutôt que de deviner. Le programme, lui (`.env.local`, le schéma),
+reste là où il est (`brain-engine/racines.py`).
 
 ---
 

@@ -81,6 +81,14 @@ modes:
       register: expressive    # explicite par mode
 ```
 
+**Le plancher éthique, concrètement** — ce que `ethical_floor: hard` interdit, quel que
+soit le registre :
+
+- **jamais un témoignage, un chiffre ou une preuve sociale inventés** — réels et sourcés, ou absents ;
+- **une urgence vraie, ou aucune** — pas de délai ni de rareté fabriqués ;
+- **une sortie toujours possible** — se désabonner, arrêter une séquence, dire non sans friction ;
+- **la porte finale** : « serais-tu fier de ce texte dans cinq ans ? » — sinon, on le réécrit.
+
 **Détail complet** : BRAIN-066.
 
 ---
@@ -187,10 +195,10 @@ Pour respecter le triplet + Convention 4 en pratique :
 
 ## Backlog application
 
-- [ ] Audit `copywriter.md` (extraire identité hardcodée + structurer modes + valider config 2 axes) — session brain dédiée
-- [ ] Audit `content-writer.md`, `content-strategist.md` — idem
+- [x] Audit `copywriter.md`, `content-writer.md`, `content-strategist.md` — l'identité codée en dur est extraite (mesuré : aucun prénom, domaine ni lieu de l'instance)
+- [ ] Les modes des agents d'écriture et leur configuration à deux axes — pas sans besoin concret
 - [ ] Audit famille scribes — déjà conforme à Convention 1 Option B, vérifier Convention 2/3
-- [ ] Créer `profil/identity/_template.md` pour fork users template (Convention 3 multi-tenancy)
+- [x] La forme de l'identité pour un fork : `profil/identity.exemple/` (Convention 3 multi-tenancy)
 
 ---
 

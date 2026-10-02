@@ -14,7 +14,7 @@
 PRAGMA journal_mode=WAL;  -- lectures concurrentes sûres (multi-sessions)
 PRAGMA foreign_keys=ON;
 
--- ── 20 tables ─────────────────────────────────────────────────────
+-- ── 19 tables ─────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS agents (
     id TEXT NOT NULL,
@@ -48,14 +48,6 @@ CREATE TABLE IF NOT EXISTS chantiers (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS circuit_breaker (
-    sess_id TEXT NOT NULL,
-    fail_count INTEGER NOT NULL DEFAULT '0',
-    last_fail_at TEXT,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (sess_id)
 );
 
 CREATE TABLE IF NOT EXISTS claims (

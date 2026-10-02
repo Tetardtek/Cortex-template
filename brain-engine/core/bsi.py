@@ -130,6 +130,15 @@ class Verrou:
         return True if fin is None else datetime.now(timezone.utc) >= fin
 
 
+# La frontière d'un verrou, en SQL — la même que `Verrou.expire` en Python :
+# actif tant que l'horloge n'a pas ATTEINT `expires_at`, expiré dès qu'elle y est.
+# Le CORE dit la règle ; l'instance écrit (et commite) avec elle — la frontière
+# de `POST /bsi/claims`. Les routes, `file-lock.sh` et la conciergerie les
+# importent d'ici.
+VERROU_ACTIF = "UTC_TIMESTAMP() < expires_at"
+VERROU_EXPIRE = "UTC_TIMESTAMP() >= expires_at"
+
+
 @dataclass
 class Claim:
     sess_id: str
@@ -441,11 +450,17 @@ class BSI:
     # Le TTL se compte en MINUTES, pas en heures : un verrou de fichier protège
     # une écriture, pas une séance. Et la comparaison se fait en UTC des deux
     # côtés — le défaut du 22/08 sur les claims vaut ici aussi.
+    #
+    # La frontière est écrite UNE fois, dans `VERROU_ACTIF` et `VERROU_EXPIRE`
+    # (plus haut). Jusqu'au 1/10 elle était écrite quatorze fois — ici,
+    # `server.py`, `file-lock.sh`, la conciergerie — et la conciergerie disait
+    # `>` / `<=` là où le reste disait `>=` / `<` : un verrou à sa seconde
+    # d'expiration y était « actif » au diagnostic et survivait au nettoyage.
 
     def verrous(self, *, actifs_seulement: bool = True) -> list[Verrou]:
         sql = ("SELECT filepath, holder, claimed_at, expires_at, ttl_min FROM locks")
         if actifs_seulement:
-            sql += " WHERE UTC_TIMESTAMP() < expires_at"
+            sql += f" WHERE {VERROU_ACTIF}"
         return [Verrou(r["filepath"], r["holder"], r.get("claimed_at"),
                        r.get("expires_at"), r.get("ttl_min") or 30)
                 for r in self.depot.query(sql + " ORDER BY filepath")]

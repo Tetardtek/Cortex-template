@@ -1,18 +1,24 @@
 # workspace/
 
-> Espace de travail temporaire — checkpoints, sprints, backlog, metabolism.
+> L'espace de travail des sessions — ce qui se fait, pas ce qui se retient.
 
-## Structure attendue
+## Structure
 
 ```
 workspace/
-  backlog/         — visions de projets (le "pourquoi" long terme)
-  metabolism/      — metriques de session (genere par metabolism-scribe)
-  live-states.md   — etats des sessions actives
+  backlog/<projet>/   la vision d'un projet et ses fiches — une tâche par fichier
+  scratch/            brouillons et essais d'une session
+  live-states.md      l'état des sessions actives
 ```
 
-## Pourquoi
+## Le backlog — ce que ce gabarit livre, et ce qu'il ne livre pas
 
-Le workspace est la zone de travail ephemere du brain.
-Les agents y ecrivent des checkpoints de session et des metriques.
-Le backlog contient les visions long terme de vos projets.
+La **convention** part avec le gabarit : une vision par projet
+(`workspace/backlog/<projet>/vision.md`), une fiche par tâche, avec ses
+critères de fin — voir `profil/specs/collaboration.md`, « 4 couches ».
+
+L'**outillage** du backlog, lui, ne part pas : l'index généré, le kanban, la
+clôture sur preuve et les contrôles de `brain doctor` vivent dans un dépôt à
+part, encore en construction et non publié. Les agents `kanban-scribe` et
+`todo-scribe` le supposent. Sans lui, un backlog se tient à la main : des
+fiches en Markdown, que tu ranges toi-même.

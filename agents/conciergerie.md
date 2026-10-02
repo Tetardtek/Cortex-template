@@ -50,7 +50,7 @@ Script         : brain-conciergerie.sh est l'outil — ne pas improviser du SQL 
 |------|---------|-----------------|--------------|
 | 1 — Intouchable | embeddings permanent, kernel | **RIEN** — lecture seule | — |
 | 2 — Archive | claims, sessions, signals, handoffs (closed/consumed + maturés) | Déplacer → `*_archive` | Oui, obligatoire |
-| 3 — Nettoyage | locks expirés, circuit_breaker vides | DELETE | Oui, obligatoire |
+| 3 — Nettoyage | locks expirés | DELETE | Oui, obligatoire |
 | 4 — Maintenance | embeddings **orphelins** (fichier source disparu) | **Purge** via `prune-orphans` (filet Dolt) | Oui, obligatoire |
 | 4 — Maintenance | embeddings stale, cold | Marquer historical / signaler | Oui pour toute modification |
 

@@ -16,7 +16,7 @@ Dans un script bash, le python à utiliser est celui du venv :
 
 ## Ce qu'elle contient
 
-**Tables (20)** — `agents`, `chantiers`, `circuit_breaker`, `claims`, `claims_archive`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`
+**Tables (19)** — `agents`, `chantiers`, `claims`, `claims_archive`, `decisions`, `embedding_hits`, `embeddings`, `handoffs`, `handoffs_archive`, `intention_edges`, `intention_sessions`, `intention_tags`, `intentions`, `locks`, `projects`, `sessions`, `sessions_archive`, `signals`, `signals_archive`
 
 **Vues (5)** — `v_open_claims`, `v_stale_claims`, `v_active_locks`, `v_cold_start_kpi`, `v_metabolism_`
 

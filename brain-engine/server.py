@@ -33,7 +33,6 @@ Endpoints :
   GET  /boot                         → zones brain + queries initiales
   GET  /search?q=                    → RAG sémantique
   GET  /agents                       → liste agents disponibles
-  GET  /teams                        → liste team presets
   GET  /workflows                    → ce qui avance en autonomie (palier b)
   GET  /visualize                    → coordonnées 3D UMAP
   PUT  /brain/{path}                 → écriture fichier brain + reindex
@@ -140,8 +139,12 @@ _START_TIME: float = time.time()
 # WebSocket clients
 _ws_clients: list[WebSocket] = []
 
-# Racine du brain (un niveau au-dessus de brain-engine/)
-BRAIN_ROOT = Path(__file__).parent.parent
+# Deux racines, une source : `racines.py`. BRAIN_ROOT est la DATA —
+# reçue par la variable du même nom, sinon le parent du programme.
+from racines import DONNEES as BRAIN_ROOT, PROGRAMME, annonce as _annonce_racines
+# La frontière d'un verrou, écrite une fois dans le CORE.
+from core.bsi import VERROU_ACTIF
+log.info(_annonce_racines())
 DB_PATH    = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
 BRAIN_MODE = os.getenv('BRAIN_MODE') or 'owner'  # 'owner' (full) | 'prod' | 'template' (read-only) | 'demo' (vitrine)
 
@@ -191,7 +194,8 @@ app.add_middleware(_SansJetonResteLocal)
 
 # ── Montage brain-ui static (si build disponible) ────────────────────────────
 
-_UI_DIST = BRAIN_ROOT / 'brain-ui' / 'dist'
+# L'interface voyage avec le programme, pas avec la data.
+_UI_DIST = PROGRAMME.parent / 'brain-ui' / 'dist'
 if _UI_DIST.is_dir():
     from fastapi.staticfiles import StaticFiles
     app.mount('/ui', StaticFiles(directory=str(_UI_DIST), html=True), name='brain-ui')
@@ -471,34 +475,10 @@ def agents_list(
     return result
 
 
-@app.get('/teams')
-def teams_list(
-    authorization: str | None = Header(None),
-    request:       Request    = None,
-):
-    """Liste toutes les teams parsées depuis teams/*.yml."""
-    if not _is_localhost(request):
-        check_auth(authorization)  # zones=['public']
-    log.info('teams_list')
-
-    teams_dir = BRAIN_ROOT / 'teams'
-    result    = []
-
-    for yml_file in sorted(teams_dir.glob('*.yml')):
-        data = _load_yaml_file(yml_file)
-        if not data:
-            continue
-        result.append({
-            'id':                  data.get('id', yml_file.stem),
-            'label':               data.get('label', ''),
-            'icon':                data.get('icon', ''),
-            'agents':              data.get('agents', []),
-            'capabilities':        data.get('capabilities', []),
-            'gate_required':       data.get('gate_required', False),
-            'default_timeout_min': data.get('default_timeout_min', 30),
-        })
-
-    return result
+# `GET /teams` — retirée le 2/10 : elle lisait `teams/*.yml`,
+# des presets d'équipes de mars que rien n'appelait — ni brain-ui, ni le MCP, ni
+# un script — et qui ne partaient pas au gabarit : chez un fork, une liste vide
+# qui ne disait pas pourquoi. Les presets sont dans `teams/archive/`.
 
 
 @app.get('/workflows')
@@ -937,7 +917,7 @@ def _foreign_lock(rel_path: str, holder: str | None) -> dict | None:
     """Lock actif tenu par quelqu'un d'autre, ou None."""
     try:
         row = brain_db.query_one(
-            "SELECT holder, expires_at FROM locks WHERE filepath = %s AND UTC_TIMESTAMP() < expires_at",
+            f"SELECT holder, expires_at FROM locks WHERE filepath = %s AND {VERROU_ACTIF}",
             (rel_path,),
         )
     except Exception as exc:
@@ -952,11 +932,34 @@ async def brain_get(
     path:          str,
     authorization: str | None = Header(None),
 ):
-    """Lit un fichier brain. Localhost = owner, sinon auth requise."""
+    """Lit un fichier brain. Localhost = owner, sinon auth requise.
+
+    La zone privée (`embed.PRIVATE_PATHS` : `profil/identity/`, `vie/`…) ne se
+    lit qu'en owner. Le reste suit les zones du rôle (`_SCOPE_ACCESS`), comme
+    l'écriture. Jusqu'au 1/10, tout jeton valide — `mcp`, `public`
+    — lisait tout `.md` : l'indexeur protégeait ces chemins, la lecture directe
+    non. Une seule liste pour les deux, jugée sur le chemin RÉSOLU : un détour
+    (`agents/../profil/identity/…`) ne la contourne pas.
+    """
+    owner = True
+    scopes = _SCOPE_ACCESS['owner']
     if not _is_localhost(request):
-        check_auth(authorization)
+        scopes = check_auth(authorization)  # jeton valide, ou 401/403
+        # Le rôle lu dans `_TOKEN_MAP` après validation — pas `role_from_token`,
+        # qui ne sert qu'à la trace et le dit.
+        jeton = (authorization or '').removeprefix('Bearer ').strip()
+        owner = not _TOKEN_MAP or _TOKEN_MAP.get(jeton) == 'owner'
 
     safe = _resolve_in_brain(path)
+    if not owner:
+        import embed
+        rel = safe.relative_to(BRAIN_ROOT.resolve()).as_posix()
+        if embed.is_private(rel):
+            raise HTTPException(status_code=403, detail='zone privée — owner seulement')
+        # Hors zone privée, la lecture suit les zones du rôle, comme l'écriture
+        # (tranché le 1/10) : `public` → `public`, `mcp` → tout sauf `kernel`.
+        if embed.resolve_scope(rel) not in scopes:
+            raise HTTPException(status_code=403, detail='zone hors de la portée du jeton')
     if not safe.exists() or not safe.is_file():
         raise HTTPException(status_code=404, detail=f'{path} introuvable')
     if not safe.suffix == '.md':
@@ -2344,9 +2347,9 @@ def bsi_locks_list(
         if 'work' not in scopes:
             raise HTTPException(status_code=403, detail='Zone work requise')
 
-    return brain_db.query("""
+    return brain_db.query(f"""
         SELECT filepath, holder, claimed_at, expires_at,
-               CASE WHEN UTC_TIMESTAMP() < expires_at
+               CASE WHEN {VERROU_ACTIF}
                     THEN 'active' ELSE 'expired' END AS lock_status
         FROM locks ORDER BY claimed_at DESC
     """)
@@ -2416,9 +2419,9 @@ async def bsi_locks_acquire(
                         peer['name'], type(exc).__name__, exc)
 
     # Check existing local lock
-    existing = brain_db.query_one("""
+    existing = brain_db.query_one(f"""
         SELECT holder, expires_at FROM locks
-        WHERE filepath = %s AND UTC_TIMESTAMP() < expires_at
+        WHERE filepath = %s AND {VERROU_ACTIF}
     """, (filepath,))
 
     if existing and existing['holder'] != holder:

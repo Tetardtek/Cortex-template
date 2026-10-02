@@ -54,6 +54,8 @@ RETRAITS = [
      ["v_graduation_candidates"]),
     ("2.4.1", "les liens de la vue Cosmos, calculés en mars : rien ne les lançait ni ne les lisait",
      ["cosmos_edges"], []),
+    ("2.4.3", "le disjoncteur des sessions : jamais écrit, son seul écrivain archivé",
+     ["circuit_breaker"], []),
 ]
 
 racine = Path(sys.argv[1])

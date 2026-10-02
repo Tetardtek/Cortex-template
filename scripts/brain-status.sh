@@ -88,30 +88,6 @@ show_signals() {
     || echo "  ⚠️  boîte illisible — je n'ai pas pu regarder, ce n'est pas « aucun »"
 }
 
-# --- CIRCUIT BREAKERS ---
-show_circuit_breakers() {
-  local fails_dir="$LOCKS_DIR/fails"
-  local max_fails
-  max_fails=$(grep -A5 'circuit_breaker:' "$BRAIN_ROOT/brain-compose.yml" \
-    | grep 'max_consecutive_fails:' | awk '{print $2}' | head -1 2>/dev/null || echo 3)
-  local found=0
-
-  echo "── Circuit breakers ────────────────────────────"
-  for f in "$fails_dir"/*.count; do
-    [ -f "$f" ] || continue
-    local count sess_id
-    count=$(cat "$f")
-    sess_id=$(basename "$f" .count)
-    if [ "$count" -ge "$max_fails" ] 2>/dev/null; then
-      printf "  🔴 %s : %s/%s fails\n" "$sess_id" "$count" "$max_fails"
-    else
-      printf "  ⚠️  %s : %s/%s fails\n" "$sess_id" "$count" "$max_fails"
-    fi
-    found=1
-  done
-  [ "$found" -eq 0 ] && echo "  (aucun)" || true
-}
-
 # --- HEADER ---
 show_header() {
   local branch
@@ -151,8 +127,6 @@ case "$CMD" in
     show_locks
     echo ""
     show_signals
-    echo ""
-    show_circuit_breakers
     ;;
   *)
     echo "Usage : brain-status.sh [all|claims|locks|signals]"

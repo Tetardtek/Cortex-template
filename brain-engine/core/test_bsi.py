@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.bsi import (                                      # noqa: E402
     BSI, ClaimDUneAutreSession, ConflitDeScope, ConflitDeVerrou, IdentifiantInvalide,
     autre_session, projet_depuis_scope, valide,
+    VERROU_ACTIF, VERROU_EXPIRE,
 )
 from core.persistance import SQLITE, Config, Depot          # noqa: E402
 
@@ -220,6 +221,21 @@ def verrous() -> None:
                 neuf.detenteur, "sess-c")
         verifie("et il ne reste qu'une ligne",
                 len(bsi.verrous(actifs_seulement=False)), 1)
+
+        # La frontière écrite UNE fois : les deux prédicats partagent la table
+        # sans recouvrement ni trou, et disent ce que dit `Verrou.expire`.
+        depot.execute(
+            "INSERT INTO locks (filepath, holder, claimed_at, expires_at, ttl_min) "
+            "VALUES (%s,%s,%s,%s,5)", ("vieux.md", "sess-d", passe, passe))
+        tous = {v.chemin: v for v in bsi.verrous(actifs_seulement=False)}
+        actifs = {r["filepath"] for r in depot.query(
+            f"SELECT filepath FROM locks WHERE {VERROU_ACTIF}")}
+        expires = {r["filepath"] for r in depot.query(
+            f"SELECT filepath FROM locks WHERE {VERROU_EXPIRE}")}
+        verifie("actif et expiré ne se recouvrent pas", actifs & expires, set())
+        verifie("et couvrent toute la table", actifs | expires, set(tous))
+        verifie("le SQL dit ce que dit `Verrou.expire`",
+                expires, {c for c, v in tous.items() if v.expire})
 
 
 SCHEMA_IDENTITE = SCHEMA.replace("duration_min INTEGER)",

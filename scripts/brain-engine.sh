@@ -37,7 +37,10 @@ ENGINE_DIR="$BRAIN_ROOT/brain-engine"
 # lisait que l'environnement, et lançait alors Dolt sur 3307 pendant que `db.py`
 # cherchait la base sur l'autre port (relecture du 28/09). L'environnement
 # garde la priorité, comme dans `db.py`.
-for _var in BRAIN_DOLT_PORT BRAIN_PORT BRAIN_MCP_PORT; do
+# Seul le port de Dolt se lit ici : ceux des deux portes viennent de `serve.py`
+# (plus bas), qui les déclare une fois — les exporter d'ici les aurait fait
+# passer pour « posés par l'environnement », devant MYSECRETS.
+for _var in BRAIN_DOLT_PORT; do
   if [[ -z "${!_var:-}" && -f "$ENGINE_DIR/.env.local" ]]; then
     _val=$(grep -sE "^${_var}=" "$ENGINE_DIR/.env.local" | tail -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
     [[ -n "$_val" ]] && export "$_var=$_val"
@@ -48,6 +51,23 @@ SERVER="$ENGINE_DIR/server.py"
 PID_FILE="$BRAIN_ROOT/.brain-engine.pid"
 LOG_FILE="$BRAIN_ROOT/brain-engine.log"
 MCP_SERVER="$ENGINE_DIR/mcp_server.py"
+# Les deux portes se lancent par `brain serve` : la déclaration (ports, mode,
+# secrets, scopes du MCP local) se décide là, une fois. Ce script garde
+# ce qui l'entoure — Dolt, les PID, les ports déjà tenus, l'installation.
+SERVE="$ENGINE_DIR/serve.py"
+# Les ports des deux portes : ceux que `brain serve` ouvrira. Une déclaration
+# illisible (une BRAIN_ROOT qui n'est pas un dossier) ne doit pas empêcher
+# `stop` ni `status` : les défauts, et on le dit.
+if [[ -f "$SERVE" ]]; then
+  if _ports=$(python3 "$SERVE" --ports 2>/dev/null); then
+    while IFS='=' read -r _k _v; do
+      case "$_k" in BRAIN_PORT|BRAIN_MCP_PORT) export "$_k=$_v" ;; esac
+    done <<< "$_ports"
+  else
+    echo "⚠️  brain serve n'a pas pu lire sa déclaration — ports par défaut" >&2
+  fi
+  unset _ports _k _v
+fi
 MCP_PID_FILE="$BRAIN_ROOT/.brain-mcp.pid"
 MCP_LOG_FILE="$BRAIN_ROOT/brain-mcp.log"
 MCP_PORT="${BRAIN_MCP_PORT:-7701}"
@@ -249,7 +269,6 @@ stop_dolt_server() {
 # Rien ne le lançait dans un fork : la doc disait d'ajouter une URL que personne
 # ne servait.
 start_mcp() {
-  local env_prefix="${1:-}"
   [[ -f "$MCP_SERVER" ]] || return 0
   local deja
   deja=$(pid_du_fichier "$MCP_PID_FILE" "$MCP_SERVER")
@@ -268,7 +287,9 @@ start_mcp() {
     fi
     return 0
   fi
-  eval "${env_prefix}BRAIN_MCP_PORT=$MCP_PORT exec python3 '$MCP_SERVER'" >> "$MCP_LOG_FILE" 2>&1 &
+  # `serve.py mcp` remplace son processus par `mcp_server.py` : le PID noté est
+  # celui du serveur.
+  python3 "$SERVE" mcp >> "$MCP_LOG_FILE" 2>&1 &
   local pid=$!
   echo "$pid" > "$MCP_PID_FILE"
   sleep 1
@@ -306,39 +327,27 @@ cmd_start() {
   # sur la base d'un autre brain.
   start_dolt_server || exit 1
 
-  local mode port
-  mode=$(detect_mode)
+  local port
   port=$(detect_port)
 
+  # La déclaration — mode, ports, secrets — est celle de `brain serve` : on
+  # l'affiche, on ne la recalcule pas. Les secrets ne sont plus `source`s (le
+  # shell EXÉCUTAIT chaque ligne de MYSECRETS) : `serve.py` les lit comme
+  # systemd lit un EnvironmentFile.
   echo "▶ brain-engine start"
-  info "mode : $mode"
-  info "port : $port"
-  info "root : $BRAIN_ROOT"
+  python3 "$SERVE" --declaration | sed 's/^/   /'
 
-  # Charger MYSECRETS si disponible et mode != demo
-  local env_prefix=""
-  local secrets_path="${BRAIN_ROOT}/brain-secrets/MYSECRETS"
-  if [[ "$mode" != "demo" && -f "$secrets_path" ]]; then
-    env_prefix="set -a && source '$secrets_path' && set +a && "
-    info "secrets : chargés"
-  elif [[ "$mode" == "demo" ]]; then
-    info "secrets : non requis (demo)"
-  else
-    info "secrets : absents (fonctionnement dégradé)"
-  fi
-
-  start_mcp "$env_prefix"
+  start_mcp
 
   if $fg; then
     info "mode foreground — Ctrl+C pour arrêter"
     echo ""
-    eval "${env_prefix}BRAIN_MODE=$mode BRAIN_PORT=$port python3 '$SERVER'"
+    python3 "$SERVE" http
   else
-    # `exec` : le processus en arrière-plan DOIT être python lui-même. Sans lui,
-    # `$!` était le sous-shell de l'`eval`, le fichier de PID le désignait, et
-    # `stop` tuait ce sous-shell en laissant le serveur tourner.
-    eval "${env_prefix}BRAIN_MODE=$mode BRAIN_PORT=$port exec python3 '$SERVER'" \
-      >> "$LOG_FILE" 2>&1 &
+    # Le processus en arrière-plan est python lui-même, puis le serveur : `serve.py
+    # http` remplace son processus (execve). Le PID noté est celui que `stop`
+    # doit tuer — un sous-shell intermédiaire l'aurait laissé tourner.
+    python3 "$SERVE" http >> "$LOG_FILE" 2>&1 &
     local pid=$!
     echo "$pid" > "$PID_FILE"
     sleep 1
@@ -466,6 +475,11 @@ cmd_embed() {
   fi
 
   check_prereqs
+
+  # L'instantané du focus, AVANT l'embedding : Ollama absent arrête l'embedding,
+  # pas le focus. Moteur éteint, `brain_focus` rendra ce dernier instantané
+  # au lieu de renvoyer vers l'API. Jamais une cause d'échec ici.
+  python3 "$ENGINE_DIR/focus_instantane.py" || warn "instantané du focus non écrit"
 
   echo "▶ brain-engine embed (one-shot)"
 
@@ -681,10 +695,8 @@ Description=Brain — brain-engine ($mode)$dependance
 Type=simple
 WorkingDirectory=$BRAIN_ROOT
 $env_file
-Environment=BRAIN_PORT=$port
-Environment=BRAIN_MODE=$mode
 Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=$py $SERVER
+ExecStart=$py $SERVE http
 Restart=on-failure
 RestartSec=5
 
@@ -693,11 +705,12 @@ WantedBy=default.target
 SVCEOF
 
   # Le service LOCAL voit ce que le rôle `mcp` de server.py voit — public, work,
-  # instance, satellite — comme le brain-mcp-local de la prod. Sans cette ligne,
+  # instance, satellite — comme le brain-mcp-local de la prod. Sans ces scopes,
   # le MCP d'un fork tombait sur le défaut ÉTROIT de mcp_server.py (prévu pour un
   # MCP exposé) : ni projets, ni focus, ni todo, ni learning dans brain_search,
   # sans aucun signal (Cortex-Template#9, tranché par Kevin le 28/09).
-  # MYSECRETS (EnvironmentFile) l'emporte s'il déclare BRAIN_MCP_SCOPES.
+  # Ils sont déclarés dans `serve.py` (DEFAUTS), plus ici ; MYSECRETS
+  # (EnvironmentFile) l'emporte toujours s'il déclare BRAIN_MCP_SCOPES.
   cat > "$unites/brain-mcp.service" << SVCEOF
 [Unit]
 Description=Brain — serveur MCP
@@ -707,10 +720,8 @@ After=brain-engine.service
 Type=simple
 WorkingDirectory=$BRAIN_ROOT
 $env_file
-Environment=BRAIN_MCP_PORT=$MCP_PORT
-Environment=BRAIN_MCP_SCOPES=public,work,instance,satellite
 Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=$py $MCP_SERVER
+ExecStart=$py $SERVE mcp
 Restart=on-failure
 RestartSec=5
 
@@ -803,6 +814,22 @@ verifier_unites() {
   info "unités : celles de cette version"
 }
 
+# La commande `brain` dans ~/.local/bin, en LIEN vers `scripts/brain` de ce
+# brain. Un lien déjà là est remplacé (un autre brain, une version
+# d'avant) ; un VRAI fichier ne l'est jamais : il n'est pas à nous.
+poser_la_commande_brain() {
+  local bin="$HOME/.local/bin" cible="$BRAIN_ROOT/scripts/brain"
+  [[ -x "$cible" ]] || return 0
+  mkdir -p "$bin"
+  if [[ -e "$bin/brain" && ! -L "$bin/brain" ]]; then
+    warn "$bin/brain existe et n'est pas un lien — laissé tel quel"
+    info "  la commande reste joignable : $cible"
+    return 0
+  fi
+  ln -sfn "$cible" "$bin/brain"
+  info "commande : $bin/brain → $cible"
+}
+
 cmd_install_systemd() {
   # Des unités UTILISATEUR, comme dolt-server.service : ni sudo, ni unité
   # système. L'ancienne version écrivait /etc/systemd/system/brain-engine.service
@@ -863,6 +890,7 @@ cmd_install_systemd() {
   esac
 
   ecrire_unites "$unites" "$mode" "$port" "$py"
+  poser_la_commande_brain
 
   for u in brain-engine.service brain-mcp.service brain-embed.service brain-embed.timer brain-maj.service brain-maj.timer; do
     garder_si_changee "$unites/$u" "$horodate"

@@ -19,8 +19,8 @@ description: >
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v2.4.2 — 67 agents, 6 types de session,
-26 routes d'API, 11 outils MCP.
+Kernel v2.5.0 — 67 agents, 6 types de session,
+25 routes d'API, 11 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
 qui persistent, des types de session qui chargent ce qu'ils déclarent, et une

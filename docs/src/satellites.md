@@ -13,18 +13,30 @@ ordre: 5
 
 ## Les dossiers à part
 
+Le gabarit les livre **vides**, chacun avec son `README.md` :
+
 | Dossier | Ce qu'il garde |
 |---|---|
-| `profil/` | ta façon de travailler, tes objectifs — et les specs que le noyau partage (`profil/specs/`). Il se versionne à part, mais sa partie invariante est du **noyau** (`KERNEL.md`) : elle ne change qu'avec ta confirmation |
+| `projets/` | l'état de tes projets — un fichier par projet, à partir de `_template.md` |
+| `intentions/` | tes objectifs mesurables |
+| `handoffs/` | ce qu'une session laisse à la suivante |
+| `infrastructure/` | la description de tes machines et services |
+| `workspace/` | le travail en cours : le backlog (sa convention — l'outillage ne part pas), les brouillons |
 | `todo/` | tes intentions et ce qui reste à faire |
 | `toolkit/` | les patterns que tu as validés en production, réutilisables |
 | `progression/` | ton parcours, tes compétences, ton métabolisme de sessions |
 | `reviews/` | les revues d'agents |
 | `learning/` | tes pistes d'apprentissage — ce qu'écrit une session `learning` |
+| `vie/` | ce qui relève de ta vie plutôt que de ton travail — **privé : jamais indexé** |
+| `contenu/` | ce que tu produis pour l'extérieur : atelier · publié · archive, lus par le MCP |
 
-Le gabarit les livre comme des **dossiers**, chacun avec un `README.md`. Le
-`.gitignore` du noyau ignore leur contenu, README mis à part : ce que tu y
+Le `.gitignore` du noyau ignore leur contenu, README mis à part : ce que tu y
 écris ne se mélange jamais à l'historique du noyau.
+
+`profil/` est à part : il arrive **avec** du contenu — les specs que le noyau
+partage (`profil/specs/`), la forme de l'identité (`profil/identity.exemple/`),
+`CLAUDE.md.example`. Il se versionne à part, mais sa partie invariante est du
+**noyau** (`KERNEL.md`) : elle ne change qu'avec ta confirmation.
 
 ---
 
@@ -58,6 +70,9 @@ l'ont. `scripts/brain-satellites.py` s'en sert :
 | `… --check` | idem, avec un code de sortie : 0 tout est à jour |
 | `… --pull` | met à jour ce qui est en retard — en avance rapide seulement |
 | `… --cloner` | clone ce qui est déclaré pour cette machine et absent |
+
+Un dépôt dont le brain dépend sans le contenir se déclare avec un `chemin:`
+absolu ou en `~/…` : il est suivi et cloné là, et sa clé n'est plus qu'un nom.
 
 Sans `satellites.yml`, il ne fait rien : les satellites restent des dossiers.
 Avec lui, l'installation (`scripts/brain-setup.sh`) clone ceux de la machine.

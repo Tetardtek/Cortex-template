@@ -1,20 +1,19 @@
 # projets/
 
-> Snapshots live de vos projets actifs — etat courant, intentions, blockers.
+> L'état de tes projets actifs — un fichier par projet, `projets/<projet>.md`.
 
-## Contenu attendu
+## Ce qu'il garde
 
-Un fichier par projet : `projets/mon-projet.md`
+L'**état réel** d'un projet : où il en est, ses intentions en cours, ce qui le
+bloque. Pas un objectif ni un souhait — ceux-là vivent dans la vision et les
+intentions. Pour commencer : copier `_template.md`.
 
-Chaque fichier contient :
-- Etat courant du projet
-- Table des intentions liees
-- Blockers actifs
-- BYOKS (secrets requis)
+Un projet qui grossit peut devenir un dossier, `projets/<projet>/`, pour ranger
+sa connaissance à côté de sa fiche ; le moteur l'indexe en entier.
 
 ## Pourquoi
 
-Les agents chargent `projets/<projet>.md` en L2 quand vous faites `brain boot mode work/<projet>`.
-C'est la couche "etat" du systeme a 4 couches (vision / intention / todo / projet).
-
-> Voir `profil/collaboration.md` pour la convention des 4 couches.
+Une session `brain boot work/<projet>` charge `projets/<projet>.md` (couche L2
+de `contexts/session-work.yml`). C'est la couche « état » de la convention des
+4 couches — vision, intention, fiche, projet : voir
+`profil/specs/collaboration.md`.

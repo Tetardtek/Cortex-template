@@ -144,6 +144,25 @@ def vide_ou_absent(dossier: Path) -> bool:
     return not dossier.exists() or (dossier.is_dir() and not any(dossier.iterdir()))
 
 
+def emplacement(brain: Path, cle: str, declaration: dict | None) -> Path:
+    """Où vit le dépôt : sous le brain, à sa clé — ou ailleurs, à son `chemin:`.
+
+    `chemin:` sert un dépôt dont le brain dépend sans le contenir : `myeline`,
+    le CORE, vit hors du brain par décision (PATHS.md). Sans lui dans la liste,
+    une machine pouvait tirer un brain qui attend un CORE plus récent que le sien
+    — et son moteur ne démarrait plus (1/10). Absolu ou `~`, jamais relatif :
+    relatif à quoi, sinon ?
+    """
+    chemin = (declaration or {}).get("chemin")
+    if not chemin:
+        return brain / cle
+    lieu = Path(os.path.expanduser(str(chemin)))
+    if not lieu.is_absolute():
+        raise SystemExit(f"❌ satellites.yml : `{cle}` a un chemin relatif ({chemin}) — "
+                         "absolu ou `~/…` seulement")
+    return lieu
+
+
 def depots_presents(brain: Path) -> set[str]:
     """Les dépôts git sous le brain (deux niveaux), hors le brain lui-même."""
     return {str(g.parent.relative_to(brain)) for motif in ("*/.git", "*/*/.git")
@@ -185,21 +204,21 @@ def main() -> int:
         if not base:
             print("❌ l'URL du brain est illisible — impossible de dériver celle des satellites")
             return 1
-        manquants = [c for c in miens if vide_ou_absent(brain / c)]
+        manquants = [c for c in miens if vide_ou_absent(emplacement(brain, c, miens[c]))]
         for c in manquants:
             url = f"{base}/{miens[c]['depot']}.git"
-            r = subprocess.run(["git", "clone", "-q", url, str(brain / c)],
+            r = subprocess.run(["git", "clone", "-q", url, str(emplacement(brain, c, miens[c]))],
                                capture_output=True, text=True, timeout=600,
                                env={**os.environ, **SANS_QUESTION})
             print(f"  {'✅' if r.returncode == 0 else '❌'} {c:<16} {url}"
                   + ("" if r.returncode == 0 else f" — {r.stderr.strip()[-120:]}"))
         if not manquants:
             print(f"✅ rien à cloner — les {len(miens)} satellites de `{ici}` sont là")
-        return 0 if all((brain / c / ".git").exists() for c in miens) else 1
+        return 0 if all((emplacement(brain, c, miens[c]) / ".git").exists() for c in miens) else 1
 
     lignes: list[tuple[str, str, str]] = []
     for chemin in [".", *miens]:
-        depot = brain / chemin
+        depot = brain if chemin == "." else emplacement(brain, chemin, miens[chemin])
         if vide_ou_absent(depot):
             lignes.append((chemin, "absent", "→ --cloner"))
             continue

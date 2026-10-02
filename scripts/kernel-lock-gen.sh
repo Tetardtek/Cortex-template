@@ -78,6 +78,8 @@ while IFS= read -r -d '' f; do
   rel="${f#$BRAIN_ROOT/}"
   hash=$(sha256sum "$f" | cut -d' ' -f1)
   echo "  $rel: $hash" >> "$LOCK_FILE"
-done < <(suivis 'scripts/*.sh' 'scripts/*.py')
+# `scripts/brain` aussi, nommé : une commande n'a pas d'extension, et le motif la
+# laissait hors du lock — le même angle mort que la synchro.
+done < <(suivis 'scripts/*.sh' 'scripts/*.py' 'scripts/brain')
 
 echo "✅ kernel.lock généré — version $VERSION ($(grep -c ': [a-f0-9]\{64\}' "$LOCK_FILE") fichiers)"
