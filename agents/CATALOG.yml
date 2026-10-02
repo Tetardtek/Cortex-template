@@ -9,93 +9,9 @@ derivation:
     intention jamais exercee.'
   distributable: programme ET pas de hold
 counts:
-  programme: 80
-  prive: 12
+  programme: 70
+  prive: 0
 agents:
-- id: archive/bact-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: archived
-  description: BACT scribe — enrichissement contextuel privé, jamais template
-- id: aside
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Parenthèse de session — /btw pattern, 2-3 lignes, retour session
-- id: capital-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Capital scribe — milestones → formulations recruteur, CV
-- id: coach-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Coach scribe — persistance progression, journal/skills/milestones
-- id: concept-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: draft
-  description: null
-- id: content-orchestrator
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Content orchestrator — sentinelle content layer, détecte signaux
-- id: games/dofus
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: null
-  description: null
-- id: profile-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: null
-- id: recruiter
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Meta-agent — conception d'agents
-- id: spec-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: scribe
-  status: active
-  description: Spec scribe — specs techniques structurées, brainstorm → spec ratifiable
-- id: storyteller
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Storyteller — production contenu FR, script vidéo, Reddit, depuis journal
-- id: wiki-scribe
-  classification: prive
-  scope: personal
-  distributable: false
-  type: agent
-  status: active
-  description: Wiki scribe — rédaction et mise à jour wiki/, entrées canoniques
 - id: agent-review
   classification: programme
   scope: kernel
@@ -117,72 +33,6 @@ agents:
   type: agent
   status: active
   description: Architecture scribe — mémoire architecturale, git-analyst → ADR
-- id: archive/brain-hypervisor
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: archived
-  description: Hyperviseur brain — supervision multi-workflow parallèle, BACT hook
-- id: archive/bsi-schema
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: reference
-  status: archived
-  description: '**Source unique du schema claim BSI versionné dans git.**'
-- id: archive/context-broker
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: archived
-  description: Context broker — cycle respiratoire, inhale source map, expire release
-    map
-- id: archive/diagram-scribe
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: retired
-  description: null
-- id: archive/kernel-orchestrator
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: archived
-  description: Kernel orchestrator — exécution workflows BSI v3-9, circuit breaker
-- id: archive/satellite-boot
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: protocol
-  status: archived
-  description: Satellite boot — Pattern 10, scope unique, zéro overhead
-  hold: ne pas distribuer notre version — a reconstruire from scratch dans le template
-- id: archive/supervisor
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: archived
-  description: Supervisor — multi-sessions, dual-agent, CHECKPOINT, escalade humain
-- id: archive/time-anchor
-  classification: programme
-  scope: session
-  distributable: false
-  type: agent
-  status: archived
-  description: Time anchor — conscience temporelle, recontextualisation, fallback
-    post-compaction MCP KO
-- id: archive/workflow-auditor
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: agent
-  status: archived
-  description: Workflow auditor — rétrospective, KPIs actionnables, capture toolkit
 - id: audit
   classification: programme
   scope: kernel
@@ -366,11 +216,11 @@ agents:
 - id: helloWorld
   classification: programme
   scope: kernel
-  distributable: false
-  type: protocol
+  distributable: true
+  type: agent
   status: active
-  description: Bootstrap intelligent — briefing + chargement sélectif
-  hold: ne pas distribuer notre version — a reconstruire from scratch dans le template
+  description: Bootstrap — ouvrir la session, charger ce qui est déclaré, dire où
+    on en est
 - id: i18n
   classification: programme
   scope: project
@@ -575,11 +425,10 @@ agents:
 - id: secrets-guardian
   classification: programme
   scope: kernel
-  distributable: false
-  type: protocol
+  distributable: true
+  type: agent
   status: active
-  description: Secrets guardian — cycle de vie secrets, MYSECRETS → .env, jamais chat
-  hold: ne pas distribuer notre version — a reconstruire from scratch dans le template
+  description: Secrets guardian — les valeurs ne passent jamais par la conversation
 - id: secrets-injector
   classification: programme
   scope: kernel
@@ -590,11 +439,10 @@ agents:
 - id: secrets-manager
   classification: programme
   scope: kernel
-  distributable: false
+  distributable: true
   type: agent
   status: active
-  description: null
-  hold: ne pas distribuer notre version — a reconstruire from scratch dans le template
+  description: Secrets manager — poser, faire tourner, propager, sans jamais afficher
 - id: security
   classification: programme
   scope: project
@@ -659,14 +507,6 @@ agents:
   type: agent
   status: active
   description: Infra VPS — Apache, Docker, SSL, vhosts, certbot
-- id: wallet-guardian
-  classification: programme
-  scope: kernel
-  distributable: false
-  type: protocol
-  status: draft
-  description: null
-  hold: 'en developpement — status: draft (repris de export: false, 02/09)'
 - id: watch
   classification: programme
   scope: project

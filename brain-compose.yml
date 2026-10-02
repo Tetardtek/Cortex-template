@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.5.2"
+version: "2.5.3"
 
 # ---
 # Ownership — kerneluser
@@ -157,3 +157,6 @@ changelog:
   - version: "2.5.2"
     date: "2026-10-02"
     notes: "Un fork se garde et se teste comme le brain d'origine. Le gabarit livre NIVEAUX.yml : le moteur d'un fork en tire ses zones d'ecriture, et vie/ est de nouveau en zone kernel. Sans ce fichier, le moteur retombait sur ses listes en dur, et vie/ - livre depuis la v2.4.3 - etait en zone libre, que le role mcp peut ecrire. La suite du moteur est verte chez un fork installe : un test de script d'instance s'abstient chez un fork, et reste rouge si le script manque au brain d'origine ; les brains temoins recoivent le CORE livre. claims/ ne part plus (un claim de la v1.0 ; les claims vivent en base depuis BRAIN-042). Le repli statique de brain_focus s'annonce lui-meme. Mise a jour depuis la v2.5.1 : relancer les deux portes - bash scripts/brain-engine.sh install systemd, ou install pm2."
+  - version: "2.5.3"
+    date: "2026-10-02"
+    notes: "Un fork installe a ce que le brain d'origine a. Le setup pose les hooks git (etape 11) : le claim d'une session reste en vie, la base suit les handoffs, et un commit doit porter un type declare dans KERNEL.md - un message libre est refuse, en le disant. Le setup resout chaque marqueur de PATHS.md, <PROJECTS_ROOT> compris (le dossier ou le brain est clone, ou PROJECTS_ROOT=) ; un fork deja installe se corrige en relancant le setup. Le catalogue des agents est regenere sur le gabarit : il decrit les agents livres, et plus les agents prives de l'instance d'origine (nom et resume) ni ceux qu'un fork n'a pas. Mise a jour depuis la v2.5.2 : bash scripts/install-brain-hooks.sh, puis remplacer <PROJECTS_ROOT> dans la ligne projects/ de PATHS.md - sans relancer tout le setup, dont l'etape 2 reecrit ~/.claude/CLAUDE.md."

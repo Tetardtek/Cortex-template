@@ -43,13 +43,13 @@ bash scripts/brain-setup.sh <nom-de-ton-brain>
 ```
 
 Il installe le brain **où il est cloné** (un second argument choisit un autre
-dossier). Le script est idempotent : relance-le si une étape a échoué. Ses dix étapes :
+dossier). Le script est idempotent : relance-le si une étape a échoué. Ses onze étapes :
 
 | Étape | Ce qu'elle fait |
 |---|---|
 | 1. Satellites | vérifie `profil/`, `todo/`, `toolkit/`, `progression/`, `reviews/` — les dossiers du gabarit. Rien n'est cloné. |
 | 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example` — l'ancien est sauvegardé en `CLAUDE.md.bak-<date>`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
-| 3. Configuration | crée `brain-compose.local.yml` (ta machine), remplit `PATHS.md` |
+| 3. Configuration | crée `brain-compose.local.yml` (ta machine), remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
 | 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
 | 5. Outils | vérifie Claude Code, Node et Python |
 | 6. brain-engine | crée `brain-engine/.venv` et y installe les dépendances |
@@ -57,6 +57,7 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses di
 | 8. brain-ui | installe et **construit** le dashboard |
 | 9. Le moteur | installe le moteur et le serveur MCP en **services utilisateur** (`brain-engine`, `brain-mcp`) : ils survivent au reboot |
 | 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |
+| 11. Les hooks git | installe les hooks du brain dans `.git/hooks` : le claim d'une session reste en vie, la base suit les handoffs, et **un commit doit porter un type déclaré dans `KERNEL.md`** (`feat:`, `fix:`, `todo:`…) — un message libre est refusé, en le disant |
 
 > ⚠️ **L'étape 2 remplace ton `~/.claude/CLAUDE.md`.** Si tu en avais un à toi,
 > il est dans `~/.claude/CLAUDE.md.bak-<date>` : fusionne à la main ce que tu veux garder.

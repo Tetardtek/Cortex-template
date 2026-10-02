@@ -21,7 +21,7 @@ ordre: 2
 | **chill** | je suis là | `brain boot chill` | 12 h | ~12% | `coach-boot` · `learning-journal` |
 | **explore** | je réfléchis / je navigue | `brain boot explore[/<scope>]` | 8 h | ~18% | `coach-boot` · `coach` · `pulse` |
 | **learning** | je découvre / j'expérimente | `brain boot learning[/<track>]` | 4 h | ~15% | `coach-boot` · `coach` |
-| **pilote** (owner) | j'orchestre (long, multi-scope) | `brain boot pilote[/<project>]` | 12 h | ~35% | `coach` |
+| **pilote** (owner) | j'orchestre (long, multi-scope) | `brain boot pilote[/<project>]` | 12 h | ~35% | `coach` · `helloWorld` · `secrets-guardian` |
 | **work** | je produis | `brain boot work[/<project>]` | 4 h | ~25% | `coach-boot` · `coach` · `debug` · `code-review` · `security` |
 
 *Généré depuis `contexts/session-*.yml` : chaque type y a son manifest. « Claim »

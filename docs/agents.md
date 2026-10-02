@@ -25,7 +25,7 @@ travaillent : le contexte reste disponible pour ce que tu fais.
 
 ---
 
-## Les 67 agents
+## Les 70 agents
 
 *Liste générée depuis l'en-tête de chaque fichier `agents/*.md` — la portée
 (`brain.scope`) et le rôle (`brain.type`) qu'il déclare, et sa description.
@@ -73,7 +73,7 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 
 - **`brain-ui-scribe`** — Brain-UI scribe — contexte brain-ui, stack, composants, Sprint 2
 
-### Le fonctionnement du brain (14)
+### Le fonctionnement du brain (17)
 
 - **`brain-compose`** — Brain-compose — multi-instances, symlinks kernel, registre machine
 - **`brain-guardian`** — Brain guardian — auto-méfiance structurelle, assertions prouvées uniquement quand brain opère sur lui-même
@@ -81,6 +81,7 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 - **`coach-boot`** — Coach boot — extrait coach.md boot-summary, chargé en L0 pour toutes les sessions
 - **`coach`** — Coach permanent — présence, progression, feedback
 - **`conciergerie`** — Archivage et hygiène de la donnée cognitive
+- **`helloWorld`** — Bootstrap — ouvrir la session, charger ce qui est déclaré, dire où on en est
 - **`integrator`** — Intégration multi-agents — absorption, validation critères, handoff
 - **`interprete`** — Clarification d'intention — demandes ambiguës, scope drift
 - **`mentor`** — Mentor — pédagogie, explication, garde-fou
@@ -88,6 +89,8 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 - **`pre-flight`** — Pre-flight — gate boot, vérifie kerneluser + write_lock + posture avant chargement L1
 - **`pulse`** — Snapshot live du brain — passé, présent, futur
 - **`scribe`** — Scribe — maintenance du brain, structuration
+- **`secrets-guardian`** — Secrets guardian — les valeurs ne passent jamais par la conversation
+- **`secrets-manager`** — Secrets manager — poser, faire tourner, propager, sans jamais afficher
 - **`tech-lead`** — Tech lead — gate sprint, contention map, overflow zones
 
 ### Orchestration (2)

@@ -1678,6 +1678,58 @@ def avec_le_core(moteur: Path) -> None:
     if core.is_dir() and not (moteur / 'core').exists():
         (moteur / 'core').symlink_to(core.resolve())
 
+class TestSetupResoutPaths(unittest.TestCase):
+    """L'étape 3.1 du setup résout CHAQUE marqueur de `PATHS.md`, chacun pour lui.
+
+    `<PROJECTS_ROOT>` ne l'était jamais, et tout dépendait de `<BRAIN_ROOT>` : un
+    fork gardait `projects/ → <PROJECTS_ROOT>` (2/10, fork installé).
+    L'étape est jouée SEULE, extraite du script, sur un `PATHS.md` jetable."""
+
+    MARQUEURS = ('| `brain/` | `<BRAIN_ROOT>` |\n| `projects/` | `<PROJECTS_ROOT>` |\n'
+                 '| `home/` | `<HOME>` |\n')
+
+    def _etape(self):
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        return script[script.index('# ── Étape 3.1'):script.index('# ── Lock kernel push')]
+
+    def _jouer(self, paths, **env):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp) / 'dev' / 'mon-brain'
+            racine.mkdir(parents=True)
+            (racine / 'PATHS.md').write_text(paths, encoding='utf-8')
+            r = subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; info(){ echo "info $*"; }\n'
+                                + self._etape()],
+                               env={'PATH': os.environ['PATH'], 'HOME': '/home/temoin',
+                                    'BRAIN_ROOT': str(racine), **env},
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return (racine / 'PATHS.md').read_text(encoding='utf-8'), str(racine), r.stdout
+
+    def test_un_fork_neuf_n_a_plus_aucun_marqueur(self):
+        texte, racine, _ = self._jouer(self.MARQUEURS)
+        self.assertNotIn('<', texte.replace('| `', ''), texte)
+        self.assertIn(f'`{racine}`', texte)
+        self.assertIn(f'`{Path(racine).parent}`', texte, 'les projets : là où le brain est cloné')
+        self.assertIn('`/home/temoin`', texte)
+
+    def test_un_fork_installe_avant_se_corrige_en_relancant(self):
+        """Le cas de tout fork installé jusqu'à la v2.5.2 : `<BRAIN_ROOT>` déjà
+        résolu, `<PROJECTS_ROOT>` resté — l'ancienne étape sautait tout."""
+        deja = self.MARQUEURS.replace('<BRAIN_ROOT>', '/x/mon-brain').replace('<HOME>', '/home/temoin')
+        texte, racine, sortie = self._jouer(deja)
+        self.assertNotIn('<PROJECTS_ROOT>', texte)
+        self.assertIn('<PROJECTS_ROOT>', sortie, 'il dit ce qu il a remplacé')
+
+    def test_projects_root_choisit_un_autre_dossier(self):
+        texte, _, _ = self._jouer(self.MARQUEURS, PROJECTS_ROOT='/srv/mes-projets')
+        self.assertIn('`/srv/mes-projets`', texte)
+
+    def test_deja_configure_rien_ne_bouge(self):
+        texte, _, sortie = self._jouer('| `brain/` | `/x` |\n')
+        self.assertEqual(texte, '| `brain/` | `/x` |\n')
+        self.assertIn('déjà configuré', sortie)
+
+
 class TestScriptDInstance(unittest.TestCase):
     """L'abstention ne couvre que le fork : dans le brain d'origine, un script
     absent est perdu, et le test reste rouge."""
@@ -6653,6 +6705,45 @@ class TestNiveauxDuGabarit(unittest.TestCase):
         rendu, r = self._rendre(self.tmp / 'pas-de-base')
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("vie/ n'est pas en zone kernel", r.stdout + r.stderr)
+
+
+class TestCatalogueDuGabarit(unittest.TestCase):
+    """Le catalogue livré décrit les agents livrés — et aucun agent privé.
+
+    `agents/CATALOG.yml` partait tel quel : celui de l'instance, qui nomme ses
+    agents privés (nom et résumé) et 22 agents qu'un fork n'a pas. La synchro le
+    régénère sur le rendu. Le témoin contraire : le catalogue SOURCE, lui, porte
+    des entrées privées — sans quoi ce test ne discriminerait rien."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+
+    @staticmethod
+    def _catalogue(racine):
+        import yaml
+        return yaml.safe_load((racine / 'agents' / 'CATALOG.yml').read_text(encoding='utf-8'))['agents']
+
+    def test_la_source_porte_des_prives(self):
+        self.assertTrue([a for a in self._catalogue(BRAIN_ROOT_PATH) if not a.get('distributable', True)],
+                        'le catalogue source n\'a plus de privé : le test suivant ne discrimine plus')
+
+    def test_le_catalogue_livre_decrit_les_agents_livres(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        catalogue = self._catalogue(rendu)
+        self.assertEqual([a['id'] for a in catalogue if not a.get('distributable', True)], [],
+                         'un agent non distribuable est décrit dans le gabarit')
+        ids = {a['id'] for a in catalogue}
+        agents = rendu / 'agents'
+        livres = {str(f.relative_to(agents))[:-3] for f in agents.rglob('*.md')
+                  if f.stem not in ('AGENTS', 'CATALOG') and not f.stem.startswith('_')
+                  and 'reviews' not in f.relative_to(agents).parts}
+        self.assertEqual(sorted(ids - livres), [], 'des entrées sans fichier')
+        self.assertEqual(sorted(livres - ids), [], 'des agents livrés sans entrée')
 
 
 class TestFocusInstantane(unittest.TestCase):

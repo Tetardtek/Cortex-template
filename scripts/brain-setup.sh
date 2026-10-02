@@ -1,7 +1,7 @@
 #!/bin/bash
 # brain-distribuable: oui
 # brain-setup.sh — Setup complet brain sur une nouvelle machine
-# Usage : [BRAIN_MACHINE=laptop] bash brain-setup.sh [brain_name] [brain_root] [--sans-service]
+# Usage : [BRAIN_MACHINE=laptop] [PROJECTS_ROOT=~/Dev] bash brain-setup.sh [brain_name] [brain_root] [--sans-service]
 # Ex    : bash brain-setup.sh my-brain ~/Dev/Brain
 #
 # Ce script est idempotent — safe à relancer si une étape a échoué.
@@ -32,7 +32,7 @@ BRAIN_ROOT="${POSITIONNELS[1]:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # le nom de l'instance, et un laptop se déclarait `prod-laptop` quand la liste
 # attendait `laptop`.
 BRAIN_MACHINE="${BRAIN_MACHINE:-$BRAIN_NAME}"
-ETAPES=10
+ETAPES=11
 
 # ── Couleurs ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -153,10 +153,28 @@ if [[ -f "$BRAIN_ROOT/satellites.yml" ]]; then
 fi
 
 # ── Étape 3.1 — PATHS.md (remplacer les placeholders) ─────────────────────────
-if grep -q '<BRAIN_ROOT>' "$BRAIN_ROOT/PATHS.md" 2>/dev/null; then
-  sed -i "s|<BRAIN_ROOT>|$BRAIN_ROOT|g" "$BRAIN_ROOT/PATHS.md"
-  sed -i "s|<HOME>|$HOME|g" "$BRAIN_ROOT/PATHS.md"
-  ok "PATHS.md configuré ($BRAIN_ROOT)"
+#
+# Chaque marqueur se remplace pour lui-même. `<PROJECTS_ROOT>` ne l'était jamais,
+# et tout dépendait de `<BRAIN_ROOT>` : un fork gardait `projects/ →
+# <PROJECTS_ROOT>`, que le doctor voyait « déclaré et absent » (mesuré le 2/10
+# sur un fork installé). Indépendants, un fork déjà installé se
+# corrige en relançant le setup.
+#
+# Les projets : par défaut le dossier où le brain a été cloné (il existe
+# forcément) ; `PROJECTS_ROOT=<dossier>` en choisit un autre.
+PROJECTS_ROOT="${PROJECTS_ROOT:-$(dirname "$BRAIN_ROOT")}"
+_remplaces=()
+for _paire in "<BRAIN_ROOT>|$BRAIN_ROOT" "<HOME>|$HOME" "<PROJECTS_ROOT>|$PROJECTS_ROOT"; do
+  _m="${_paire%%|*}"; _v="${_paire#*|}"
+  if grep -qF "$_m" "$BRAIN_ROOT/PATHS.md" 2>/dev/null; then
+    sed -i "s|$_m|$_v|g" "$BRAIN_ROOT/PATHS.md"
+    _remplaces+=("$_m")
+  fi
+done
+if [[ ${#_remplaces[@]} -gt 0 ]]; then
+  ok "PATHS.md configuré — ${_remplaces[*]} (projets : $PROJECTS_ROOT)"
+  [[ " ${_remplaces[*]} " == *" <PROJECTS_ROOT> "* ]] && \
+    info "  tes projets vivent ailleurs ? corrige la ligne projects/ de PATHS.md"
 else
   info "PATHS.md déjà configuré — skip"
 fi
@@ -357,6 +375,27 @@ if bash "$BRAIN_ROOT/scripts/ollama-setup.sh" --verifier; then
   RECHERCHE_PRETE=true
 else
   warn "recherche sémantique indisponible — le brain tourne sans ; voir ci-dessus pour l'activer"
+fi
+
+# ── Étape 11 — les hooks git ────────────────────────────────────────────────
+#
+# Ils tiennent le claim d'une session en vie (post-commit), refusent un commit
+# sans type déclaré dans KERNEL.md (commit-msg), et gardent la base au rythme
+# des handoffs (post-merge, post-rewrite). Livrés avec le gabarit, mais rien ne
+# les posait : un fork qui suivait le README n'en avait aucun, et le doctor le
+# disait — « hooks à réinstaller », « le hook post-commit touche le claim :
+# ABSENT » (mesuré le 2/10 sur un fork installé). En dernier : ils
+# appellent le venv et la base, posés aux étapes 6 et 7.
+echo ""
+echo "[11/$ETAPES] Les hooks git..."
+if git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  if bash "$BRAIN_ROOT/scripts/install-brain-hooks.sh" >/dev/null; then
+    ok "hooks git installés — un commit porte un type déclaré dans KERNEL.md (feat:, fix:…)"
+  else
+    warn "les hooks ne se sont pas installés — relancer : bash scripts/install-brain-hooks.sh"
+  fi
+else
+  warn "$BRAIN_ROOT n'est pas un dépôt git — pas de hooks (un clone du gabarit en est un)"
 fi
 
 # ── Résumé ────────────────────────────────────────────────────────────────────
