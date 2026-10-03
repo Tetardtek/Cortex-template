@@ -2430,7 +2430,7 @@ class TestSyncTemplate(unittest.TestCase):
     CHEMINS = ('scripts', 'agents', 'docs', 'contexts', 'workflows', 'brain-engine',
                'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
                'MYSECRETS.example', 'brain-compose.local.yml.example',
-               'NIVEAUX.yml', 'handoffs/_template.md')
+               'NIVEAUX.yml', 'handoffs/_template.md', 'projets/_template.md')
     SATELLITES = ('profil', 'wiki', 'brain-ui')
 
     def setUp(self):
@@ -6956,6 +6956,56 @@ class TestHandoffsDuGabarit(unittest.TestCase):
             self.assertIn(statut, lisez, f'le README des handoffs ne dit pas « {statut} »')
         self.assertNotIn('brief-<scope>', lisez, 'le modèle périmé est revenu')
 
+    def test_le_gabarit_de_fiche_projet_est_celui_du_brain(self):
+        """Le gabarit d'une fiche de projet vient du brain : celui du gabarit était
+        resté celui de la v1.0, sans `planned`/`active` ni les champs de la zone
+        projet que le doctor livré juge."""
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        fiche = (rendu / 'projets' / '_template.md').read_text(encoding='utf-8')
+        for attendu in ('planned', 'active', 'prefixe:', 'palier:', 'repo:', 'ce qui SE CONSTRUIT'):
+            self.assertIn(attendu, fiche, f'le gabarit de fiche ne porte pas « {attendu} »')
+
+
+class TestLearningDuGabarit(unittest.TestCase):
+    """Le README `learning/` d'un fork enseigne la forme que le doctor juge.
+
+    Il n'existait que dans le gabarit publié, sans source, et enseignait
+    `learning/<piste>.md` à la racine — la forme que « la zone learning »
+    refuse. Sa source vit dans `gabarit/learning/`."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestCouchesDuGabarit.setUp, TestCouchesDuGabarit.tearDown
+    _git, _sync, _rendre = TestSyncTemplate._git, TestSyncTemplate._sync, TestCouchesDuGabarit._rendre
+    BASE = TestCouchesDuGabarit.BASE
+
+    def test_un_fork_neuf_a_une_zone_learning_qui_tient(self):
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        source = BRAIN_ROOT_PATH / 'gabarit' / 'learning' / 'README.md'
+        self.assertEqual((rendu / 'learning' / 'README.md').read_text(encoding='utf-8'),
+                         source.read_text(encoding='utf-8'), 'le README learning du rendu n\'est pas sa source')
+        juge = rendu / 'brain-engine' / 'doctor' / 'zone_learning.py'
+        if not juge.is_file():
+            self.skipTest('zone_learning.py absent du doctor livré — un Myéline qui ne le porte pas encore')
+        z = subprocess.run([sys.executable, str(juge), '--brain', str(rendu)],
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(z.returncode, 0, z.stdout[-600:])
+        # et la forme qu'il enseigne passe : une piste écrite comme il le dit
+        piste = rendu / 'learning' / 'ma-piste'
+        piste.mkdir()
+        (piste / 'README.md').write_text('---\nname: ma-piste\ntype: learning-track\nstatus: exploring\n---\n',
+                                         encoding='utf-8')
+        subprocess.run([sys.executable, str(juge), '--brain', str(rendu), '--ecrire'],
+                       capture_output=True, text=True, timeout=120)
+        z = subprocess.run([sys.executable, str(juge), '--brain', str(rendu)],
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(z.returncode, 0, z.stdout[-600:])
+
 
 class TestDoctorDuGabarit(unittest.TestCase):
     """Le gabarit livre `brain doctor` : un fork se contrôle lui-même.
@@ -6974,6 +7024,11 @@ class TestDoctorDuGabarit(unittest.TestCase):
             self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
         rendu, r = self._rendre(self.BASE.resolve())
         self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        # Le journal ne doit pas annoncer retiré ce que l'étape du doctor remet :
+        # 62 faux retraits à chaque synchro jusqu'au 2/10.
+        faux = [l for l in r.stdout.splitlines() if '🗑' in l and
+                any(f'brain-engine/{d}/' in l for d in ('doctor', 'contrat', 'bench'))]
+        self.assertEqual(faux, [], 'le journal annonce retiré ce que le doctor remet')
         doctor = rendu / 'brain-engine' / 'doctor' / 'brain_doctor.py'
         self.assertTrue(doctor.is_file(), 'le doctor n\'est pas livré')
         liste = subprocess.run([sys.executable, str(doctor), '--lister-gabarit'],

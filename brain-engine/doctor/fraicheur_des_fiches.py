@@ -304,7 +304,39 @@ def ecritures_d_etat(brain: Path) -> dict[str, int]:
             # `git log` descend du plus recent au plus ancien : le premier vu
             # est le bon, on ne l'ecrase pas avec un commit plus vieux.
             dernier.setdefault(f, horodatage)
+    # Une RELECTURE datee compte, meme posee dans un lot. La passe sur
+    # tous les projets (3/10) a remesure 51 fiches en trois PR de 8 a 23 fiches :
+    # des remaniements pour la regle ci-dessus, donc aucune relecture — et
+    # l'outil disait « en retard » des fiches remesurees le jour meme. Le
+    # marqueur est explicite (`📏 **Remesuré le …`), pose apres une mesure avec
+    # preuves ; sa date est celle du COMMIT qui l'a ajoute, jamais celle ecrite
+    # dans le texte (une date tapee ne triche pas, l'annee n'est jamais ambigue).
+    # Sans `--pickaxe-all`, `-G` ne liste que les fichiers dont le diff porte
+    # le marqueur : un lot ne rajeunit que les fiches qu'il a vraiment relues.
+    for f, quand in relectures(brain).items():
+        if quand > dernier.get(f, 0):
+            dernier[f] = quand
     return dernier
+
+
+MARQUEUR_RELECTURE = r"📏 \*\*Remesuré le"
+
+
+def relectures(brain: Path) -> dict[str, int]:
+    """Pour chaque fiche, la date du dernier commit qui y a pose (ou touche)
+    le marqueur de relecture."""
+    sortie = _git(brain, "log", "--format=%x00%ct", "--name-only",
+                  "-G", MARQUEUR_RELECTURE, "--", "projets/")
+    vues: dict[str, int] = {}
+    for bloc in sortie.split("\x00"):
+        if not bloc.strip():
+            continue
+        lignes = bloc.strip().splitlines()
+        for f in lignes[1:]:
+            f = f.strip()
+            if f.startswith("projets/") and f.endswith(".md"):
+                vues.setdefault(f, int(lignes[0]))
+    return vues
 
 
 def commits_depuis(depot: Path, horodatage: int) -> int:
@@ -462,6 +494,23 @@ def auto_epreuve() -> None:
         verifie("un commit de 4 fiches reste une écriture d'état",
                 all(f"projets/r{i}.md" in ecritures_d_etat(brain)
                     for i in range(4)), True)
+
+        # ── une relecture datée compte, même dans un lot ─────────
+        # Le cas du 3/10 : six fiches remesurees d'un coup, l'une avec le
+        # marqueur. Elle seule rajeunit — le lot n'ecrit pas l'etat des autres.
+        lot = {f"projets/q{i}.md": f"# q{i}\n" for i in range(5)}
+        lot["projets/mon-site.md"] = ("# Mon site\n\n> 📏 **Remesuré le 22/09 (lot)** — "
+                                      "rien de non poussé.\n")
+        _commit(brain, lot, "todo: un lot de six fiches", "2026-09-22T10:00:00")
+        relus = {n: c for n, _, c in examiner(brain, racines)[0]}
+        verifie("une relecture datée, dans un lot, rajeunit la fiche relue",
+                "mon-site.md" in relus, False)
+        verifie("… et le lot ne rajeunit pas les fiches sans marqueur",
+                any(f"projets/q{i}.md" in ecritures_d_etat(brain) for i in range(5)), False)
+        # le témoin : le dépôt bouge APRÈS la relecture, le doute revient
+        _commit(gitea / "mon-site", {"c.txt": "3"}, "travail", "2026-09-23T10:00:00")
+        verifie("… et un dépôt qui bouge après la relecture fait douter de nouveau",
+                {n: c for n, _, c in examiner(brain, racines)[0]}.get("mon-site.md"), 1)
 
         # ── ce qu'on n'a pas pu mesurer est nommé, jamais tu ─────────────
         _commit(brain, {"projets/fantome.md": "# fantome\n"},

@@ -7,13 +7,50 @@
 ## Ce qu'il garde
 
 Ce qu'écrit une session `learning` (`brain boot learning/<piste>`) : une piste
-par sujet, son index et ses modules.
+par sujet, dans son dossier.
 
 ```
 learning/
-  <piste>.md            la piste : où tu en es, ce qui vient ensuite
-  <piste>/m01-….md      ses modules
+  README.md               cet index — la table des pistes y est générée
+  <piste>/README.md       la fiche de la piste : son index et ses liens
+  <piste>/m01-….md        ses modules — ses unités de progression
 ```
+
+La **fiche** d'une piste dit ce qu'elle porte et ce qu'elle nourrit :
+
+```yaml
+---
+name: <piste>
+type: learning-track
+status: exploring         # seed · exploring · active · pause · close
+domain: [<sujet>, <sujet>]
+feeds: [<projet>]         # ce qu'elle nourrit : un projet, une autre piste, ou vie/
+liens: [https://…]        # optionnel — une URL, ou un chemin du brain
+---
+```
+
+`feeds:` ne nomme que ce qui **existe** : un projet qui n'a pas encore sa fiche
+y entre le jour où elle naît. Un projet sait quelles pistes le nourrissent sans
+le déclarer : la vue se déduit (`zone_learning.py --projet <slug>`).
+
+| Statut | Signifie |
+|--------|----------|
+| `seed` | posée, pas encore commencée |
+| `exploring` | on découvre |
+| `active` | on progresse avec méthode — des modules |
+| `pause` | arrêtée, on y reviendra |
+| `close` | finie, gardée |
+
+## Les pistes
+
+<!-- genere:tracks -->
+| Track | Statut | Domaine | Nourrit |
+|-------|--------|---------|---------|
+<!-- /genere:tracks -->
+
+La table se **génère** depuis les fiches :
+`python3 brain-engine/doctor/zone_learning.py --brain . --ecrire`. `brain doctor`
+la juge (« la zone learning »), avec les fiches, leurs statuts et leurs `feeds:`.
 
 ## Le versionner
 

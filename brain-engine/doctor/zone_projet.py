@@ -14,6 +14,9 @@ ensemble. Ce qui pourrirait en silence sans lui :
     un dépôt illisible                 des issues sans maison
     un projet archivé, une fiche       une liste qu'on dit gelée, et qui ne l'est pas
       encore ouverte                   (règle 4 du 29/09 : les ouvertes passent ⏸️)
+    une fiche sans statut, ou un       un projet dont personne ne sait s'il vit ; une
+      fichier qui n'est pas une fiche  annexe à plat, qui se fait passer pour un projet
+      à la racine de projets/          (elle vit dans projets/<slug>/)
 
 **Les dossiers sans fiche d'aujourd'hui ne se devinent pas** : ils se rattachent
 un par un, avec l'humain. D'ici là, chacun est NOMMÉ, avec sa raison, dans
@@ -42,6 +45,7 @@ EXEMPTIONS = Path("workspace") / ".zone-projet-orphelins"
 PREFIXE = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 FICHE = re.compile(r"^([A-Z][A-Z0-9]*)-\d+\.md$")
 PALIERS = {"a", "b", "c"}
+STATUTS = ("planned", "cadrage", "dev", "active", "prod", "pause", "archived")
 AUTO_EPREUVE_CAS = 0                    # compté par l'auto-épreuve, pas écrit à la main
 
 
@@ -98,6 +102,15 @@ def juger(brain: Path) -> list[str]:
         if d not in dossiers or d in fiches:
             defauts.append(f"{EXEMPTIONS} nomme « {d} », qui n'est plus un dossier sans fiche "
                            f"— retirer la ligne")
+
+    # 7. chaque fichier de projets/ est une fiche de projet, avec un statut
+    for slug, m in fiches.items():
+        if str(m.get("type")) != "projet":
+            defauts.append(f"projets/{slug}.md : `type: {m.get('type')}` — une fiche de projet est "
+                           f"`type: projet` ; une annexe se range dans projets/<slug>/")
+        elif str(m.get("status")) not in STATUTS:
+            defauts.append(f"projets/{slug}.md : `status: {m.get('status')}` — attendu "
+                           f"{' | '.join(STATUTS)}")
 
     # 2-3. préfixe et palier
     vus: dict[str, str] = {}
@@ -163,20 +176,22 @@ def auto_epreuve() -> list[str]:
     """Chaque défaut, dans un brain jetable, doit être vu. Rend ce qui a échappé."""
     cas = {
         "dossier sans fiche": ({}, ["orphelin"], {}, ""),
-        "exemption périmée": ({"nomme": "---\nname: nomme\n---\n"}, ["nomme"], {},
+        "exemption périmée": ({"nomme": "---\ntype: projet\nstatus: dev\nname: nomme\n---\n"}, ["nomme"], {},
                               "nomme une raison\n"),
         "exemption sans raison": ({}, ["x"], {}, "x\n"),
-        "préfixe double": ({"a": "---\nprefixe: ZZ\n---\n", "b": "---\nprefixe: ZZ\n---\n"},
+        "préfixe double": ({"a": "---\ntype: projet\nstatus: dev\nprefixe: ZZ\n---\n", "b": "---\ntype: projet\nstatus: dev\nprefixe: ZZ\n---\n"},
                            [], {}, ""),
-        "préfixe mal formé": ({"a": "---\nprefixe: zz\n---\n"}, [], {}, ""),
-        "palier inconnu": ({"a": "---\nprefixe: AA\npalier: d\n---\n"}, [], {}, ""),
-        "palier sans préfixe": ({"a": "---\npalier: a\n---\n"}, [], {}, ""),
-        "dépôt illisible": ({"a": "---\nrepo: nulle-part\n---\n"}, [], {}, ""),
-        "fiche au mauvais préfixe": ({"a": "---\nprefixe: AA\n---\n"}, ["a"],
+        "préfixe mal formé": ({"a": "---\ntype: projet\nstatus: dev\nprefixe: zz\n---\n"}, [], {}, ""),
+        "palier inconnu": ({"a": "---\ntype: projet\nstatus: dev\nprefixe: AA\npalier: d\n---\n"}, [], {}, ""),
+        "palier sans préfixe": ({"a": "---\ntype: projet\nstatus: dev\npalier: a\n---\n"}, [], {}, ""),
+        "dépôt illisible": ({"a": "---\ntype: projet\nstatus: dev\nrepo: nulle-part\n---\n"}, [], {}, ""),
+        "fiche au mauvais préfixe": ({"a": "---\ntype: projet\nstatus: dev\nprefixe: AA\n---\n"}, ["a"],
                                      {"a": ["BB-1.md"]}, ""),
-        "fiche sans préfixe de projet": ({"a": "---\nname: a\n---\n"}, ["a"],
+        "fiche sans préfixe de projet": ({"a": "---\ntype: projet\nstatus: dev\nname: a\n---\n"}, ["a"],
                                          {"a": ["AA-1.md"]}, ""),
-        "projet archivé, fiche ouverte": ({"a": "---\nstatus: archived\nprefixe: AA\n---\n"},
+        "fiche sans statut": ({"a": "---\ntype: projet\n---\n"}, [], {}, ""),
+        "annexe à plat dans projets/": ({"a": "---\ntype: reference\nstatus: dev\n---\n"}, [], {}, ""),
+        "projet archivé, fiche ouverte": ({"a": "---\ntype: projet\nstatus: dev\nstatus: archived\nprefixe: AA\n---\n"},
                                           ["a"], {"a": ["AA-1.md"]}, ""),
     }
     global AUTO_EPREUVE_CAS
@@ -205,11 +220,11 @@ def auto_epreuve() -> list[str]:
         (b / "projets").mkdir()
         (b / "workspace" / "backlog" / "sain").mkdir(parents=True)
         (b / "projets" / "sain.md").write_text(
-            "---\nprefixe: SA\npalier: a\nrepo: forge.example/o/sain\n---\n", encoding="utf-8")
+            "---\ntype: projet\nstatus: dev\nprefixe: SA\npalier: a\nrepo: forge.example/o/sain\n---\n", encoding="utf-8")
         (b / "workspace" / "backlog" / "sain" / "SA-1.md").write_text("x\n", encoding="utf-8")
         # un projet archivé dont la liste est gelée : une fiche close, une en pause
         (b / "workspace" / "backlog" / "fini").mkdir()
-        (b / "projets" / "fini.md").write_text("---\nstatus: archived\nprefixe: FI\n---\n",
+        (b / "projets" / "fini.md").write_text("---\ntype: projet\nstatus: dev\nstatus: archived\nprefixe: FI\n---\n",
                                                encoding="utf-8")
         (b / "workspace" / "backlog" / "fini" / "FI-1.md").write_text(
             "### [FI-1] Close — ✅ livré le 1/10\n", encoding="utf-8")

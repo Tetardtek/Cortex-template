@@ -1034,7 +1034,7 @@ def cmd_close_stale():
                 (base / "workspace" / "backlog" / "_template" / "vision.md").write_text(
                     (VRAI_BRAIN / "workspace" / "backlog" / "_template" / "vision.md").read_text(encoding="utf-8"),
                     encoding="utf-8")
-                (base / "projets" / "ancien.md").write_text("---\nname: ancien\nprefixe: AN\n---\n",
+                (base / "projets" / "ancien.md").write_text("---\nname: ancien\ntype: projet\nstatus: dev\nprefixe: AN\n---\n",
                                                             encoding="utf-8")
 
                 def naitre(*args: str) -> int:
@@ -1068,7 +1068,7 @@ def cmd_close_stale():
             liste = base / "workspace" / "backlog" / "vivant"
             liste.mkdir(parents=True)
             (base / "projets" / "vivant.md").write_text(
-                "---\nname: vivant\nstatus: dev\nprefixe: VI\npalier: a\n---\n\n# Vivant\n",
+                "---\nname: vivant\ntype: projet\nstatus: dev\nprefixe: VI\npalier: a\n---\n\n# Vivant\n",
                 encoding="utf-8")
             (liste / "VI-1.md").write_text("### [VI-1] Une fiche ouverte\n\nSon texte.\n",
                                           encoding="utf-8")

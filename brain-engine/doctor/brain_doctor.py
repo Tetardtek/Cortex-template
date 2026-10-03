@@ -556,6 +556,13 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         # avait été repris : le 2/10, 43 sur 45 étaient `active`. Seuil tranché
         # le 2/10 : 14 jours. Les candidats de `scratch/` sont affichés, pas
         # jugés (tranché le même jour).
+        # Le modèle de la zone projet, appliqué aux tracks : la fiche d'une track
+        # est son index et ses liens ; `feeds:` ne nomme que ce qui existe ; la
+        # table de learning/README.md est générée. Mesuré le 2/10 : 5 cibles
+        # réelles sur 15, une table qui contredisait les fiches.
+        Controle("la zone learning",
+                 "une track qui nourrit un projet qui n'existe pas, une table écrite à la main",
+                 [sys.executable, str(OUTILS / "zone_learning.py"), "--brain", str(brain)]),
         Controle("les handoffs disent s'ils sont attendus",
                  "un handoff actif que plus personne ne reprendra, ou sans statut",
                  [sys.executable, str(OUTILS / "handoffs_vivants.py"), "--brain", str(brain)]),
