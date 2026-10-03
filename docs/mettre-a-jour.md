@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v2.6.3.
+> travail. Kernel v2.6.4.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -28,6 +28,31 @@ existe : une ligne, sans insister. Le timer `brain-maj` (posé par
 `bash scripts/brain-engine.sh install systemd`) lit les tags de l'amont une fois
 par jour, sans rien rapatrier ; le démarrage, lui, ne touche jamais au réseau.
 Tu restes libre de mettre à jour, ou non.
+
+## En une commande : `brain maj`
+
+```bash
+brain maj                  # le plan : ta version, celle de l'amont, ce qui change — rien ne bouge
+brain maj --appliquer      # la recevoir
+```
+
+`brain maj` joue les étapes ci-dessous d'un bout à l'autre : il fusionne le
+tag, recalcule les fichiers que le brain génère, réinstalle les unités et
+déclare la version. Il ne se lance jamais seul.
+
+- **Ce que tu as créé ne bouge pas** : tes pistes, ton profil, tes todos
+  (git ne les voit pas), tes projets et tes agents (l'amont n'a pas ces
+  fichiers). Ce que tu as modifié du gabarit est fusionné, pas écrasé.
+- **Un fichier généré ne se fusionne pas, il se recalcule** : le catalogue
+  des agents, la table des pistes, les pages de la doc. L'amont gagne, puis le
+  calcul est refait chez toi, et tes agents et tes pistes y reviennent. La
+  version d'avant de chacun est gardée dans
+  `workspace/scratch/brain-maj-<version>/`, avec les commandes pour comparer.
+- **Un conflit sur un fichier écrit à la main l'arrête avant toute fusion** :
+  il le nomme, et le choix est le tien. Fusionne à la main (étape 3), puis
+  relance `brain maj --appliquer` pour la suite.
+
+Les étapes, pour les faire à la main ou comprendre ce qu'il fait :
 
 ## À chaque version
 

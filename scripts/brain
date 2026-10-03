@@ -6,6 +6,7 @@
 #   brain serve [http|mcp]       les portes réseau (HTTP + MCP), une seule déclaration
 #   brain serve --declaration    ce qui serait lancé, sans rien lancer
 #   brain doctor                 ce qui se dégrade en silence — le brain se contrôle
+#   brain maj [--appliquer]      recevoir une version du gabarit — à blanc par défaut
 #
 # Les autres verbes viendront des scripts du brain, un par un (`brain <verbe>`)
 # — chacun le jour où il est prêt, pas avant.
@@ -40,8 +41,13 @@ case "${1:-}" in
     echo "  Le brain d'origine : MYELINE_ROOT=<dépôt de Myéline> brain doctor" >&2
     exit 2
     ;;
+  maj)
+    # Recevoir une version du gabarit : à blanc par défaut, `--appliquer` pour agir.
+    shift
+    exec python3 "$_ici/maj.py" "$@"
+    ;;
   ""|-h|--help|help)
-    sed -n '4,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '4,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
     echo "brain : verbe inconnu « $1 » — connus : serve, doctor" >&2

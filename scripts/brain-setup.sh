@@ -93,7 +93,14 @@ mkdir -p "$HOME/.claude"
 CLAUDE_RENDU="$(mktemp)"
 sed -e "s|<BRAIN_ROOT>|$BRAIN_ROOT|g" -e "s|<BRAIN_NAME>|$BRAIN_NAME|g" \
   "$CLAUDE_EXAMPLE" > "$CLAUDE_RENDU"
-if [[ ! -f "$CLAUDE_TARGET" ]]; then
+if [[ -L "$CLAUDE_TARGET" ]]; then
+  # Un lien — vers un dépôt de dotfiles, souvent. `cp` le SUIT : il écraserait
+  # le fichier du dépôt, et un lien cassé passe `! -f`. Rien ne s'écrit à
+  # travers un lien, même avec --reecrire-claude-md.
+  cp "$CLAUDE_RENDU" "$CLAUDE_TARGET.modele"
+  warn "~/.claude/CLAUDE.md est un lien (→ $(readlink "$CLAUDE_TARGET")) — rien n'est écrit à travers."
+  warn "  le modèle rendu : ~/.claude/CLAUDE.md.modele — à reporter dans le fichier que le lien désigne"
+elif [[ ! -f "$CLAUDE_TARGET" ]]; then
   cp "$CLAUDE_RENDU" "$CLAUDE_TARGET"
   ok "~/.claude/CLAUDE.md écrit (brain_name=$BRAIN_NAME, brain_root=$BRAIN_ROOT)"
 elif cmp -s "$CLAUDE_RENDU" "$CLAUDE_TARGET"; then

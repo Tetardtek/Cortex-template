@@ -1817,6 +1817,48 @@ class TestSetupGardeClaudeMd(unittest.TestCase):
         self.assertEqual(len(baks), 1)
         self.assertIsNone(modele)
 
+    def _jouer_un_lien(self, reecrire, casse=False):
+        """`~/.claude/CLAUDE.md` est un lien vers un dépôt de dotfiles."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home, brain, depot = Path(tmp) / 'home', Path(tmp) / 'brain', Path(tmp) / 'dotfiles'
+            (brain / 'profil').mkdir(parents=True)
+            (brain / 'profil' / 'CLAUDE.md.example').write_text(self.MODELE, encoding='utf-8')
+            depot.mkdir()
+            source = depot / 'CLAUDE.md'
+            if not casse:
+                source.write_text('# le mien, versionné\n', encoding='utf-8')
+            cible = home / '.claude' / 'CLAUDE.md'
+            cible.parent.mkdir(parents=True)
+            cible.symlink_to(source)
+            r = subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; warn(){ echo "warn $*"; }\n'
+                                + self._etape()],
+                               env={'PATH': os.environ['PATH'], 'HOME': str(home),
+                                    'BRAIN_ROOT': str(brain), 'BRAIN_NAME': 'mon-brain', 'ETAPES': '11',
+                                    'REECRIRE_CLAUDE_MD': 'true' if reecrire else 'false'},
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            modele = cible.with_name('CLAUDE.md.modele')
+            return (source.read_text(encoding='utf-8') if source.exists() else None, cible.is_symlink(),
+                    modele.read_text(encoding='utf-8') if modele.is_file() else None, r.stdout)
+
+    def test_rien_ne_s_ecrit_a_travers_un_lien(self):
+        """`cp` suit les liens : il écraserait le fichier du dépôt de dotfiles —
+        avec ou sans --reecrire-claude-md."""
+        for reecrire in (False, True):
+            with self.subTest(reecrire=reecrire):
+                source, lien, modele, sortie = self._jouer_un_lien(reecrire)
+                self.assertEqual(source, '# le mien, versionné\n', 'le fichier du dépôt est intact')
+                self.assertTrue(lien, 'le lien reste un lien')
+                self.assertIn('brain_root:', modele, 'le modèle rendu est posé à côté')
+                self.assertIn('est un lien', sortie)
+
+    def test_un_lien_casse_ne_cree_rien_dans_le_depot(self):
+        """Un lien cassé passe `! -f` : le premier `cp` créait le fichier au bout du lien."""
+        source, lien, modele, _ = self._jouer_un_lien(False, casse=True)
+        self.assertIsNone(source, 'rien de créé dans le dépôt de dotfiles')
+        self.assertTrue(lien)
+        self.assertIsNotNone(modele)
+
 
 class TestScriptDInstance(unittest.TestCase):
     """L'abstention ne couvre que le fork : dans le brain d'origine, un script
@@ -6399,6 +6441,189 @@ class TestGateRetiree(unittest.TestCase):
     def test_la_route_n_existe_plus(self):
         chemins = {getattr(r, 'path', '') for r in srv.app.routes}
         self.assertFalse([c for c in chemins if c.startswith('/gate')], chemins)
+
+
+class TestBrainMaj(unittest.TestCase):
+    """`brain maj` reçoit une version du gabarit sans rien perdre du fork.
+
+    Joué contre un amont et un fork jetables, avec des générateurs factices
+    (déterministes) aux chemins des vrais. Un faux `systemctl` passe en tête du
+    PATH : aucun test n'atteint les unités de cette machine. Le cas qui a fait
+    naître l'outil (mesuré le 3/10) : un fork qui a régénéré son catalogue entre
+    en conflit dès que l'amont régénère le sien."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'maj.py'
+    CATALOGUE = ('import sys, pathlib\n'
+                 'noms = sorted(p.stem for p in pathlib.Path("agents").glob("*.md"))\n'
+                 'desc = {p.stem: p.read_text().split("description: ")[1].split("\\n")[0]\n'
+                 '        for p in pathlib.Path("agents").glob("*.md")}\n'
+                 'pathlib.Path(sys.argv[sys.argv.index("--emit") + 1]).write_text(\n'
+                 '    "generated: true\\n" + "".join(f"- {n}: {desc[n]}\\n" for n in noms))\n')
+    TABLE = ('import pathlib\n'
+             'D, F = "<!-- genere:tracks -->", "<!-- /genere:tracks -->"\n'
+             'r = pathlib.Path("learning/README.md"); t = r.read_text()\n'
+             'pistes = sorted(p.name for p in pathlib.Path("learning").iterdir() if p.is_dir())\n'
+             'table = "\\n".join(["| Track |", "|---|"] + [f"| {p} |" for p in pistes])\n'
+             'r.write_text(t[:t.index(D) + len(D)] + "\\n" + table + "\\n" + t[t.index(F):])\n')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-maj-'))
+        self.amont, self.fork = self.tmp / 'amont', self.tmp / 'fork'
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        (self.bin / 'systemctl').write_text('#!/bin/sh\necho "ExecStart=/ailleurs/brain/serve.py"\n')
+        (self.bin / 'systemctl').chmod(0o755)
+        a = self.amont
+        self._ecrire(a, {
+            'brain-compose.yml': 'version: "1.0.0"\n',
+            '.gitignore': 'learning/*\n!learning/README.md\nworkspace/scratch/*\nbrain-compose.local.yml\n',
+            'agents/b.md': 'name: b\ndescription: b, première version\n',
+            'agents/c.md': 'name: c\ndescription: c\n',
+            'learning/README.md': '# learning\n\nIntro.\n\n<!-- genere:tracks -->\n<!-- /genere:tracks -->\n\nFin.\n',
+            'brain-engine/doctor/agent_registry.py': self.CATALOGUE,
+            'brain-engine/doctor/zone_learning.py': self.TABLE,
+            'scripts/maj.py': self.SCRIPT.read_text(encoding='utf-8'),
+        })
+        self._g(a, 'init', '-q', '-b', 'main')
+        self._generer(a)
+        self._commit(a, 'v1')
+        self._g(a, 'tag', 'v1.0.0')
+        self._g(self.tmp, 'clone', '-q', str(a), str(self.fork))
+        self._g(self.fork, 'remote', 'rename', 'origin', 'upstream')
+        (self.fork / 'brain-compose.local.yml').write_text('kernel_version: "1.0.0"\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _g(self, cwd, *args):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=cwd,
+                              check=True, capture_output=True, text=True)
+
+    def _ecrire(self, racine, fichiers):
+        for rel, texte in fichiers.items():
+            (racine / rel).parent.mkdir(parents=True, exist_ok=True)
+            (racine / rel).write_text(texte)
+
+    def _generer(self, racine):
+        for outil in ('agent_registry.py', 'zone_learning.py'):
+            args = ['--emit', 'agents/CATALOG.yml'] if outil == 'agent_registry.py' else []
+            subprocess.run([sys.executable, f'brain-engine/doctor/{outil}', *args], cwd=racine, check=True)
+
+    def _commit(self, racine, msg):
+        self._g(racine, 'add', '-A')
+        self._g(racine, 'commit', '-qm', msg)
+
+    def _version_amont(self, fichiers, tag='v1.1.0'):
+        self._ecrire(self.amont, {'brain-compose.yml': f'version: "{tag[1:]}"\n', **fichiers})
+        self._generer(self.amont)
+        self._commit(self.amont, tag)
+        self._g(self.amont, 'tag', tag)
+        self._g(self.fork, 'fetch', '-q', 'upstream', '--tags')
+
+    def _maj(self, *args):
+        env = {**os.environ, 'BRAIN_ROOT': str(self.fork), 'PATH': f'{self.bin}:{os.environ["PATH"]}'}
+        return subprocess.run([sys.executable, str(self.SCRIPT), '--sans-reseau', *args],
+                              env=env, capture_output=True, text=True, timeout=120)
+
+    def _tete(self):
+        return self._g(self.fork, 'rev-parse', 'HEAD').stdout.strip()
+
+    def test_le_plan_ne_bouge_rien(self):
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        avant = self._tete()
+        r = self._maj()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('rien ne s\'y oppose', r.stdout)
+        self.assertEqual(self._tete(), avant)
+
+    def test_un_catalogue_regenere_des_deux_cotes_se_recalcule(self):
+        """Le cas d'origine : les deux catalogues se contredisent ligne à ligne."""
+        self._ecrire(self.fork, {'agents/b2.md': 'name: b2\ndescription: l agent du fork\n'})
+        self._generer(self.fork)
+        self._commit(self.fork, 'mon agent')
+        self._version_amont({'agents/b.md': 'name: b\ndescription: b, revue par l amont\n'})
+        conflit = subprocess.run(['git', 'merge-tree', '--write-tree', '--name-only', '--no-messages',
+                                  'HEAD', 'v1.1.0'], cwd=self.fork, capture_output=True, text=True)
+        self.assertIn('agents/CATALOG.yml', conflit.stdout, 'le témoin : git seul bute')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        cat = (self.fork / 'agents' / 'CATALOG.yml').read_text()
+        self.assertIn('b2: l agent du fork', cat)
+        self.assertIn('b: b, revue par l amont', cat)
+        self.assertNotIn('<<<<<<<', cat)
+        avant = self.fork / 'workspace' / 'scratch' / 'brain-maj-v1.1.0'
+        self.assertTrue((avant / 'agents' / 'CATALOG.yml.avant').is_file(), "l'avant est gardé")
+        self.assertIn('diff -u', (avant / 'README.md').read_text())
+        self.assertEqual(self._g(self.fork, 'status', '--porcelain', '--untracked-files=no').stdout, '')
+        self.assertIn('1.1.0', (self.fork / 'brain-compose.local.yml').read_text())
+
+    def test_ce_que_le_fork_a_cree_survit(self):
+        self._ecrire(self.fork, {'agents/a-moi.md': 'name: a-moi\ndescription: le mien\n',
+                                 'projets/mon-projet.md': '# le mien\n',
+                                 'learning/ma-piste/README.md': '# ma piste, ignorée par git\n'})
+        self._commit(self.fork, 'à moi')
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        self.assertEqual(self._maj('--appliquer').returncode, 0)
+        for rel in ('agents/a-moi.md', 'projets/mon-projet.md', 'learning/ma-piste/README.md'):
+            self.assertTrue((self.fork / rel).is_file(), rel)
+        self.assertIn('a-moi', (self.fork / 'agents' / 'CATALOG.yml').read_text())
+        self.assertIn('ma-piste', (self.fork / 'learning' / 'README.md').read_text())
+
+    def test_la_table_garde_ce_que_le_fork_a_ecrit_autour(self):
+        """Un bloc généré : la table se recalcule, le texte autour se fusionne."""
+        self._ecrire(self.fork, {'learning/README.md':
+                                 (self.fork / 'learning' / 'README.md').read_text() + '\n## Mes notes\n',
+                                 'learning/ma-piste/README.md': '# ma piste\n'})
+        self._generer(self.fork)
+        self._commit(self.fork, 'mes pistes')
+        self._ecrire(self.amont, {'learning/autre/README.md': '# autre\n'})
+        self._version_amont({'learning/README.md':
+                             (self.amont / 'learning' / 'README.md').read_text().replace('Intro.', 'Intro revue.')})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        t = (self.fork / 'learning' / 'README.md').read_text()
+        self.assertIn('Intro revue.', t)
+        self.assertIn('## Mes notes', t)
+        self.assertIn('| ma-piste |', t)
+        self.assertNotIn('<<<<<<<', t)
+
+    def test_un_conflit_ecrit_a_la_main_refuse_sans_rien_toucher(self):
+        self._ecrire(self.fork, {'agents/c.md': 'name: c\ndescription: c, à ma façon\n'})
+        self._commit(self.fork, 'ma version de c')
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, à la façon de l amont\n'})
+        avant = self._tete()
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('agents/c.md', r.stdout)
+        self.assertEqual(self._tete(), avant)
+        self.assertEqual(self._g(self.fork, 'status', '--porcelain').stdout.strip(), '')
+
+    def test_un_arbre_sale_refuse(self):
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        (self.fork / 'agents' / 'b.md').write_text('name: b\ndescription: en cours\n')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('pas propre', r.stdout)
+
+    def test_sans_amont_rien_a_recevoir(self):
+        self._g(self.fork, 'remote', 'remove', 'upstream')
+        self.assertEqual(self._maj().returncode, 2)
+
+    def test_apres_une_fusion_a_la_main_la_suite_se_fait(self):
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        self._g(self.fork, 'merge', '-q', '--no-edit', 'v1.1.0')
+        r = self._maj()
+        self.assertIn('la suite n\'est pas faite', r.stdout)
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('1.1.0', (self.fork / 'brain-compose.local.yml').read_text())
+
+    def test_les_unites_d_un_autre_brain_ne_sont_pas_touchees(self):
+        """Le faux systemctl décrit un autre brain : rien n'est réinstallé."""
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("celles d'un autre brain", r.stdout)
 
 
 class TestMajDisponible(unittest.TestCase):

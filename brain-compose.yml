@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.6.3"
+version: "2.6.4"
 
 # ---
 # Ownership — kerneluser
@@ -172,3 +172,6 @@ changelog:
   - version: "2.6.3"
     date: "2026-10-03"
     notes: "Le moteur lit la posture de l'instance. Une instance dont la posture refuse d'ecrire le kernel (kernel_write: false dans brain-compose.yml, comme replica-nomad) demarre son moteur en mode satellite : PUT /brain y refuse la zone kernel, avant le jeton, le claim et la base ; un BRAIN_MODE pose ne peut que durcir ce mode (template, demo), jamais le lever. Jusqu'ici, seules les sessions lisaient la posture. La zone learning juge aussi la machine : une fiche de learning/ qui porte un constat systeme (/etc/, ~/.config/, un service, ufw, un paquet...) dit ou il a ete pris, par mesure_sur: en tete ou `> 📍 mesuré sur …` par section ; une piste sans constat systeme ne rougit jamais. Mise a jour depuis la v2.6.2 : rien a migrer ; une instance satellite redemarre son moteur (systemctl --user restart brain-engine brain-mcp) ; brain doctor pour voir."
+  - version: "2.6.4"
+    date: "2026-10-03"
+    notes: "brain maj : recevoir une version du gabarit de bout en bout. A blanc par defaut, le plan (ta version, celle de l'amont, ce qui change, ce qui est a toi seul, ce que tu as modifie) ; --appliquer fusionne le tag, recalcule les fichiers generes au lieu de les fusionner (le catalogue des agents, les pages de la doc ; la table des pistes autour de son bloc), garde l'avant de chaque fichier genere qui change dans workspace/scratch/brain-maj-<version>/ avec les commandes pour comparer, reinstalle les unites si ce sont celles de ce brain, declare kernel_version. Un conflit sur un fichier ecrit a la main l'arrete avant toute fusion ; apres une fusion faite a la main, --appliquer fait la suite. Ce que tu as cree ne bouge pas : pistes, profil, todos (ignores par git), tes projets et tes agents (l'amont ne les a pas). Le setup n'ecrit plus a travers un ~/.claude/CLAUDE.md qui est un lien (vers un depot de dotfiles) : cp suit les liens, il ecrasait le fichier du depot, et un lien casse creait le fichier au bout du lien ; le modele rendu est pose a cote. Mise a jour depuis la v2.6.3 : la derniere a la main (docs/mettre-a-jour.md), les suivantes par brain maj."

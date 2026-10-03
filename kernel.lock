@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "2.6.3"
-generated_at: "2026-10-03T11:22"
+kernel_version: "2.6.4"
+generated_at: "2026-10-03T11:51"
 
 files:
   KERNEL.md: 157e6f89f937f02efb90fe3ad5b28801bd931b36360c7704702f96503dd261c8
-  brain-compose.yml: eb506c4b7af30b132050ef9813cbda436d5fcd841ec52050fadfd78f04bed352
+  brain-compose.yml: 61fa196f33e89e38f5d588f38d4b44782ee9bc5d71bcee92eaa6e443afc38e5d
   brain-constitution.md: d7b4ff075dcbbc71bd6e3ea0a6a22b0c29f5f940a8ae922742e7cfcb043575f9
   agents/agent-review.md: 0f0940309f6d11f1ef4117223894e56db126740cbd17f49728153640a0c1aa8a
   agents/AGENTS.md: a60f8a30aafdc29520ac23f58718baa3654eb8ec4020b9b4a36a905b4c170019
@@ -82,11 +82,11 @@ files:
   agents/ux-architect.md: 2456dbd735a6fecc30ccb20f2f2525aa7fca02b1276a8d76c9095bc6cd86eebc
   agents/vps.md: 07c538ebbb2145088f3f50d94c12c935a92ad86eeb82760c86a29de0a26a4b7a
   agents/watch.md: fff0eb180eb3f4505323bb0f49817c4333234c0beafc5231665e8ad6b208e7bc
-  scripts/brain: d0e613e80edba2d4696450d7c1e4d95abe79c550b6e5ace915a3607657a42ac7
+  scripts/brain: a9031189d046b443c1e9b4f97672472aaf35ac39ce43f82b50060afa3d84bc26
   scripts/brain-db-sync.sh: a32572dc06560ba6d84eb02e9f71483435590f7f26b9b42cc4e1e7f00b0cad76
   scripts/brain-engine.sh: 6988e5b7ce59ecc580a9a567a19bcea2cbe5f57b5f8e1e70d2e2c1b9cf74b595
   scripts/brain-satellites.py: 42fab3f9b0e6770c1f7cd2eb9ef4c6f295be5fa77e743fc86643c997552352c8
-  scripts/brain-setup.sh: 660be17d3517cba184a456166d832d9a5d6e79bc231a88ba638573041623129a
+  scripts/brain-setup.sh: d743e8f50e38979773ebaff95e9aa60f2ae63e92402f92db21acc8c44c432a47
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
   scripts/bsi-claim.sh: 9de8d0b9cc6ce6d99cc69eecab867e190157456572e6b8bd47be9775f97d793f
   scripts/bsi-query.sh: b17148b65dfc271e9aaa630bcf19134c82605a3fe18a5eb96db8c8f3d2a2b89b
@@ -107,6 +107,7 @@ files:
   scripts/lib/premieres.sh: 91bd6f53ca50bb2f448fcf699cf6c59ae7323860401531f0492e23d0cda4ae32
   scripts/lib/python.sh: a2d928fdce9db51fbc9013884b9623f561eed9eab718943ff8e0f7a6f37f3b6b
   scripts/maj-disponible.py: c772464d72a49fc5ee22e5b16d82c129ebd4eb650d5c94ff31fad57fe7b8e061
+  scripts/maj.py: da0b97c7cf869180385f611b83a8af6d75f0758c1e84c4e62f7b9ba07cc83809
   scripts/ollama-setup.sh: 90e93f2dafac9e948b4350865308fa46148201ff00e65da596a68244aedc2b23
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
