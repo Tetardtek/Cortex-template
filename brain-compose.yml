@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.6.4"
+version: "2.6.5"
 
 # ---
 # Ownership — kerneluser
@@ -175,3 +175,6 @@ changelog:
   - version: "2.6.4"
     date: "2026-10-03"
     notes: "brain maj : recevoir une version du gabarit de bout en bout. A blanc par defaut, le plan (ta version, celle de l'amont, ce qui change, ce qui est a toi seul, ce que tu as modifie) ; --appliquer fusionne le tag, recalcule les fichiers generes au lieu de les fusionner (le catalogue des agents, les pages de la doc ; la table des pistes autour de son bloc), garde l'avant de chaque fichier genere qui change dans workspace/scratch/brain-maj-<version>/ avec les commandes pour comparer, reinstalle les unites si ce sont celles de ce brain, declare kernel_version. Un conflit sur un fichier ecrit a la main l'arrete avant toute fusion ; apres une fusion faite a la main, --appliquer fait la suite. Ce que tu as cree ne bouge pas : pistes, profil, todos (ignores par git), tes projets et tes agents (l'amont ne les a pas). Le setup n'ecrit plus a travers un ~/.claude/CLAUDE.md qui est un lien (vers un depot de dotfiles) : cp suit les liens, il ecrasait le fichier du depot, et un lien casse creait le fichier au bout du lien ; le modele rendu est pose a cote. Mise a jour depuis la v2.6.3 : la derniere a la main (docs/mettre-a-jour.md), les suivantes par brain maj."
+  - version: "2.6.5"
+    date: "2026-10-03"
+    notes: "La version-relais vers la vue des agents : a recevoir AVANT la v2.7.0. Elle ne migre rien. En v2.7.0, agents/ devient une vue : des liens vers noyau/agents/ (le noyau livre) et instance/agents/ (tes surcharges, qui l'emportent), construite par brain vue et ignoree par git ; tous les chemins agents/<nom>.md restent justes. brain maj sait desormais recevoir cette version : avant la fusion, il range dans instance/agents/ les agents que tu as modifies (ta version gagne, celle de l'amont reste dans noyau/) et ceux que tu as crees ; le catalogue se calcule dans la vue ; une annulation remet l'arbre tel qu'il etait (celui de la v2.6.4 pouvait le laisser sale, et ne sait pas migrer). brain vue construit la vue et dit son etat : un agent ecrit dans la vue (git ne le voit pas), un lien faux, le verrou ; une instance dont la posture refuse le kernel a son noyau/ en lecture seule. brain aligne reprend la branche suivie sur une telle instance : le verrou leve le temps de la fusion, puis repose ; jamais git pull. Les hooks reconstruisent la vue apres un checkout (un worktree neuf) et une fusion ; le pre-commit juge la doc d'un brain migre ; le setup construit la vue (etape 12) ; le doctor juge la vue (la vue des agents ; abstenu sur un brain a plat). Mise a jour depuis la v2.6.4 : brain maj --appliquer, puis bash scripts/install-brain-hooks.sh (six hooks : post-checkout est nouveau) ; brain doctor pour voir. Passe par la 2.6.5 avant la 2.7.0."

@@ -29,6 +29,7 @@ Sortie 1 si un invariant tombe.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -77,7 +78,11 @@ def main() -> int:
     #
     # Sans lui, `close-stale` retombe sur l'âge depuis l'ouverture, qui ne peut
     # que grandir : une session de trois jours redevient un oubli.
-    hook = racine / ".git" / "hooks" / "post-commit"
+    # Les hooks vivent dans le dépôt COMMUN : dans un worktree, `.git` est un fichier,
+    # et l'invariant tombait — vu à la répétition générale du 3/10.
+    commun = subprocess.run(["git", "-C", str(racine), "rev-parse", "--path-format=absolute",
+                             "--git-common-dir"], capture_output=True, text=True)
+    hook = (Path(commun.stdout.strip()) if commun.returncode == 0 else racine / ".git") / "hooks" / "post-commit"
     texte = hook.read_text(errors="replace") if hook.is_file() else ""
     # Depuis le 27/09 le hook installé n'est qu'un LANCEUR : son corps est la
     # source versionnée scripts/hooks/post-commit. Le suivre, sinon l'invariant

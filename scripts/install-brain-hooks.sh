@@ -4,7 +4,7 @@
 #
 # Usage :
 #   scripts/install-brain-hooks.sh          → installe dans le .git/hooks du dépôt
-#   scripts/install-brain-hooks.sh --check  → vérifie que les cinq sont en place
+#   scripts/install-brain-hooks.sh --check  → vérifie que les six sont en place
 #
 # Hooks installés — leurs SOURCES sont versionnées dans scripts/hooks/ :
 #   pre-commit  → posture de l'instance, zone d'écriture du type de session, docs-generer --check
@@ -12,6 +12,8 @@
 #   post-commit → signe de vie du claim ; la base suit les handoffs (checkout principal)
 #   post-merge  → la base suit les handoffs après une fusion (avance rapide comprise)
 #   post-rewrite → la base suit les handoffs après un rebase (un `pull` divergent)
+#   post-checkout → la vue des agents suit un checkout de branche, un worktree neuf
+#   (post-merge la reconstruit aussi : `agents/` est une vue quand `noyau/agents/` existe)
 #
 # Ce qui s'installe dans .git/hooks n'est qu'un LANCEUR : il exécute la source
 # versionnée du dépôt principal. Corriger un hook, c'est corriger sa source et
@@ -26,7 +28,7 @@ set -euo pipefail
 
 BRAIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOOKS_DIR="$(cd "$BRAIN_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/hooks"
-HOOKS=(pre-commit commit-msg post-commit post-merge post-rewrite)
+HOOKS=(pre-commit commit-msg post-commit post-merge post-rewrite post-checkout)
 
 lanceur() {
     cat <<EOF

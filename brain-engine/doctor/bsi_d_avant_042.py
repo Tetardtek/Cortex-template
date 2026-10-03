@@ -41,7 +41,8 @@ Deux choses ne sont PAS des occurrences, par la STRUCTURE, pas par le sens :
 
 Les fichiers SUIVIS par git — `git ls-files`, jamais le disque :
 
-    brain    agents/ (hors archive/), contexts/ (hors archive-v1/), BRAIN-INDEX.md
+    brain    agents/ (hors archive/) — ou, si c'est une vue, noyau/agents/ et
+             instance/agents/ —, contexts/ (hors archive-v1/), BRAIN-INDEX.md
     profil   specs/  — le dépôt séparé `profil/`, s'il en est un
              la racine, sauf les fichiers qui se DÉCLARENT instantanés (27/09) :
              un bandeau « Instantané non maintenu » ou « Doublon d'une source
@@ -67,8 +68,13 @@ MOTIF = re.compile(r"claims/[^\s`)\]]*\.yml|##\s*Claims\b|##\s*Signals\b|\bUNBLO
 MARQUEUR = "<!-- bsi-v1 -->"
 TITRE = re.compile(r"^\s{0,3}#{1,6}\s")
 
-BRAIN_CHAMP = ("agents/", "contexts/", "BRAIN-INDEX.md")
-BRAIN_HORS = ("agents/archive/", "contexts/archive-v1/")
+# `noyau/agents/` et `instance/agents/` : les sources SUIVIES d'un `agents/` qui est
+# une vue de liens — la vue, elle, est ignorée par git, et `ls-files` n'y voyait
+# rien (mesuré le 3/10 : 7 fichiers relus au lieu de 83). Sans vue, git n'y trouve
+# rien, et rien ne change.
+BRAIN_CHAMP = ("agents/", "noyau/agents/", "instance/agents/", "contexts/", "BRAIN-INDEX.md")
+BRAIN_HORS = ("agents/archive/", "noyau/agents/archive/", "instance/agents/archive/",
+              "contexts/archive-v1/")
 
 _ok = _ko = 0
 

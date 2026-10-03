@@ -33,6 +33,21 @@ Ce qu'il remplace, il le garde : la version d'avant de chaque fichier généré
 qui a changé est posée dans `workspace/scratch/brain-maj-<version>/` (git
 l'ignore), avec les commandes pour comparer — à relire avec ton brain.
 
+── Le noyau et la vue ──────────────────────────────────────────────────────
+
+Un brain dont `agents/` est une VUE (`noyau/agents/`, le noyau livré ;
+`instance/agents/`, tes surcharges) : le noyau est levé de sa lecture seule le
+temps de la fusion, la vue reconstruite après — le catalogue se calcule en elle,
+il ne se commite plus.
+
+Un brain encore à plat qui reçoit une version à vue : AVANT de fusionner, tes
+agents passent dans `instance/agents/` — un agent que tu as modifié y emporte ta
+version, `agents/` revient à celle que tu avais reçue ; un agent à toi y part tel
+quel. Sans ça, git suivrait le renommage et mêlerait ta version au noyau. Après :
+le noyau porte la version de l'amont, `instance/` la tienne, et la vue montre la
+tienne — les deux restent. Un agent que tu avais retiré revient : le noyau ne se
+retire pas, le plan le dit.
+
 ── Ce qu'il refuse ─────────────────────────────────────────────────────────
 
 Un arbre qui n'est pas propre (committe d'abord). Un conflit sur un fichier
@@ -121,6 +136,50 @@ def fusion_par_bloc(brain: Path, base: str, cible: str, chemin: str) -> str | No
     return r.stdout if r.returncode == 0 else None
 
 
+def vue(brain: Path, *args: str) -> bool:
+    """`brain vue` sur CE brain — sa propre version du script."""
+    script = brain / "scripts" / "vue.py"
+    if not script.is_file():
+        return False
+    r = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True,
+                       timeout=600, env={**os.environ, "BRAIN_ROOT": str(brain)})
+    return r.returncode == 0
+
+
+def migration_vers_la_vue(brain: Path, base: str, cible: str) -> dict | None:
+    """Ce brain est à plat et la version reçue livre `noyau/agents/` : ses agents à lui."""
+    if (brain / "noyau" / "agents").is_dir():
+        return None
+    if git(brain, "cat-file", "-e", f"{cible}:noyau/agents", ok=(0, 1, 128)).returncode != 0:
+        return None
+    m = {"modifies": [], "ajoutes": [], "retires": []}
+    for ligne in git(brain, "diff", "--name-status", "--no-renames", base, "HEAD", "--", "agents/").stdout.splitlines():
+        etat, chemin = ligne.split("\t", 1)
+        if chemin == "agents/CATALOG.yml":
+            continue                                 # calculé, il ne se garde pas
+        {"M": m["modifies"], "A": m["ajoutes"], "D": m["retires"]}.get(etat[0], []).append(chemin)
+    return m
+
+
+def preparer_la_migration(brain: Path, base: str, m: dict, dire) -> None:
+    """Tes agents passent dans `instance/agents/` — un commit, avant la fusion."""
+    for chemin in m["modifies"] + m["ajoutes"]:
+        rel = chemin[len("agents/"):]
+        dest = brain / "instance" / "agents" / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if chemin in m["ajoutes"]:
+            git(brain, "mv", chemin, str(dest.relative_to(brain)))
+        else:
+            dest.write_bytes((brain / chemin).read_bytes())
+            git(brain, "add", "--", str(dest.relative_to(brain)))
+            git(brain, "checkout", base, "--", chemin)       # la version reçue : l'amont la renomme proprement
+    if git(brain, "cat-file", "-e", f"{base}:agents/CATALOG.yml", ok=(0, 128)).returncode == 0:
+        git(brain, "checkout", base, "--", "agents/CATALOG.yml")
+    git(brain, "commit", "--quiet", "--no-verify", "--allow-empty", "-m",
+        "brain maj : tes agents passent dans instance/agents/ (la vue arrive)")
+    dire(f"  ✅ {len(m['modifies'])} agent(s) modifié(s) et {len(m['ajoutes'])} à toi rangés dans instance/agents/")
+
+
 def plan(brain: Path, remote: str, demande: str | None, reseau: bool) -> dict:
     if git(brain, "remote", "get-url", remote, ok=(0, 2, 128)).returncode != 0:
         return {"etat": "sans amont"}
@@ -153,8 +212,15 @@ def plan(brain: Path, remote: str, demande: str | None, reseau: bool) -> dict:
     p["a_toi"] = len(git(brain, "diff", "--name-only", "--diff-filter=A", base, "HEAD").stdout.split())
     p["modifies"] = len(git(brain, "diff", "--name-only", "--diff-filter=M", base, "HEAD").stdout.split())
     p["retires"] = git(brain, "diff", "--name-only", "--diff-filter=D", base, cible).stdout.split()
+    p["migration"] = migration_vers_la_vue(brain, base, cible)
     r = git(brain, "merge-tree", "--write-tree", "--name-only", "--no-messages", "HEAD", cible, ok=(0, 1))
     conflits = r.stdout.split("\n")[1:] if r.returncode == 1 else []
+    if p["migration"] is not None:
+        # Tes agents partent dans `instance/` avant la fusion : leurs conflits n'existeront
+        # pas — ni sous `agents/`, ni sous `noyau/agents/`, où git, qui suit le
+        # déménagement du dossier, rangerait d'office un agent que tu as ajouté.
+        conflits = [c for c in conflits if not c.startswith(("agents/", "noyau/agents/"))]
+        p["retires"] = [r for r in p["retires"] if not r.startswith("agents/")]
     for c in (c for c in conflits if c):
         n = nature(c)
         if n == "bloc" and fusion_par_bloc(brain, base, cible, c) is None:
@@ -179,6 +245,8 @@ def regenerer(brain: Path, dire) -> list[str]:
     for cible, cmd in taches:
         if not (brain / cmd[1]).is_file():
             continue
+        if cible == "agents/CATALOG.yml" and (brain / "noyau" / "agents").is_dir():
+            continue                       # une vue : `brain vue` le calcule, il ne se commite pas
         if cible == "learning/README.md":
             idx = brain / cible
             if not idx.is_file() or DEBUT not in idx.read_text(encoding="utf-8"):
@@ -241,8 +309,16 @@ def garder_l_avant(brain: Path, avant: str, cible: str, dire) -> None:
 def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
     cible, base = p["cible"], p["base"]
     avant = git(brain, "rev-parse", "HEAD").stdout.strip()
-    git(brain, "merge", "--no-ff", "--no-commit", cible, ok=(0, 1))
+    noyau = brain / "noyau" / "agents"
+    if noyau.is_dir():
+        vue(brain, "--deverrouiller")                       # git doit pouvoir écrire le noyau
     try:
+        if p.get("migration") is not None:
+            preparer_la_migration(brain, base, p["migration"], dire)
+        git(brain, "merge", "--no-ff", "--no-commit", cible, ok=(0, 1))
+        if noyau.is_dir():
+            vue(brain, "--deverrouiller")
+            vue(brain, "--construire")          # AVANT de recalculer : la doc compte les agents de la vue
         for c in p["generes"]:
             if nature(c) == "bloc":
                 (brain / c).write_text(fusion_par_bloc(brain, base, cible, c), encoding="utf-8")
@@ -261,9 +337,19 @@ def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
             raise RuntimeError(f"conflit restant : {', '.join(reste)}")
         git(brain, "commit", "--quiet", "--no-verify", "-m", f"brain maj : {cible}")
     except Exception as e:                                       # noqa: BLE001
+        # `merge --abort` ne défait que la fusion : un fichier régénéré APRÈS elle
+        # restait modifié, et le message disait « rien n'a bougé ». L'arbre était
+        # propre au départ (le plan l'exige) : revenir à `avant` ne défait que ce
+        # que cet outil a écrit.
         git(brain, "merge", "--abort", ok=(0, 128))
-        dire(f"  ❌ {e} — fusion annulée, rien n'a bougé")
+        git(brain, "reset", "--quiet", "--hard", avant)
+        if noyau.is_dir():
+            vue(brain, "--construire")                     # le noyau rendu à sa posture
+        dire(f"  ❌ {e} — fusion annulée, l'arbre remis tel qu'il était")
         return 1
+    if noyau.is_dir():
+        dire("  ✅ la vue reconstruite" if vue(brain, "--construire")
+             else "  ⚠️ la vue ne s'est pas reconstruite — bash scripts/brain vue (un fichier réel dans agents/ ?)")
     dire(f"  ✅ {cible} reçue" + (f" — {len(p['generes'])} conflit(s) sur des fichiers générés, résolus en "
                                "recalculant" if p["generes"] else ""))
     garder_l_avant(brain, avant, cible, dire)
@@ -345,6 +431,12 @@ def main() -> int:
                   + (" …" if len(p["retires"]) > 6 else ""))
         if p["generes"]:
             print(f"  générés, à recalculer      {', '.join(p['generes'])}")
+        if p.get("migration") is not None:
+            m = p["migration"]
+            print(f"  agents/ devient une vue    {len(m['modifies'])} modifié(s) et {len(m['ajoutes'])} à toi"
+                  " → instance/agents/ ; le noyau reçoit l'amont")
+            if m["retires"]:
+                print(f"  ⓘ tu avais retiré          {', '.join(m['retires'])} — ils reviennent : le noyau ne se retire pas")
         print(f"  l'avant des générés        gardé dans workspace/scratch/brain-maj-{p['cible']}/")
     for o_ in p.get("obstacles", []):
         print(f"  ❌ {o_}")

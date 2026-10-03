@@ -272,6 +272,11 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
                  "une chose qui apparaît sans se déclarer",
                  [sys.executable, str(OUTILS / "niveaux.py"),
                   "--brain", str(brain), "--check"]),
+        # Un brain migré lit ses agents par une vue que git ignore : ce qui s'y
+        # écrit à côté des liens est lu partout et commité nulle part.
+        Controle("la vue des agents",
+                 "un agent écrit dans la vue, que git ne voit pas",
+                 [sys.executable, str(OUTILS / "vue_juste.py"), "--brain", str(brain)]),
         Controle("compteurs hors vecteurs",
                  "un compteur logé dans la table la plus lourde du schéma",
                  [sys.executable, str(OUTILS / "hits_hors_table.py"),

@@ -26,11 +26,23 @@ fi
 # la copie de travail : le disque aurait laissé passer une doc régénérée mais
 # pas indexée, et fait refuser un commit juste à cause du travail non indexé
 # d'une autre session (relecture du 28/09).
-triggers=$(git diff --cached --name-only | grep -E '^(agents/|contexts/|brain-compose\.yml|docs/|skills/brain/|brain-engine/(schema-dolt|views-dolt)\.sql|brain-engine/(server|mcp_server)\.py)' || true)
+triggers=$(git diff --cached --name-only | grep -E '^(agents/|noyau/agents/|instance/agents/|contexts/|brain-compose\.yml|docs/|skills/brain/|brain-engine/(schema-dolt|views-dolt)\.sql|brain-engine/(server|mcp_server)\.py)' || true)
 if [[ -n "$triggers" && -f "$BRAIN_WT/scripts/docs-generer.py" ]]; then
     index=$(mktemp -d)
-    trap 'rm -rf "$index"' EXIT
+    trap 'chmod -R u+w "$index" 2>/dev/null; rm -rf "$index"' EXIT
     git checkout-index -a --prefix="$index/"
+    # Un brain migré lit ses agents par une vue que git ignore : l'index n'en a pas,
+    # et la doc s'y jugeait sur « aucun agent » — le commit de la migration lui-même
+    # était refusé (répétition générale du 3/10). On construit la vue dans la copie
+    # de l'index, catalogue compris, comme sur le disque.
+    if [[ -d "$index/noyau/agents" && -f "$index/scripts/vue.py" ]]; then
+        BRAIN_ROOT="$index" python3 "$index/scripts/vue.py" --construire >/dev/null 2>&1 || true
+        if [[ ! -f "$index/agents/CATALOG.yml" ]]; then
+            echo "docs-generer : impossible de juger la doc de ce commit — le catalogue de la vue"
+            echo "  ne se calcule pas (ni brain-engine/doctor/agent_registry.py, ni MYELINE_ROOT)."
+            exit 1
+        fi
+    fi
     code=0
     sortie=$(python3 "$BRAIN_WT/scripts/docs-generer.py" --brain "$index" --check 2>&1) || code=$?
     if [[ $code -eq 1 ]]; then

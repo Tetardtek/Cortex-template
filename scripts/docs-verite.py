@@ -71,8 +71,9 @@ PAGES = ("README.md", "ARCHITECTURE.md", "BRAIN-INDEX.md", "docs/*.md", "brain-e
          # cinq semaines après BRAIN-072 — rien ne le lisait.
          ".github/**/*.md")
 
-#: Les racines d'un chemin que la doc peut nommer.
-RACINES = ("agents", "scripts", "contexts", "wiki", "docs", "profil",
+#: Les racines d'un chemin que la doc peut nommer. `instance` n'en est pas une : le
+#: gabarit ne la porte jamais, `brain vue` la crée chez le fork.
+RACINES = ("agents", "noyau", "scripts", "contexts", "wiki", "docs", "profil",
            "brain-engine", "brain-ui", "runbooks", "modes", "projets",
            "handoffs", "workspace", "intentions", "infrastructure",
            "skills", "workflows", "todo", "toolkit", "progression", "reviews")
@@ -314,7 +315,14 @@ def juger(gabarit: Path, brain: Path | None = None,
                 if suite[:1] in ("*", "<", "{") or (suite[:1] == "-" and suite[1:2] in ("*", "<", "{")):
                     continue
                 chemin = m.group(1).rstrip("/.")
-                if not (gabarit / chemin).exists() and not ecrit_par_un_script(gabarit, chemin):
+                # `noyau/` arrive chez un fork par la fusion du gabarit, jamais par un
+                # script : les scripts qui le citent (le lock, `brain maj`, la synchro)
+                # le LISENT, dans les deux états. L'excuse d'un fichier « écrit par un
+                # script » laissait passer une doc de la vue sur un gabarit sans vue —
+                # « rien de faux », mesuré le 3/10.
+                du_noyau = chemin == "noyau" or chemin.startswith("noyau/")
+                if not (gabarit / chemin).exists() and (
+                        du_noyau or not ecrit_par_un_script(gabarit, chemin)):
                     dire("chemin", f"`{chemin}` n'existe pas dans le gabarit")
 
             for m in RE_LIEN.finditer(prose):

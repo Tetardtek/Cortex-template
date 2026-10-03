@@ -2487,6 +2487,14 @@ class TestBrainSatellites(unittest.TestCase):
 # sync-template.sh — ce qui part au gabarit
 # ══════════════════════════════════════════════════════════════════════════════
 
+def vue_du_fork(rendu: Path, env: dict) -> None:
+    """Un rendu migré ne livre pas sa vue : le fork la construit (`brain vue`, avec le
+    registre livré). On la construit comme lui, pour lire `agents/` comme lui."""
+    if (rendu / 'noyau' / 'agents').is_dir():
+        subprocess.run([sys.executable, str(rendu / 'scripts' / 'vue.py'), '--construire'],
+                       env={**env, 'BRAIN_ROOT': str(rendu)}, capture_output=True, text=True, check=True)
+
+
 class TestSyncTemplate(unittest.TestCase):
     """Un brain JETABLE réduit à ce que la synchro lit (~3 Mo), ses satellites
     liés en lecture, et un gabarit qui pousse vers un dépôt nu jetable. Rien ne
@@ -2495,7 +2503,9 @@ class TestSyncTemplate(unittest.TestCase):
     Le cas de l'incident : le filet contre les marqueurs d'instance était placé
     APRÈS le push — `--push` publiait, puis annonçait « sync interrompu »."""
 
-    CHEMINS = ('scripts', 'agents', 'docs', 'contexts', 'workflows', 'brain-engine',
+    # `noyau` et `instance` : une source migrée n'a plus d'agents suivis sous `agents/`
+    # (une vue, ignorée) — sans eux, le brain jetable n'en avait aucun.
+    CHEMINS = ('scripts', 'agents', 'noyau', 'instance', 'docs', 'contexts', 'workflows', 'brain-engine',
                'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
                'MYSECRETS.example', 'brain-compose.local.yml.example',
                'NIVEAUX.yml', 'handoffs/_template.md', 'projets/_template.md')
@@ -2535,6 +2545,12 @@ class TestSyncTemplate(unittest.TestCase):
         self._git('init', '-q', cwd=self.brain)
         self._git('add', '-A', cwd=self.brain)
         self._git('commit', '-q', '--no-verify', '-m', 'b', cwd=self.brain)
+        # Une source migrée : la vue se construit, comme dans tout checkout (le hook
+        # post-checkout) — la synchro lit le catalogue de la vue.
+        if (self.brain / 'noyau' / 'agents').is_dir():
+            subprocess.run([sys.executable, str(self.brain / 'scripts' / 'vue.py'), '--construire'],
+                           env={**self.env, 'BRAIN_ROOT': str(self.brain)},
+                           capture_output=True, text=True, check=True)
 
     def tearDown(self):
         if hasattr(self, '_tmp'):
@@ -2652,6 +2668,7 @@ class TestSyncTemplate(unittest.TestCase):
                       "la source présente le recruiter — le témoin a de quoi rougir")
         rendu = self.tmp / 'rendu'
         r = self._sync('--rendre', str(rendu))
+        vue_du_fork(rendu, self.env)
         self.assertFalse((rendu / 'agents' / 'recruiter.md').exists())
         index = (rendu / 'agents' / 'AGENTS.md').read_text()
         self.assertNotIn(ligne, index, r.stdout[-600:])
@@ -2752,6 +2769,69 @@ class TestSyncTemplate(unittest.TestCase):
 # ══════════════════════════════════════════════════════════════════════════════
 # bsi-claim.sh open — le TTL du type
 # ══════════════════════════════════════════════════════════════════════════════
+
+class TestSyncDUnBrainMigre(unittest.TestCase):
+    """La synchro d'un brain dont `agents/` est une vue : elle livre le NOYAU.
+
+    Le brain jetable de `TestSyncTemplate`, migré comme le runbook le dit, avec une
+    surcharge privée et un agent à l'instance seule ; un gabarit « déjà publié » à
+    l'ancienne structure, qui porte un agent écrit pour lui (`origine: template`).
+    Rien de l'instance ne part ; l'agent du gabarit déménage dans le noyau ; la vue
+    du rendu se retire avant de publier."""
+
+    CHEMINS, SATELLITES = TestSyncTemplate.CHEMINS, TestSyncTemplate.SATELLITES
+    setUp, tearDown = TestSyncTemplate.setUp, TestSyncTemplate.tearDown
+    _git, _sync = TestSyncTemplate._git, TestSyncTemplate._sync
+
+    def test_un_brain_migre_livre_le_noyau_et_rien_de_l_instance(self):
+        b = self.brain
+        # Les marqueurs se construisent à l'exécution : ce fichier part au gabarit, et
+        # les chercher en toutes lettres les y trouverait.
+        surcharge, a_moi, nom = 'SURCHARGE' + '-PRIVEE', 'A-MOI' + '-SEUL', 'agent-' + 'a-moi'
+        (b / 'contexts' / 'sonde.yml').unlink()            # la sonde du parent refuse exprès
+        if not (b / 'noyau' / 'agents').is_dir():          # une source pas encore migrée
+            self._git('rm', '-q', 'agents/CATALOG.yml', cwd=b)
+            (b / 'noyau').mkdir()
+            self._git('mv', 'agents', 'noyau/agents', cwd=b)
+            with open(b / '.gitignore', 'a') as f:
+                f.write('\n/agents/\n')
+        (b / 'instance' / 'agents').mkdir(parents=True, exist_ok=True)
+        coach = (b / 'noyau' / 'agents' / 'coach.md').read_text()
+        (b / 'instance' / 'agents' / 'coach.md').write_text(coach + f'\n{surcharge}\n')
+        (b / 'instance' / 'agents' / f'{nom}.md').write_text(
+            f'---\nname: {nom}\ntype: agent\nstatus: active\nbrain:\n  scope: personal\n---\n{a_moi}\n')
+        self._git('add', '-A', cwd=b)
+        self._git('commit', '-q', '--no-verify', '-m', 'migre', cwd=b)
+        vue = subprocess.run([sys.executable, str(b / 'scripts' / 'vue.py'), '--construire'],
+                             env={**self.env, 'BRAIN_ROOT': str(b)}, capture_output=True, text=True)
+        self.assertTrue((b / 'agents' / 'CATALOG.yml').is_file(), vue.stdout + vue.stderr)
+        # Le gabarit publié, à l'ancienne structure : un agent écrit POUR lui, une copie.
+        publie = self.tmp / 'publie'
+        (publie / 'agents').mkdir(parents=True)
+        (publie / 'agents' / 'helloWorld.md').write_text('---\nname: helloWorld\norigine: template\n---\nLE GABARIT\n')
+        (publie / 'agents' / 'coach.md').write_text('une vieille copie\n')
+        for cmd in (['init', '-q'], ['add', '-A'], ['commit', '-qm', 'v1']):
+            self._git(*cmd, cwd=publie)
+        self.env['GABARIT_DEPOT'] = str(publie)
+        rendu = self.tmp / 'rendu'
+        r = self._sync('--rendre', str(rendu))
+        self.assertNotIn('fichiers réels', r.stdout, r.stdout[-600:])
+        self.assertTrue((rendu / 'noyau' / 'agents' / 'coach.md').is_file(), 'le noyau part')
+        self.assertFalse((rendu / 'agents').exists(), 'la vue du rendu se retire')
+        self.assertFalse((rendu / 'instance').exists(), "l'instance ne part jamais")
+        self.assertIn('LE GABARIT', (rendu / 'noyau' / 'agents' / 'helloWorld.md').read_text(),
+                      "l'agent écrit pour le gabarit déménage, il ne disparaît pas")
+        fuites = subprocess.run(['grep', '-rlE', f'{surcharge}|{a_moi}|{nom}', str(rendu)],
+                                capture_output=True, text=True).stdout
+        self.assertEqual(fuites, '', "rien de l'instance dans le gabarit")
+        self.assertIn('↪', r.stdout, 'la transition se dit')
+        ignore = rendu / '.gitignore'
+        self.assertIn('/agents/', ignore.read_text().splitlines() if ignore.is_file() else [],
+                      "la vue d'un fork ne se versionne pas — posé par la synchro")
+        lock = (rendu / 'kernel.lock').read_text()
+        self.assertIn('  noyau/agents/coach.md:', lock, 'le lock scelle le noyau')
+        self.assertNotIn('\n  agents/', lock, 'la vue ne se scelle pas')
+
 
 class BrainBsiJetable(unittest.TestCase):
     """Un brain jetable pour `bsi-claim.sh` : le script, ses libs, le vrai
@@ -3559,6 +3639,28 @@ class TestDocsVerite(unittest.TestCase):
     def _vrai(self, ligne: str):
         code, sortie = self._juger(ligne + '\n')
         self.assertEqual(code, 0, f"{ligne!r} ne doit pas rougir\n{sortie}")
+
+    def test_le_noyau_nomme_avant_d_exister_rougit(self):
+        """L'incident : la doc de la vue, rendue sur un gabarit sans `noyau/`, passait —
+        « 24 pages, rien de faux » (3/10) — parce que les scripts du gabarit citent
+        `noyau/agents` dans leur code, et passaient pour le créer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), '- `noyau/agents/` — les 67 agents, lus par la vue `agents/`\n')
+            (g / 'scripts' / 'kernel-lock-gen.sh').write_text("suivis 'agents/*.md' 'noyau/agents/*.md'\n"
+                                                               'ls noyau/agents\n')
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('[chemin]', r.stdout + r.stderr)
+
+    def test_le_noyau_qui_existe_ne_rougit_pas(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), 'Les agents vivent dans `noyau/agents/coach.md`.\n')
+            (g / 'noyau' / 'agents').mkdir(parents=True)
+            (g / 'noyau' / 'agents' / 'coach.md').write_text('# coach')
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     # ── Les versions écrites en dur (Cortex-Template#7) ──
     def test_une_version_passee_en_dur_rougit_meme_en_code(self):
@@ -6443,6 +6545,585 @@ class TestGateRetiree(unittest.TestCase):
         self.assertFalse([c for c in chemins if c.startswith('/gate')], chemins)
 
 
+class TestPostureVoitLeNoyau(unittest.TestCase):
+    """En posture replica-nomad, le hook refuse un commit du kernel — `noyau/` compris.
+
+    Il jugeait avec une liste écrite en dur (`agents/`, `profil/`, `scripts/`…), une
+    troisième copie de la règle des zones : un agent de `noyau/agents/` se commitait
+    sans un mot. Il dérive désormais ses chemins de `NIVEAUX.yml` par le `Registre`
+    du CORE — la règle du garde de zone. Le hook n'avait aucun test. Joué dans un
+    dépôt git jetable, avec le vrai `NIVEAUX.yml`."""
+
+    def _jouer(self, posture: str, chemin: str) -> int:
+        with tempfile.TemporaryDirectory(prefix='brain-posture-') as tmp:
+            b = Path(tmp)
+            for rel in ('scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
+                        'scripts/lib/python.sh', 'scripts/posture-gate-check.sh', 'NIVEAUX.yml'):
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+            (b / 'brain-engine').mkdir()
+            (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+            if (BRAIN_ROOT_PATH / 'brain-engine' / 'core').is_dir():
+                (b / 'brain-engine' / 'core').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / 'core')
+            (b / 'brain-compose.local.yml').write_text(
+                f'instances:\n  ici:\n    active: true\n    posture: {posture}\n')
+            g = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                                          cwd=b, capture_output=True, text=True)
+            g('init', '-q')
+            (b / chemin).parent.mkdir(parents=True, exist_ok=True)
+            (b / chemin).write_text('# un fichier\n')
+            g('add', chemin)
+            env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_MAIN', 'BRAIN_KERNEL_OVERRIDE')}
+            return subprocess.run(['bash', str(b / 'scripts/hooks/pre-commit-posture')], cwd=b,
+                                  capture_output=True, text=True, env=env, timeout=120).returncode
+
+    def test_le_noyau_est_refuse_en_replica(self):
+        self.assertEqual(self._jouer('replica-nomad', 'noyau/agents/un-agent.md'), 1)
+
+    def test_la_regle_vient_des_niveaux_pas_d_une_liste(self):
+        """`contexts/` est kernel par `NIVEAUX.yml`, absent de la liste de secours :
+        seule la dérivation par le CORE le refuse."""
+        self.assertEqual(self._jouer('replica-nomad', 'contexts/session-x.yml'), 1)
+
+    def test_un_agent_a_plat_reste_refuse(self):
+        self.assertEqual(self._jouer('replica-nomad', 'agents/un-agent.md'), 1)
+
+    def test_une_surcharge_et_un_projet_passent(self):
+        self.assertEqual(self._jouer('replica-nomad', 'instance/agents/un-agent.md'), 0)
+        self.assertEqual(self._jouer('replica-nomad', 'projets/un-projet.md'), 0)
+
+    def test_le_master_ecrit_son_noyau(self):
+        self.assertEqual(self._jouer('master', 'noyau/agents/un-agent.md'), 0)
+
+
+class TestIsolationVoitLaVue(unittest.TestCase):
+    """Le contrôle d'isolation lit les agents d'une vue de liens.
+
+    `grep -r` ne suit pas les liens : dans un brain dont `agents/` est une vue,
+    le contrôle rendait un vert sans avoir rien lu — y compris le balayage des
+    dépendances privées interdites. Joué dans un dépôt git jetable, avec la vue
+    et sans : le même agent, les mêmes trouvailles."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'kernel-isolation-check.sh'
+    AGENT = '# un agent\nIl lit toolkit/private/outil et cite profil/capital.\n'
+
+    def _jouer(self, vue: bool) -> str:
+        with tempfile.TemporaryDirectory(prefix='brain-iso-') as tmp:
+            b = Path(tmp)
+            (b / 'scripts' / 'lib').mkdir(parents=True)
+            shutil.copy(self.SCRIPT, b / 'scripts' / self.SCRIPT.name)
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh', b / 'scripts' / 'lib' / 'python.sh')
+            (b / 'agents').mkdir()
+            if vue:
+                (b / 'noyau' / 'agents').mkdir(parents=True)
+                (b / 'noyau' / 'agents' / 'un-agent.md').write_text(self.AGENT)
+                (b / 'agents' / 'un-agent.md').symlink_to('../noyau/agents/un-agent.md')
+            else:
+                (b / 'agents' / 'un-agent.md').write_text(self.AGENT)
+            subprocess.run(['git', 'init', '-q'], cwd=b, check=True)
+            r = subprocess.run(['bash', str(b / 'scripts' / self.SCRIPT.name)], cwd=b,
+                               capture_output=True, text=True, timeout=120)
+            return r.stdout + r.stderr
+
+    def test_la_vue_et_le_fichier_a_plat_disent_la_meme_chose(self):
+        a_plat, vue = self._jouer(False), self._jouer(True)
+        self.assertIn('toolkit/private', a_plat, 'le témoin : sans vue, il voit')
+        for trouvaille in ('toolkit/private', 'profil/capital'):
+            self.assertIn(trouvaille, vue, f'avec la vue, il doit voir {trouvaille}')
+
+
+class TestAgentsDuMcp(unittest.TestCase):
+    """`brain_agents(nom)` lit un agent — confiné à `agents/`, liens de la vue compris.
+
+    La garde d'avant (`_resolve_under`) n'avait aucun test, et refusait toute la
+    vue : elle suit le lien, voit `noyau/…` hors de `agents/`, dit « invalide ».
+    Joué dans un brain jetable (`_BRAIN_ROOT` redirigé)."""
+
+    def setUp(self):
+        import mcp_server
+        self.m = mcp_server
+        self.racine = Path(tempfile.mkdtemp(prefix='brain-mcp-agents-')).resolve()
+        r = self.racine
+        for rel, texte in {'noyau/agents/coach.md': 'coach du noyau\n',
+                           'noyau/agents/games/jeu.md': 'un jeu\n',
+                           'instance/agents/api.md': 'api de l instance\n',
+                           'profil/identity/secret.md': 'à ne jamais servir\n',
+                           'KERNEL.md': 'le kernel\n'}.items():
+            (r / rel).parent.mkdir(parents=True, exist_ok=True)
+            (r / rel).write_text(texte)
+        vue = r / 'agents'
+        (vue / 'games').mkdir(parents=True)
+        (vue / 'coach.md').symlink_to('../noyau/agents/coach.md')
+        (vue / 'api.md').symlink_to('../instance/agents/api.md')
+        (vue / 'games' / 'jeu.md').symlink_to('../../noyau/agents/games/jeu.md')
+        (vue / 'piege.md').symlink_to('../profil/identity/secret.md')
+        (vue / 'normal.md').write_text('un agent posé à plat\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.racine, ignore_errors=True)
+
+    def _lire(self, nom):
+        with patch.object(self.m, '_BRAIN_ROOT', self.racine):
+            return getattr(self.m.brain_agents, 'fn', self.m.brain_agents)(nom)
+
+    def test_la_vue_se_lit(self):
+        self.assertEqual(self._lire('coach'), 'coach du noyau\n')
+        self.assertEqual(self._lire('api'), 'api de l instance\n')
+        self.assertEqual(self._lire('games/jeu'), 'un jeu\n')
+
+    def test_un_agent_a_plat_se_lit_toujours(self):
+        self.assertEqual(self._lire('normal'), 'un agent posé à plat\n')
+
+    def test_un_nom_qui_sort_de_agents_est_refuse(self):
+        for nom in ('../KERNEL', '../profil/identity/secret', 'games/../../KERNEL',
+                    '../noyau/agents/coach'):   # un vrai agent, mais par un chemin qui sort
+            self.assertIn('invalide', self._lire(nom), nom)
+
+    def test_un_lien_de_la_vue_vers_autre_chose_qu_un_agent_est_refuse(self):
+        self.assertIn('invalide', self._lire('piege'))
+
+
+class TestLaDocSeJugeDansUnBrainMigre(unittest.TestCase):
+    """Le pre-commit juge la doc sur une copie de l'INDEX — qui n'a pas la vue.
+
+    Trouvé à la répétition générale du 3/10 : le commit de la migration lui-même
+    était refusé (« aucun agent lisible »). Joué dans un brain migré jetable, avec
+    les vrais `pre-commit`, `docs-generer.py` et `vue.py`, et un registre factice."""
+
+    REGISTRE = ('import sys, pathlib\n'
+                'b = pathlib.Path(sys.argv[sys.argv.index("--brain") + 1])\n'
+                'noms = sorted(p.stem for p in (b / "agents").glob("*.md"))\n'
+                'pathlib.Path(sys.argv[sys.argv.index("--emit") + 1]).write_text(\n'
+                '    "agents:\\n" + "".join(f"- id: {n}\\n  distributable: true\\n" for n in noms))\n')
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix='hook-doc-migre-'))
+        d = self.d
+        for rel in ('scripts/hooks/pre-commit', 'scripts/hooks/_racines.sh', 'scripts/lib/python.sh',
+                    'scripts/docs-generer.py', 'scripts/vue.py'):
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(BRAIN_ROOT_PATH / rel, d / rel)
+        for rel, texte in {
+                'noyau/agents/a.md': '---\ndescription: a\nbrain:\n  scope: kernel\n  type: metier\n---\n',
+                'noyau/agents/b.md': '---\ndescription: b\nbrain:\n  scope: kernel\n  type: metier\n---\n',
+                'instance/agents/.gitkeep': '',
+                'brain-engine/doctor/agent_registry.py': self.REGISTRE,
+                'docs/src/page.md': '# Page\n\nLes {{NB_AGENTS}} agents.\n',
+                '.gitignore': '/agents/\n'}.items():
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            (d / rel).write_text(texte)
+        self._git('init', '-q')
+        self._vue()
+        self._ecrire_la_doc()
+        self._git('add', '-A')
+        self._git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--no-verify')
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _git(self, *a):
+        return subprocess.run(['git', *a], cwd=self.d, capture_output=True, text=True, check=True)
+
+    def _env(self):
+        return {**{k: v for k, v in os.environ.items() if k != 'MYELINE_ROOT'}, 'BRAIN_ROOT': str(self.d)}
+
+    def _vue(self):
+        subprocess.run([sys.executable, 'scripts/vue.py', '--construire'], cwd=self.d,
+                       env=self._env(), capture_output=True, text=True, check=True)
+
+    def _ecrire_la_doc(self):
+        subprocess.run([sys.executable, 'scripts/docs-generer.py', '--brain', str(self.d), '--ecrire'],
+                       cwd=self.d, capture_output=True, text=True, check=True)
+
+    def _hook(self):
+        return subprocess.run(['bash', 'scripts/hooks/pre-commit'], cwd=self.d, env=self._env(),
+                              capture_output=True, text=True, timeout=120)
+
+    def _nouvel_agent(self):
+        (self.d / 'noyau/agents/c.md').write_text('---\ndescription: c\nbrain:\n  scope: kernel\n  type: metier\n---\n')
+        self._vue()
+
+    def test_la_doc_a_jour_passe(self):
+        """L'incident : la doc juste, le commit refusé faute de vue dans l'index."""
+        self._nouvel_agent()
+        self._ecrire_la_doc()
+        self.assertIn('Les 3 agents', (self.d / 'docs/page.md').read_text())
+        self._git('add', '-A')
+        r = self._hook()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_un_agent_du_noyau_sans_la_doc_est_refuse(self):
+        """Le déclencheur voit `noyau/agents/` : un agent ajouté sans régénérer rougit."""
+        self._nouvel_agent()
+        self._git('add', '-A')
+        r = self._hook()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("n'est plus à jour de ses sources", r.stdout)
+
+
+class TestLaVueSuitLeCheckout(unittest.TestCase):
+    """Les hooks reconstruisent la vue des agents : un worktree neuf, une fusion.
+
+    `agents/` est ignoré par git quand il est une vue : un worktree neuf n'en a
+    aucune, et c'est par là que passent les PR et les tests. Joué dans un dépôt
+    jetable, avec les vrais hooks installés par `install-brain-hooks.sh`."""
+
+    # L'installeur refuse s'il manque la source d'un seul hook : on copie tout
+    # `scripts/hooks/`, comme un fork le reçoit.
+    FICHIERS = ('scripts/vue.py', 'scripts/install-brain-hooks.sh', 'scripts/lib/python.sh',
+                *(f'scripts/hooks/{p.name}' for p in sorted((BRAIN_ROOT_PATH / 'scripts' / 'hooks').iterdir())
+                  if p.is_file()))
+
+    def _depot(self, avec_noyau: bool) -> Path:
+        d = Path(tempfile.mkdtemp(prefix='brain-vue-auto-'))
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        b = d / 'principal'
+        for rel in self.FICHIERS:
+            (b / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+        agents = b / ('noyau/agents' if avec_noyau else 'docs')
+        agents.mkdir(parents=True)
+        (agents / 'coach.md').write_text('# coach\n')
+        (b / '.gitignore').write_text('/agents/\n' if avec_noyau else '')
+        self.g = lambda *a, cwd=b: subprocess.run(
+            ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=cwd,
+            capture_output=True, text=True, env={**os.environ, 'BRAIN_PORT': '1', 'BRAIN_DOLT_PORT': '1'})
+        self.g('init', '-q', '-b', 'main')
+        self.g('add', '-A')
+        self.g('commit', '-q', '--no-verify', '-m', 'init')
+        subprocess.run(['bash', 'scripts/install-brain-hooks.sh'], cwd=b, capture_output=True)
+        return b
+
+    def test_un_worktree_neuf_a_sa_vue(self):
+        b = self._depot(avec_noyau=True)
+        wt = b.parent / 'arbre'
+        self.g('worktree', 'add', '-q', '-b', 'pr', str(wt))
+        self.assertTrue((wt / 'agents' / 'coach.md').is_symlink(), 'le post-checkout construit la vue')
+
+    def test_une_fusion_tient_la_vue_a_jour(self):
+        b = self._depot(avec_noyau=True)
+        self.g('checkout', '-q', '-b', 'ajout')
+        (b / 'noyau' / 'agents' / 'nouveau.md').write_text('# nouveau\n')
+        self.g('add', 'noyau/agents/nouveau.md')
+        self.g('commit', '-q', '--no-verify', '-m', 'un agent de plus')
+        self.g('checkout', '-q', 'main')
+        self.assertFalse((b / 'agents' / 'nouveau.md').exists(), 'sur main, pas encore')
+        self.g('merge', '-q', '--ff-only', 'ajout')
+        self.assertTrue((b / 'agents' / 'nouveau.md').is_symlink(), 'le post-merge le pose')
+
+    def _etape_12(self, b: Path) -> subprocess.CompletedProcess:
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        etape = script[script.index('# ── Étape 12'):script.index('# ── Résumé')]
+        return subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; warn(){ echo "warn $*"; }; '
+                               'info(){ echo "info $*"; }\n' + etape],
+                              env={**os.environ, 'BRAIN_ROOT': str(b), 'ETAPES': '12'},
+                              capture_output=True, text=True, timeout=120)
+
+    def test_le_setup_construit_la_vue_d_un_fork_neuf(self):
+        """Un clone neuf n'a pas d'`agents/` : l'étape 12 du setup le construit."""
+        b = self._depot(avec_noyau=True)
+        r = self._etape_12(b)
+        self.assertIn('ok agents/ construit', r.stdout, r.stdout + r.stderr)
+        self.assertTrue((b / 'agents' / 'coach.md').is_symlink())
+
+    def test_le_setup_sans_noyau_ne_construit_rien(self):
+        b = self._depot(avec_noyau=False)
+        r = self._etape_12(b)
+        self.assertIn('rien à construire', r.stdout)
+        self.assertFalse((b / 'agents').exists())
+
+    def test_sans_noyau_les_hooks_ne_creent_rien(self):
+        b = self._depot(avec_noyau=False)
+        wt = b.parent / 'arbre'
+        self.g('worktree', 'add', '-q', '-b', 'pr', str(wt))
+        self.assertFalse((wt / 'agents').exists())
+        self.assertFalse((b / 'agents').exists())
+
+
+class TestVueDesAgents(unittest.TestCase):
+    """`agents/` comme une vue du noyau livré et de la surcharge de l'instance.
+
+    Joué dans un brain jetable : `noyau/agents/`, `instance/agents/`, et le vrai
+    `serve.py` pour lire la posture. Le registre des agents est un générateur
+    factice, déterministe, au chemin du vrai."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'vue.py'
+    REGISTRE = ('import sys, pathlib\n'
+                'a = pathlib.Path(sys.argv[sys.argv.index("--brain") + 1]) / "agents"\n'
+                'noms = sorted(p.stem for p in a.glob("*.md"))\n'
+                'pathlib.Path(sys.argv[sys.argv.index("--emit") + 1]).write_text(\n'
+                '    "".join(f"- {n}: {(a / (n + \'.md\')).read_text().splitlines()[0]}\\n" for n in noms))\n')
+
+    def setUp(self):
+        self.brain = Path(tempfile.mkdtemp(prefix='brain-vue-'))
+        b = self.brain
+        for rel, texte in {'noyau/agents/coach.md': 'le coach du noyau\n',
+                           'noyau/agents/api.md': 'l api du noyau\n',
+                           'noyau/agents/games/jeu.md': 'un jeu du noyau\n',
+                           'noyau/agents/CATALOG.yml': 'le catalogue de l amont\n',
+                           'instance/agents/coach.md': 'le coach de l instance\n',
+                           'instance/agents/a-moi.md': 'mon agent\n',
+                           'brain-engine/doctor/agent_registry.py': self.REGISTRE,
+                           'brain-compose.yml': 'postures:\n  master:\n    kernel_write: true\n'
+                                                '  replica-nomad:\n    kernel_write: false\n'}.items():
+            (b / rel).parent.mkdir(parents=True, exist_ok=True)
+            (b / rel).write_text(texte)
+        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'serve.py', b / 'brain-engine' / 'serve.py')
+        self._posture('master')
+
+    def tearDown(self):
+        for p in [self.brain, *self.brain.rglob('*')]:
+            if not p.is_symlink():
+                p.chmod(p.stat().st_mode | 0o200)
+        shutil.rmtree(self.brain, ignore_errors=True)
+
+    def _posture(self, posture):
+        (self.brain / 'brain-compose.local.yml').write_text(
+            f'instances:\n  ici:\n    active: true\n    posture: {posture}\n')
+
+    def _vue(self, *args):
+        env = {k: v for k, v in os.environ.items() if k != 'MYELINE_ROOT'}
+        return subprocess.run([sys.executable, str(self.SCRIPT), *args], capture_output=True, text=True,
+                              timeout=120, env={**env, 'BRAIN_ROOT': str(self.brain)})
+
+    def _lire(self, rel):
+        return (self.brain / 'agents' / rel).read_text()
+
+    def test_la_surcharge_gagne_le_noyau_sinon(self):
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._lire('coach.md'), 'le coach de l instance\n')
+        self.assertEqual(self._lire('api.md'), 'l api du noyau\n')
+        self.assertEqual(self._lire('games/jeu.md'), 'un jeu du noyau\n')
+        self.assertEqual(self._lire('a-moi.md'), 'mon agent\n')
+        for rel in ('coach.md', 'api.md', 'games/jeu.md', 'a-moi.md'):
+            self.assertTrue((self.brain / 'agents' / rel).is_symlink(), rel)
+
+    def test_construire_deux_fois_ne_change_rien(self):
+        self._vue('--construire')
+        r = self._vue('--construire')
+        self.assertNotIn('posés', r.stdout)
+        self.assertEqual(self._vue().returncode, 0, "l'état dit : juste")
+
+    def test_un_fichier_reel_n_est_jamais_touche(self):
+        """Un `sed -i` ou un `mv` remplace un lien par un fichier : peut-être le travail de quelqu'un."""
+        (self.brain / 'agents').mkdir()
+        (self.brain / 'agents' / 'api.md').write_text('mon travail en cours\n')
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('fichier réel', r.stdout)
+        self.assertFalse((self.brain / 'agents' / 'api.md').is_symlink())
+        self.assertEqual(self._lire('api.md'), 'mon travail en cours\n')
+
+    def test_un_lien_orphelin_part_un_fichier_reel_reste(self):
+        self._vue('--construire')
+        (self.brain / 'instance' / 'agents' / 'a-moi.md').unlink()
+        (self.brain / 'agents' / 'note.md').write_text('une note posée à la main\n')
+        self._vue('--construire')
+        self.assertFalse((self.brain / 'agents' / 'a-moi.md').exists(), "le lien orphelin est retiré")
+        self.assertTrue((self.brain / 'agents' / 'note.md').is_file(), 'le fichier réel reste')
+
+    def test_un_fichier_reel_que_rien_ne_fournit_est_signale(self):
+        """Un agent écrit directement dans `agents/` : ignoré par git, lu comme un agent,
+        jamais commité. Mesuré le 3/10 : « 98 juste(s) », sortie 0."""
+        self._vue('--construire')
+        (self.brain / 'agents' / 'nouveau.md').write_text('écrit dans la vue\n')
+        for args in ((), ('--construire',)):
+            r = self._vue(*args)
+            self.assertEqual(r.returncode, 1, args)
+            self.assertIn('agents/nouveau.md est un fichier réel que rien ne fournit', r.stdout)
+        self.assertEqual(self._lire('nouveau.md'), 'écrit dans la vue\n', 'jamais touché')
+        self.assertEqual(self._vue().returncode, 1)
+        (self.brain / 'agents' / 'nouveau.md').unlink()
+        self.assertEqual(self._vue().returncode, 0, 'retiré : la vue est juste, le catalogue compris')
+
+    def test_le_catalogue_se_calcule_dans_la_vue(self):
+        self._vue('--construire')
+        cat = self.brain / 'agents' / 'CATALOG.yml'
+        self.assertFalse(cat.is_symlink(), "un calcul, pas un lien vers celui de l'amont")
+        self.assertIn('a-moi: mon agent', cat.read_text())
+        self.assertIn('coach: le coach de l instance', cat.read_text())
+        self.assertEqual((self.brain / 'noyau' / 'agents' / 'CATALOG.yml').read_text(),
+                         'le catalogue de l amont\n', 'le noyau intact')
+
+    def test_la_posture_decide_du_droit_d_ecrire_le_noyau(self):
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self._posture('replica-nomad')
+        self.assertIn('lecture seule', self._vue('--construire').stdout)
+        with self.assertRaises(PermissionError):
+            (self.brain / 'agents' / 'api.md').write_text('à travers la vue')
+        with self.assertRaises(PermissionError):
+            (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('dans le noyau')
+        self.assertEqual(self._lire('api.md'), 'l api du noyau\n')
+        self._posture('master')
+        self._vue('--construire')
+        (self.brain / 'agents' / 'api.md').write_text('la source forge son noyau\n')
+        self.assertEqual((self.brain / 'noyau' / 'agents' / 'api.md').read_text(), 'la source forge son noyau\n')
+
+    def test_une_posture_illisible_verrouille_par_prudence(self):
+        """Un `serve.py` qui ne s'importe pas : se rabattre sur « modifiable » ouvrait le
+        noyau d'un satellite en silence. Déclarée replica, la posture verrouille."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        (self.brain / 'brain-engine' / 'serve.py').write_text('cassé(\n')
+        self._posture('replica-nomad')
+        r = self._vue('--construire')
+        self.assertIn('par prudence', r.stdout + r.stderr)
+        with self.assertRaises(PermissionError):
+            (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('x')
+        self._posture('master')
+        self._vue('--construire')
+        (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('x')   # le témoin : master écrit
+
+    def test_un_fichier_cache_n_entre_pas_dans_la_vue(self):
+        """Le `.gitkeep` d'`instance/agents/` : relié, il restait en lien mort après un
+        retour arrière (répétition générale du 3/10)."""
+        (self.brain / 'instance' / 'agents' / '.gitkeep').write_text('')
+        self._vue('--construire')
+        self.assertFalse(os.path.lexists(self.brain / 'agents' / '.gitkeep'))
+        self.assertEqual(self._vue().returncode, 0, 'la vue est juste sans lui')
+
+    def test_le_dossier_noyau_lui_meme_est_verrouille(self):
+        """Seul `noyau/agents/` l'était : un `mv noyau/agents …` passait."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self._posture('replica-nomad')
+        self._vue('--construire')
+        with self.assertRaises(PermissionError):
+            (self.brain / 'noyau' / 'agents').rename(self.brain / 'noyau' / 'ailleurs')
+        self._vue('--deverrouiller')
+        (self.brain / 'noyau' / 'agents').rename(self.brain / 'noyau' / 'ailleurs')   # le témoin
+
+    def test_l_etat_dit_le_verrou_et_rougit_s_il_a_saute(self):
+        """`brain vue` seul ne disait rien du verrou ; un `--deverrouiller` resté sans
+        `--construire` laissait le noyau d'un satellite ouvert, en silence."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self._posture('replica-nomad')
+        self._vue('--construire')
+        r = self._vue()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('lecture seule', r.stdout)
+        self._vue('--deverrouiller')
+        r = self._vue()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('noyau/ est modifiable', r.stdout)
+
+    def test_l_etat_ne_bouge_rien(self):
+        r = self._vue()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertFalse((self.brain / 'agents').exists())
+
+    def test_sans_noyau_rien_a_construire(self):
+        shutil.rmtree(self.brain / 'noyau')
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 0)
+        self.assertFalse((self.brain / 'agents').exists())
+
+
+class TestBrainAligne(unittest.TestCase):
+    """`brain aligne` reprend le tronc sur une instance au noyau verrouillé.
+
+    Mesuré à la répétition générale du 3/10 : sur un laptop `replica-nomad`, une
+    version qui modifie un agent du noyau faisait échouer `git merge` ; une version
+    qui en retire un sortait en 0 en laissant le fichier. Joué contre un amont nu et
+    un clone jetables, avec les vrais `aligne.py`, `vue.py` et `serve.py`."""
+
+    REGISTRE = TestVueDesAgents.REGISTRE
+
+    def setUp(self):
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-aligne-'))
+        src = self.tmp / 'src'
+        for rel, texte in {'noyau/agents/coach.md': 'coach v1\n', 'noyau/agents/watch.md': 'watch\n',
+                           'instance/agents/.gitkeep': '', '.gitignore': '/agents/\nbrain-compose.local.yml\n',
+                           'brain-engine/doctor/agent_registry.py': self.REGISTRE,
+                           'brain-compose.yml': 'postures:\n  master:\n    kernel_write: true\n'
+                                                '  replica-nomad:\n    kernel_write: false\n'}.items():
+            (src / rel).parent.mkdir(parents=True, exist_ok=True)
+            (src / rel).write_text(texte)
+        (src / 'scripts').mkdir()
+        for f in ('aligne.py', 'vue.py', 'brain'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, src / 'scripts' / f)
+        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'serve.py', src / 'brain-engine' / 'serve.py')
+        self._g(src, 'init', '-q', '-b', 'main')
+        self._g(src, 'add', '-A')
+        self._g(src, 'commit', '-qm', 'v1')
+        self.amont = self.tmp / 'amont.git'
+        self._g(self.tmp, 'clone', '-q', '--bare', str(src), str(self.amont))
+        self.src = src
+        self._g(src, 'remote', 'add', 'origin', str(self.amont))
+        self._g(src, 'fetch', '-q', 'origin')
+        self.laptop = self.tmp / 'laptop'
+        self._g(self.tmp, 'clone', '-q', str(self.amont), str(self.laptop))
+        (self.laptop / 'brain-compose.local.yml').write_text(
+            'instances:\n  ici:\n    active: true\n    posture: replica-nomad\n')
+        self._run('vue.py', '--construire')
+        self.assertFalse(os.access(self.laptop / 'noyau' / 'agents', os.W_OK), 'le laptop est verrouillé')
+
+    def tearDown(self):
+        for p in [self.tmp, *self.tmp.rglob('*')]:
+            if not p.is_symlink():
+                p.chmod(p.stat().st_mode | 0o200)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _g(self, cwd, *a):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=cwd,
+                              capture_output=True, text=True, check=True)
+
+    def _run(self, script, *args):
+        env = {k: v for k, v in os.environ.items() if k != 'MYELINE_ROOT'}
+        return subprocess.run([sys.executable, str(self.laptop / 'scripts' / script), *args],
+                              capture_output=True, text=True, timeout=120,
+                              env={**env, 'BRAIN_ROOT': str(self.laptop)})
+
+    def _publier(self, geste):
+        geste(self.src)
+        self._g(self.src, 'add', '-A')
+        self._g(self.src, 'commit', '-qm', 'tronc')
+        self._g(self.src, 'push', '-q', 'origin', 'main')
+
+    def test_le_merge_seul_echoue_sur_le_noyau_verrouille(self):
+        """Le témoin : ce que `brain aligne` remplace ne sait pas faire."""
+        self._publier(lambda s: (s / 'noyau/agents/coach.md').write_text('coach v2\n'))
+        self._g(self.laptop, 'fetch', '-q')
+        r = subprocess.run(['git', 'merge', '--ff-only', 'origin/main'], cwd=self.laptop,
+                           capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_une_version_qui_modifie_le_noyau_passe_et_le_verrou_revient(self):
+        self._publier(lambda s: (s / 'noyau/agents/coach.md').write_text('coach v2\n'))
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.laptop / 'agents' / 'coach.md').read_text(), 'coach v2\n')
+        self.assertFalse(os.access(self.laptop / 'noyau' / 'agents', os.W_OK), 'le verrou reposé')
+        self.assertIn('lecture seule', r.stdout)
+
+    def test_une_version_qui_retire_un_agent_le_retire(self):
+        self._publier(lambda s: (s / 'noyau/agents/watch.md').unlink())
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((self.laptop / 'noyau' / 'agents' / 'watch.md').exists())
+        self.assertFalse(os.path.lexists(self.laptop / 'agents' / 'watch.md'), 'le lien part aussi')
+
+    def test_un_retrait_reste_d_une_fusion_oubliee_est_signale(self):
+        """L'incident : la fusion sans `brain aligne` sort en 0 et laisse l'agent retiré."""
+        self._publier(lambda s: (s / 'noyau/agents/watch.md').unlink())
+        self._g(self.laptop, 'fetch', '-q')
+        subprocess.run(['git', 'merge', '--ff-only', 'origin/main'], cwd=self.laptop, capture_output=True)
+        self.assertTrue((self.laptop / 'noyau' / 'agents' / 'watch.md').exists(), "l'incident se reproduit")
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('noyau/agents/watch.md', r.stdout)
+        self.assertTrue((self.laptop / 'noyau' / 'agents' / 'watch.md').exists(), 'jamais effacé')
+
+    def test_sans_branche_suivie_il_refuse(self):
+        self._g(self.laptop, 'branch', '--unset-upstream')
+        self.assertEqual(self._run('aligne.py').returncode, 1)
+
+
 class TestBrainMaj(unittest.TestCase):
     """`brain maj` reçoit une version du gabarit sans rien perdre du fork.
 
@@ -6493,6 +7174,9 @@ class TestBrainMaj(unittest.TestCase):
         (self.fork / 'brain-compose.local.yml').write_text('kernel_version: "1.0.0"\n')
 
     def tearDown(self):
+        for p in [self.tmp, *self.tmp.rglob('*')]:
+            if not p.is_symlink():
+                p.chmod(p.stat().st_mode | 0o200)
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _g(self, cwd, *args):
@@ -6617,6 +7301,110 @@ class TestBrainMaj(unittest.TestCase):
         r = self._maj('--appliquer')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('1.1.0', (self.fork / 'brain-compose.local.yml').read_text())
+
+    def test_un_echec_apres_la_fusion_rend_l_arbre_tel_qu_il_etait(self):
+        """Le cas vu le 3/10 : le catalogue régénéré, puis un `git add` qui échoue
+        (le fichier est ignoré). `merge --abort` seul laissait les fichiers
+        régénérés modifiés, et le message disait « rien n'a bougé »."""
+        self._ecrire(self.fork, {'.gitignore': (self.fork / '.gitignore').read_text() + 'agents/CATALOG.yml\n'})
+        self._g(self.fork, 'rm', '-q', '--cached', 'agents/CATALOG.yml')   # comme une vue : non suivi
+        self._ecrire(self.fork, {'learning/ma-piste/README.md': '# ma piste\n'})  # la table, suivie, changera
+        self._commit(self.fork, 'le catalogue ignore')
+        self._version_amont({'notes.md': 'une note de l amont\n'})   # sans conflit : la régénération seule échoue
+        avant = self._tete()
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('fusion annulée', r.stdout)
+        self.assertEqual(self._tete(), avant)
+        self.assertEqual(self._g(self.fork, 'status', '--porcelain', '--untracked-files=no').stdout, '',
+                         "l'arbre est rendu tel qu'il était")
+        self.assertFalse((self.fork / '.git' / 'MERGE_HEAD').exists())
+
+    # ── La vue : un fork à plat qui migre, un fork migré qui reçoit ──
+
+    def _amont_migre(self, tag='v1.1.0', b_amont='name: b\ndescription: b, revu par l amont\n'):
+        """L'amont passe à la vue : `agents/` → `noyau/agents/`, le catalogue sort de git."""
+        a = self.amont
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'vue.py', a / 'scripts' / 'vue.py')
+        self._g(a, 'rm', '-q', 'agents/CATALOG.yml')
+        (a / 'noyau').mkdir()
+        self._g(a, 'mv', 'agents', 'noyau/agents')
+        (a / 'noyau' / 'agents' / 'b.md').write_text(b_amont)
+        with open(a / '.gitignore', 'a') as f:
+            f.write('/agents/\n')
+        compose = a / 'brain-compose.yml'                  # la version seule change : les postures restent
+        compose.write_text(re.sub(r'^version:.*$', f'version: "{tag[1:]}"', compose.read_text(), flags=re.M))
+        self._commit(a, tag)
+        self._g(a, 'tag', tag)
+        self._g(self.fork, 'fetch', '-q', 'upstream', '--tags')
+
+    def test_un_fork_a_plat_migre_vers_la_vue_et_garde_ses_agents(self):
+        self._ecrire(self.fork, {'agents/b.md': 'name: b\ndescription: b, à ma façon\n',
+                                 'agents/b2.md': 'name: b2\ndescription: le mien\n'})
+        self._generer(self.fork)
+        self._commit(self.fork, 'mes agents')
+        self._amont_migre()
+        plan = self._maj()
+        self.assertIn('agents/ devient une vue', plan.stdout, plan.stdout)
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        f = self.fork
+        self.assertEqual((f / 'instance' / 'agents' / 'b.md').read_text(), 'name: b\ndescription: b, à ma façon\n',
+                         'ta version, dans instance/')
+        self.assertIn("revu par l amont", (f / 'noyau' / 'agents' / 'b.md').read_text(),
+                      "la version de l'amont, dans le noyau — les deux restent")
+        self.assertTrue((f / 'instance' / 'agents' / 'b2.md').is_file(), 'ton agent, dans instance/')
+        self.assertTrue((f / 'agents' / 'b.md').is_symlink())
+        self.assertIn('à ma façon', (f / 'agents' / 'b.md').read_text(), 'la vue montre ta version')
+        self.assertIn('revu', (f / 'noyau' / 'agents' / 'b.md').read_text())
+        self.assertIn('b2', (f / 'agents' / 'CATALOG.yml').read_text(), 'le catalogue de la vue te compte')
+        self.assertEqual(self._g(f, 'status', '--porcelain', '--untracked-files=no').stdout, '')
+
+    def test_un_fork_migre_recoit_une_version_et_garde_sa_surcharge(self):
+        self._amont_migre()
+        self.assertEqual(self._maj('--appliquer').returncode, 0)          # le fork migre d'abord
+        f = self.fork
+        (f / 'instance' / 'agents').mkdir(parents=True, exist_ok=True)
+        (f / 'instance' / 'agents' / 'c.md').write_text('name: c\ndescription: ma surcharge\n')
+        self._commit(f, 'ma surcharge')
+        self._ecrire(self.amont, {'noyau/agents/c.md': 'name: c\ndescription: c, version 1.2 de l amont\n',
+                                  'brain-compose.yml': 'version: "1.2.0"\n'})
+        self._commit(self.amont, 'v1.2.0')
+        self._g(self.amont, 'tag', 'v1.2.0')
+        self._g(f, 'fetch', '-q', 'upstream', '--tags')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('version 1.2', (f / 'noyau' / 'agents' / 'c.md').read_text(), 'le noyau reçoit')
+        self.assertIn('ma surcharge', (f / 'agents' / 'c.md').read_text(), 'la vue montre ta surcharge')
+        self.assertNotIn('ignored', r.stdout + r.stderr, 'le catalogue de la vue ne se commite pas')
+        self.assertEqual(self._g(f, 'status', '--porcelain', '--untracked-files=no').stdout, '')
+
+    def test_le_noyau_verrouille_se_leve_le_temps_de_la_fusion(self):
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'serve.py', self.amont / 'brain-engine' / 'serve.py')
+        self._ecrire(self.amont, {'brain-compose.yml': 'version: "1.0.1"\npostures:\n  master:\n    kernel_write: true\n'
+                                                       '  replica-nomad:\n    kernel_write: false\n'})
+        self._commit(self.amont, 'les postures')
+        self._g(self.fork, 'pull', '-q', 'upstream', 'main')
+        self._amont_migre()
+        self.assertEqual(self._maj('--appliquer').returncode, 0)
+        f = self.fork
+        (f / 'brain-compose.local.yml').write_text('kernel_version: "1.1.0"\ninstances:\n  ici:\n'
+                                                   '    active: true\n    posture: replica-nomad\n')
+        subprocess.run([sys.executable, str(f / 'scripts' / 'vue.py'), '--construire'],
+                       env={**os.environ, 'BRAIN_ROOT': str(f)}, capture_output=True)
+        self.assertFalse(os.access(f / 'noyau' / 'agents' / 'c.md', os.W_OK), 'le noyau est verrouillé')
+        self._ecrire(self.amont, {'noyau/agents/c.md': 'name: c\ndescription: c, 1.2\n',
+                                  'brain-compose.yml': 'version: "1.2.0"\npostures:\n  master:\n    kernel_write: true\n'
+                                                       '  replica-nomad:\n    kernel_write: false\n'})
+        self._commit(self.amont, 'v1.2.0')
+        self._g(self.amont, 'tag', 'v1.2.0')
+        self._g(f, 'fetch', '-q', 'upstream', '--tags')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('1.2', (f / 'noyau' / 'agents' / 'c.md').read_text(), 'la fusion a écrit le noyau')
+        self.assertFalse(os.access(f / 'noyau' / 'agents' / 'c.md', os.W_OK), 'et il est reverrouillé')
 
     def test_les_unites_d_un_autre_brain_ne_sont_pas_touchees(self):
         """Le faux systemctl décrit un autre brain : rien n'est réinstallé."""
@@ -7102,6 +7890,7 @@ class TestCatalogueDuGabarit(unittest.TestCase):
             self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
         rendu, r = self._rendre(self.BASE.resolve())
         self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        vue_du_fork(rendu, self.env)               # migré : le catalogue se calcule chez le fork
         catalogue = self._catalogue(rendu)
         self.assertEqual([a['id'] for a in catalogue if not a.get('distributable', True)], [],
                          'un agent non distribuable est décrit dans le gabarit')
@@ -7513,6 +8302,22 @@ class TestGardeCommandes(unittest.TestCase):
         self.assertIsNotNone(self.refuse('bash brain-secrets/MYSECRETS'))
         # Témoin : l'extraction d'une clé, celle que la règle recommande.
         self.assertIsNone(self.refuse("grep -m1 '^CLE=' brain-secrets/MYSECRETS | cut -d= -f2-"))
+
+    def test_sed_i_sur_un_lien(self):
+        """`sed -i` remplace un lien par un fichier : sur la vue `agents/`, l'écriture sort de
+        git en silence. Mesuré le 3/10 sur une copie migrée de la source."""
+        (self.brain / 'noyau' / 'agents').mkdir(parents=True)
+        (self.brain / 'noyau' / 'agents' / 'debug.md').write_text('x')
+        (self.brain / 'agents').mkdir()
+        (self.brain / 'agents' / 'debug.md').symlink_to('../noyau/agents/debug.md')
+        self.assertIsNotNone(self.refuse("sed -i 's/a/b/' agents/debug.md"), 'le geste mesuré')
+        self.assertIsNotNone(self.refuse("sed -Ei '$a z' agents/debug.md"), 'option groupée')
+        self.assertIsNotNone(self.refuse("cd agents && sed --in-place=.bak 's/a/b/' debug.md"), 'le cd est suivi')
+        # Témoins : en suivant le lien, sur la cible, ou sur un fichier ordinaire.
+        self.assertIsNone(self.refuse("sed -i --follow-symlinks 's/a/b/' agents/debug.md"))
+        self.assertIsNone(self.refuse("sed -i 's/a/b/' noyau/agents/debug.md"))
+        self.assertIsNone(self.refuse("sed -i 's/a/b/' a.md"))
+        self.assertIsNone(self.refuse("sed -n '1p' agents/debug.md"), 'lire n\'est pas écrire')
 
     def test_un_heredoc_est_du_texte_sauf_pour_un_shell(self):
         """Le faux positif du 2/10 : le garde a refusé une commande dont le heredoc

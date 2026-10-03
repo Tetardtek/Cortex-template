@@ -96,6 +96,21 @@ def empreinte(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+
+def cible_kernel(racine: Path, server) -> str | None:
+    """Le premier agent dont l'écriture tombe en zone kernel — `coach` d'abord."""
+    dossier = racine / "agents"
+    noms = ["coach.md"] + sorted(p.name for p in dossier.glob("*.md")
+                                 if p.name not in ("coach.md", "AGENTS.md") and not p.name.startswith("_"))
+    for nom in noms:
+        f = dossier / nom
+        if not f.is_file():
+            continue
+        reel = str(f.resolve().relative_to(racine.resolve()))
+        if server._write_zone(reel) == "kernel":
+            return f"agents/{nom}"
+    return None
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Les gardes d'écriture refusent-elles ?")
     p.add_argument("--brain", required=True, type=Path)
@@ -216,8 +231,12 @@ def main() -> int:
     # ⚠️ Aucun de ces trois cas ne doit ABOUTIR : un PUT accepté écrit le
     # fichier et lance `embed.py --file`. Seul le témoin, plus bas, joue un cas
     # qui aboutit — et il intercepte le lancement de l'indexeur.
-    kernel_cible = "agents/coach.md"
-    if (racine / kernel_cible).is_file():
+    # La cible : un agent RÉELLEMENT en zone kernel. `agents/` peut être une vue,
+    # et un agent surchargé dans `instance/` vit en zone instance — son écriture
+    # n'exige pas de claim, c'est voulu. Viser `coach` à l'aveugle faisait rougir
+    # ce contrôle chez tout fork qui surcharge son coach.
+    kernel_cible = cible_kernel(racine, server)
+    if kernel_cible:
         contenu = (racine / kernel_cible).read_text(encoding="utf-8")
         empreinte_avant = empreinte(racine / kernel_cible)
         vrai_claims = server._open_claims

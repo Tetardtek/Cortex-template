@@ -35,7 +35,7 @@ BRAIN_ROOT="${POSITIONNELS[1]:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # le nom de l'instance, et un laptop se déclarait `prod-laptop` quand la liste
 # attendait `laptop`.
 BRAIN_MACHINE="${BRAIN_MACHINE:-$BRAIN_NAME}"
-ETAPES=11
+ETAPES=12
 
 # ── Couleurs ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -422,6 +422,28 @@ if git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   fi
 else
   warn "$BRAIN_ROOT n'est pas un dépôt git — pas de hooks (un clone du gabarit en est un)"
+fi
+
+# ── Étape 12 — la vue des agents ────────────────────────────────────────────
+#
+# Quand le gabarit livre ses agents dans `noyau/agents/`, `agents/` est une VUE :
+# des liens vers le noyau, ou vers `instance/agents/` quand l'instance surcharge un
+# agent. git ne la versionne pas — un clone neuf n'a donc aucun `agents/`, et le
+# boot n'aurait rien à lire. `brain vue` la construit ; les hooks la tiennent
+# ensuite à jour (un checkout, une fusion). En dernier : elle calcule le catalogue
+# avec le venv de l'étape 6. Sans `noyau/`, rien à faire.
+echo ""
+echo "[12/$ETAPES] La vue des agents..."
+if [[ -d "$BRAIN_ROOT/noyau/agents" ]]; then
+  _py="$BRAIN_ROOT/brain-engine/.venv/bin/python3"
+  [[ -x "$_py" ]] || _py=python3
+  if BRAIN_ROOT="$BRAIN_ROOT" "$_py" "$BRAIN_ROOT/scripts/vue.py" --construire >/dev/null; then
+    ok "agents/ construit — tes surcharges vont dans instance/agents/, le noyau reste tel que livré"
+  else
+    warn "la vue ne s'est pas construite — relancer : bash scripts/brain vue --construire"
+  fi
+else
+  info "pas de noyau/agents/ — agents/ est un dossier ordinaire, rien à construire"
 fi
 
 # ── Résumé ────────────────────────────────────────────────────────────────────

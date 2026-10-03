@@ -130,8 +130,12 @@ echo "   portée : $SCAN_PORTEE"
 echo ""
 
 # --- Scan ERROR — patterns interdits ---
+#
+# `grep -R`, pas `-r` : `agents/` peut être une VUE de liens vers `noyau/` et
+# `instance/`. `-r` ne suit pas les liens — le contrôle rendait un vert
+# sans avoir rien lu (mesuré le 3/10 : 0 référence au lieu de 25).
 for pattern in "${ERROR_PATTERNS[@]}"; do
-  matches=$(grep -rl "$pattern" "${SCAN_DIRS[@]}" \
+  matches=$(grep -Rl "$pattern" "${SCAN_DIRS[@]}" \
     --include="*.md" \
     --exclude-dir=reviews --exclude-dir=.git --exclude-dir=node_modules \
     2>/dev/null || true)
@@ -214,7 +218,7 @@ done < <(find "${SCAN_DIRS[@]}" -name "*.md" \
 
 # --- Scan WARN ---
 for pattern in "${WARN_PATTERNS[@]}"; do
-  matches=$(grep -rl "$pattern" "${SCAN_DIRS[@]}" \
+  matches=$(grep -Rl "$pattern" "${SCAN_DIRS[@]}" \
     --include="*.md" \
     --exclude-dir=reviews --exclude-dir=.git --exclude-dir=node_modules \
     2>/dev/null || true)

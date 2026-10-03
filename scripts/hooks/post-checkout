@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# post-checkout — installé par scripts/install-brain-hooks.sh, source versionnée.
+#
+# Un checkout de BRANCHE (un worktree neuf compris, `$3 = 1`) reconstruit la vue
+# des agents ; un checkout de fichiers (`$3 = 0`) n'y touche pas.
+source "$(dirname "${BASH_SOURCE[0]}")/_racines.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_vue.sh"
+[ "${3:-0}" = "1" ] && vue_suit_le_checkout
+exit 0

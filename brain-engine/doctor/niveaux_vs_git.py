@@ -28,6 +28,14 @@ Le tableau des niveaux dit `donnee → versionné : selon`. Mesuré sur les dix-
     versionne: depot-separe    satellite git, versionné ailleurs  6
     versionne: jamais          reste sur la machine, gitignoré    1  
 
+── Une vue n'est pas un oubli de versionner ────────────────────────────────
+
+`agents/` peut être une VUE (`vue_de: [noyau/agents/, instance/agents/]`) : des
+liens construits par `brain vue`, ignorés par git — la nature `programme` vit dans
+ses sources, que leurs propres entrées jugent. Quand sa première source existe,
+une vue DOIT être ignorée ; suivie par git, elle rougit. Sans source, l'entrée se
+juge comme avant.
+
 Sortie 1 si une entrée est versionnée autrement qu'elle ne le déclare.
 """
 
@@ -66,12 +74,20 @@ def main() -> int:
         return 1
     entrees = yaml.safe_load(source.read_text(encoding="utf-8")).get("entrees", {})
 
-    fautifs, depots, ici, non_declares = [], 0, 0, []
+    fautifs, depots, ici, non_declares, vues = [], 0, 0, [], 0
     for nom, val in sorted(entrees.items()):
         niveau = val.get("niveau") if isinstance(val, dict) else val
         court = nom.rstrip("/")
         cible = racine / court
         if not cible.exists():
+            continue
+
+        sources = val.get("vue_de") if isinstance(val, dict) else None
+        if sources and (racine / sources[0]).is_dir():
+            if gitignore(racine, court):
+                vues += 1
+            else:
+                fautifs.append((nom, "vue", f"une vue de {sources[0]}, pourtant suivie par git"))
             continue
 
         depot_propre = (cible / ".git").exists()
@@ -112,7 +128,8 @@ def main() -> int:
                 ici += 1
 
     print("\nNIVEAUX → GIT — ce que le dépôt garde\n")
-    print(f"  {len(entrees)} entrées · {depots} dépôts séparés · {ici} suivies ici")
+    print(f"  {len(entrees)} entrées · {depots} dépôts séparés · {ici} suivies ici"
+          + (f" · {vues} vue(s), ignorée(s) comme il se doit" if vues else ""))
 
     if fautifs or non_declares:
         print()

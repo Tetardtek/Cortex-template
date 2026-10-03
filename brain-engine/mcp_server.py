@@ -109,6 +109,28 @@ def _resolve_under(base: Path, *parts: str) -> Path:
     return target
 
 
+def _agent_sous(racine: Path, nom: str) -> Path:
+    """Le fichier d'un agent : confiné à `agents/`, liens de la vue compris.
+
+    `agents/` peut être une VUE — des liens vers `noyau/agents/` ou
+    `instance/agents/`. `_resolve_under` suit le lien, voit une cible
+    hors de `agents/` et refuse : la vue rendait tous les agents « invalides ».
+    Deux contrôles, et aucun ne suffit seul : le NOM ne sort pas de `agents/`
+    (`../KERNEL` reste refusé, lexicalement) ; la CIBLE réelle est un agent —
+    sous `agents/`, `noyau/agents/` ou `instance/agents/`, rien d'autre (un lien
+    de la vue vers `profil/` ou `KERNEL.md` reste refusé).
+    """
+    base = (racine / 'agents').absolute()
+    chemin = Path(os.path.normpath(base / nom))
+    if not chemin.is_relative_to(base):
+        raise ValueError('nom hors de agents/')
+    cible = chemin.resolve()
+    foyers = [(racine / d).resolve() for d in ('agents', 'noyau/agents', 'instance/agents')]
+    if not any(cible.is_relative_to(f) for f in foyers):
+        raise ValueError('la cible n\'est pas un agent')
+    return chemin
+
+
 _LOCALHOSTS = frozenset({'127.0.0.1', '::1', 'localhost'})
 
 
@@ -373,7 +395,7 @@ def brain_agents(name: str = '') -> str:
         # Confiné à agents/ : `../KERNEL` sortait du dossier et ramenait la zone
         # kernel, que les scopes MCP excluent précisément.
         try:
-            agent_path = _resolve_under(_BRAIN_ROOT / 'agents', f'{name}.md')
+            agent_path = _agent_sous(_BRAIN_ROOT, f'{name}.md')
         except ValueError:
             log.warning('brain_agents : nom hors agents/ refuse (%r)', name)
             return f'Nom d\'agent invalide : {name}'

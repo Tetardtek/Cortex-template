@@ -62,13 +62,16 @@ suivis() {   # suivis <pathspec>... → chemins absolus, tries, separes par \0
       done
 }
 
-# --- agents/ (hors reviews/) ---
+# --- agents/ (hors reviews/) — ou noyau/agents/, quand agents/ est une vue ---
+#
+# Une vue (des liens, ignorée par git) ne se scelle pas : le lock scelle ce que le
+# noyau LIVRE. Sans vue, `noyau/agents/` n'existe pas et rien ne change.
 while IFS= read -r -d '' f; do
   case "$f" in */reviews/*|*/_template*) continue ;; esac
   rel="${f#$BRAIN_ROOT/}"
   hash=$(sha256sum "$f" | cut -d' ' -f1)
   echo "  $rel: $hash" >> "$LOCK_FILE"
-done < <(suivis 'agents/*.md')
+done < <(suivis 'agents/*.md' 'noyau/agents/*.md')
 
 # --- scripts/ ---
 #

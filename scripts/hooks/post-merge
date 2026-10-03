@@ -9,6 +9,9 @@
 # toute fusion réussie, avance rapide comprise.
 
 source "$(dirname "${BASH_SOURCE[0]}")/_racines.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_vue.sh"
+# La vue des agents suit la fusion — un `git pull` aussi, dans un worktree aussi.
+vue_suit_le_checkout
 brain_dans_un_worktree && exit 0
 
 if git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -qE '^(handoffs/|BRAIN-INDEX\.md)'; then

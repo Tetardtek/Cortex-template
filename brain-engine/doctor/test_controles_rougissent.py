@@ -56,6 +56,11 @@ Garanties :
                           éclatée seule les nourrit ; deux sources ⇒ rouge
     wiki / juste          un boot d'avant V2 ⇒ refus ; un CHANGELOG en retard ⇒ refus ;
                           un juge aveugle ⇒ refus, pas un vert
+    vue / juste           un agent écrit dans la vue, un fichier réel, un lien absent,
+                          faux ou orphelin, le catalogue absent, un replica au noyau
+                          ouvert (noyau/ lui-même compris), un retrait resté dans
+                          noyau/ ⇒ rouge ; la vue juste, un .gitkeep et un brain à plat
+                          passent
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
                           une clôture sans preuve arrête avant la forge (BRAIN-079)
     zone / projet         un préfixe déclaré se tient ; l'exemption d'un autre préfixe
@@ -82,6 +87,8 @@ porte et ce que le disque déclare qu'ils mesurent. Leurs témoins négatifs ont
 base, le `touch` retiré du hook, un `+1` écrit dans la colonne gelée, et les
 trois ont refusé avec leur motif. Mais ces témoins-là ont disparu avec la
 séance, exactement comme ceux que ce fichier a été écrit pour rendre permanents.
+Le 03/10, `bsi_etat.py` a encore été éprouvé à la main : dans un worktree (`.git`
+y est un fichier), le hook n'était plus trouvé — rouge avant le correctif, vert après.
 La couverture n'est donc pas complète, et ce paragraphe existe pour qu'on ne
 croie pas le contraire. `test_index_corpus.py`, `test_cache_matrice.py`,
 `test_conventions_temporelles.py` et `test_dolt_discipline.py` portent déjà
@@ -349,6 +356,27 @@ def main() -> int:
                      joue("overlay.py", base, "--check"), 0)
         else:
             print("  ⏭  ancre : une version déclarée doit désigner un état / outil d'instance absent de ce brain")
+
+        # ── L'ombre d'un brain migré : la structure n'est pas une ombre — ──
+        #
+        # `agents/` devenu une vue de `noyau/agents/` : avant, l'ombre comptait chaque
+        # agent « retiré par l'instance » (98 sur 98, mesuré le 3/10). Le déménagement
+        # se nomme, il ne gonfle pas l'ombre ; les surcharges de `instance/` se comptent.
+        if _outils_presents("overlay.py"):
+            with tempfile.TemporaryDirectory(prefix="temoin-ombre-vue-") as tmp:
+                b = brain_jetable(Path(tmp))
+                git_init(b)
+                subprocess.run(["git", "tag", "programme/v1.0.0"], cwd=b, capture_output=True)
+                (b / "noyau").mkdir()
+                subprocess.run(["git", "mv", "agents", "noyau/agents"], cwd=b, capture_output=True)
+                (b / "instance" / "agents").mkdir(parents=True)
+                (b / "instance" / "agents" / "coach.md").write_text("# surcharge\n", encoding="utf-8")
+                git_init(b)
+                r = subprocess.run([sys.executable, str(OUTILS / "overlay.py"), "--brain", str(b)],
+                                   capture_output=True, text=True, timeout=120)
+                ok = ("déménagés dans le noyau" in r.stdout and "retirés par l'instance" not in r.stdout
+                      and "surcharges déclarées" in r.stdout)
+                garantie("ombre / la structure n'est pas une ombre", 0 if ok else 1, 0)
 
         # ── claim : une seule description du mécanisme ─────────────────────
         garantie("claim / une seule voix",
@@ -758,6 +786,31 @@ def cmd_close_stale():
     else:
         print("  ⏭  Les chiffres de la doc / outil d'instance absent de ce brain")
 
+    # ── Une vue n'est pas un oubli de versionner — ────────────────
+    #
+    # `agents/` déclaré `programme` avec `vue_de` : quand `noyau/agents/` existe,
+    # il est une vue de liens, et il DOIT être ignoré par git. L'ancien contrôle
+    # rougissait sur une vue ignorée (« déclaré versionné, gitignoré ») et ne
+    # voyait pas une vue suivie.
+    with tempfile.TemporaryDirectory(prefix="temoin-niveaux-vue-") as tmp:
+        b = Path(tmp)
+        (b / "NIVEAUX.yml").write_text(
+            "entrees:\n  agents/:\n    niveau: programme\n"
+            "    vue_de: [noyau/agents/, instance/agents/]\n  noyau/: programme\n",
+            encoding="utf-8")
+        (b / "noyau" / "agents").mkdir(parents=True)
+        (b / "noyau" / "agents" / "coach.md").write_text("# coach\n", encoding="utf-8")
+        (b / "agents").mkdir()
+        (b / "agents" / "coach.md").symlink_to("../noyau/agents/coach.md")
+        (b / ".gitignore").write_text("/agents/\n", encoding="utf-8")
+        git_init(b)
+        garantie("niveaux→git / une vue ignorée passe",
+                 joue("niveaux_vs_git.py", b), 0)
+        (b / ".gitignore").write_text("", encoding="utf-8")
+        git_init(b)
+        garantie("niveaux→git / une vue suivie rougit",
+                 joue("niveaux_vs_git.py", b), 1)
+
     # ── Le BSI d'avant BRAIN-042 — ────────────────────────────────
     #
     # Le premier cas est l'incident : l'etape 7 de session-orchestrator d'avant
@@ -780,6 +833,27 @@ def cmd_close_stale():
         git_init(base)
         garantie("bsi-v1 / la citation declaree passe",
                  joue("bsi_d_avant_042.py", base), 0)
+
+        # Un `agents/` qui est une VUE (ignorée par git, des liens vers
+        # `noyau/agents/`) : l'incident, posé dans le noyau, rougit toujours.
+        # Avec `ls-files agents/` seul, il n'était plus relu du tout.
+        agent.unlink()
+        (base / "noyau" / "agents").mkdir(parents=True, exist_ok=True)
+        (base / "noyau" / "agents" / "session-orchestrator.md").write_text(
+            "7. BSI close claim\n"
+            "   → Modifier claims/<sess-id>.yml : status: open → closed\n", encoding="utf-8")
+        agent.symlink_to("../noyau/agents/session-orchestrator.md")
+        (base / ".gitignore").write_text("/agents/\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(base), "rm", "-rq", "--cached", "agents"], capture_output=True)
+        git_init(base)
+        garantie("bsi-v1 / l'incident dans le noyau d'une vue rougit",
+                 joue("bsi_d_avant_042.py", base), 1)
+        # Le brain jetable sert aux cas suivants : il est rendu tel qu'il était.
+        agent.unlink()
+        shutil.rmtree(base / "noyau")
+        (base / ".gitignore").unlink()
+        agent.write_text("`claims/` a disparu le 19/03. <!-- bsi-v1 -->\n", encoding="utf-8")
+        git_init(base)
 
         # Hors de tout depot : un echec, pas une abstention.
         with tempfile.TemporaryDirectory(prefix="temoin-sans-git-") as ailleurs:
@@ -1662,6 +1736,81 @@ def cmd_close_stale():
                            "VALUES ('sess-20260801-1000-temoin', 'work', 'x', 'closed', "
                            "'2026-08-01 10:00:00', '2026-08-01 11:00:00')")
             garantie("archivage / un claim ferme reste au-dela de 37 j", archivage(), 1)
+
+    # ── La vue des agents — ───────────────────────────────────────
+    #
+    # Un brain migré jetable : le noyau, une surcharge, la vue construite à la main
+    # comme `brain vue` la pose. Le cas qui a fait naître le contrôle (3/10) : un
+    # agent écrit dans la vue, que ni git ni `brain vue` ne voyaient.
+    if _outils_presents("vue_juste.py"):
+        with tempfile.TemporaryDirectory(prefix="temoin-vue-") as tmp:
+            b = Path(tmp)
+            for rel, texte in {"noyau/agents/coach.md": "le noyau\n",
+                               "noyau/agents/api.md": "le noyau\n",
+                               "instance/agents/coach.md": "la surcharge\n",
+                               "agents/CATALOG.yml": "calculé\n"}.items():
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                (b / rel).write_text(texte, encoding="utf-8")
+            vue = b / "agents"
+
+            def poser() -> None:
+                for nom, couche in (("coach.md", "instance"), ("api.md", "noyau")):
+                    lien = vue / nom
+                    if lien.is_symlink() or lien.exists():
+                        lien.unlink()
+                    lien.symlink_to(f"../{couche}/agents/{nom}")
+
+            poser()
+            garantie("vue / juste", joue("vue_juste.py", b), 0)
+            (b / "instance" / "agents" / ".gitkeep").write_text("", encoding="utf-8")
+            garantie("vue / un .gitkeep n'est pas un agent", joue("vue_juste.py", b), 0)
+            git_init(b)
+            (b / "noyau" / "agents" / "reste.md").write_text("retiré par le tronc\n", encoding="utf-8")
+            (vue / "reste.md").symlink_to("../noyau/agents/reste.md")
+            garantie("vue / un retrait resté dans noyau/", joue("vue_juste.py", b), 1)
+            (vue / "reste.md").unlink()
+            (b / "noyau" / "agents" / "reste.md").unlink()
+            garantie("vue / retiré, juste à nouveau", joue("vue_juste.py", b), 0)
+            (vue / "zz.md").write_text("écrit dans la vue\n", encoding="utf-8")
+            garantie("vue / l'incident : rien ne le fournit", joue("vue_juste.py", b), 1)
+            (vue / "zz.md").unlink()
+            (vue / "api.md").unlink()
+            (vue / "api.md").write_text("un sed -i\n", encoding="utf-8")
+            garantie("vue / un fichier réel masque", joue("vue_juste.py", b), 1)
+            (vue / "api.md").unlink()
+            garantie("vue / un lien absent", joue("vue_juste.py", b), 1)
+            poser()
+            (vue / "coach.md").unlink()
+            (vue / "coach.md").symlink_to("../noyau/agents/coach.md")
+            garantie("vue / la surcharge perdue", joue("vue_juste.py", b), 1)
+            poser()
+            (vue / "parti.md").symlink_to("../noyau/agents/parti.md")
+            garantie("vue / un lien orphelin", joue("vue_juste.py", b), 1)
+            (vue / "parti.md").unlink()
+            (vue / "CATALOG.yml").unlink()
+            garantie("vue / sans catalogue", joue("vue_juste.py", b), 1)
+            (vue / "CATALOG.yml").write_text("calculé\n", encoding="utf-8")
+            serve = VRAI_BRAIN / "brain-engine" / "serve.py"
+            if serve.is_file() and os.geteuid() != 0:
+                (b / "brain-engine").mkdir()
+                (b / "brain-engine" / "serve.py").write_bytes(serve.read_bytes())
+                (b / "brain-compose.yml").write_text(
+                    "postures:\n  master:\n    kernel_write: true\n"
+                    "  replica-nomad:\n    kernel_write: false\n", encoding="utf-8")
+                (b / "brain-compose.local.yml").write_text(
+                    "instances:\n  ici:\n    active: true\n    posture: replica-nomad\n",
+                    encoding="utf-8")
+                garantie("vue / un replica au noyau ouvert", joue("vue_juste.py", b), 1)
+                noyau = b / "noyau"
+                for p in sorted([noyau, *noyau.rglob("*")], key=lambda p: len(p.parts), reverse=True):
+                    p.chmod(p.stat().st_mode & ~0o222)
+                garantie("vue / le même, verrouillé", joue("vue_juste.py", b), 0)
+                noyau.chmod(noyau.stat().st_mode | 0o200)
+                garantie("vue / noyau/ lui-même ouvert", joue("vue_juste.py", b), 1)
+                for p in [noyau, *noyau.rglob("*")]:
+                    p.chmod(p.stat().st_mode | 0o200)
+            shutil.rmtree(b / "noyau")
+            garantie("vue / un brain à plat s'abstient", joue("vue_juste.py", b), 0)
 
     print()
     if echecs:
