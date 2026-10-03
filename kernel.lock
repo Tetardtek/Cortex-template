@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "2.6.5"
-generated_at: "2026-10-03T16:49"
+kernel_version: "2.7.0"
+generated_at: "2026-10-03T19:20"
 
 files:
-  KERNEL.md: 157e6f89f937f02efb90fe3ad5b28801bd931b36360c7704702f96503dd261c8
-  brain-compose.yml: 918f7f90037c18dd5c97f5e54c3219bb88ac99c0a3d3d0151851fcef3d022dab
+  KERNEL.md: f9bfea43e23455b0a5071d9657359f8ed6fab6260665a36418aca88779a6f3ac
+  brain-compose.yml: e3e90b763cd83e19b46f1358bf0d949158d42988dec3f98ec54a365805b58a4e
   brain-constitution.md: d7b4ff075dcbbc71bd6e3ea0a6a22b0c29f5f940a8ae922742e7cfcb043575f9
   agents/agent-review.md: 0f0940309f6d11f1ef4117223894e56db126740cbd17f49728153640a0c1aa8a
   agents/AGENTS.md: a60f8a30aafdc29520ac23f58718baa3654eb8ec4020b9b4a36a905b4c170019
@@ -82,7 +82,79 @@ files:
   agents/ux-architect.md: 2456dbd735a6fecc30ccb20f2f2525aa7fca02b1276a8d76c9095bc6cd86eebc
   agents/vps.md: 07c538ebbb2145088f3f50d94c12c935a92ad86eeb82760c86a29de0a26a4b7a
   agents/watch.md: fff0eb180eb3f4505323bb0f49817c4333234c0beafc5231665e8ad6b208e7bc
-  scripts/aligne.py: 7d78813419405a00a34647aea62485e47520e5a2ab819fba190306bec9130809
+  noyau/agents/agent-review.md: 0f0940309f6d11f1ef4117223894e56db126740cbd17f49728153640a0c1aa8a
+  noyau/agents/AGENTS.md: a60f8a30aafdc29520ac23f58718baa3654eb8ec4020b9b4a36a905b4c170019
+  noyau/agents/api-designer.md: dd39d4bf9347d12240a89684b93967d79f1e106b98ac39729cae09c56ca76dbd
+  noyau/agents/architecture-scribe.md: ab16180e4f168f1a4685bd42805617a8125b9aab38ed2c6d729483c6e52e29f2
+  noyau/agents/audit.md: c8431d40162224e5ad29efd89df3a8b2b9d7b9bf6ab219629d548fec44779042
+  noyau/agents/brain-compose.md: 06a81139d4858c9f11c9795ae4786f54a7ae761402e2040e09fd0cea4846cd8e
+  noyau/agents/brain-guardian.md: b84ad3615ff2d7358c1fc0bb39e1b2114eefea9e9fce25dc560527b3e0a588f5
+  noyau/agents/brainstorm.md: e8deff2362e004497fa2e53f8dc1870def8b388c2d7ec88dc02079595ebe41db
+  noyau/agents/brain-ui-scribe.md: c7f10a77becfd7b8cd1c927e9c68682181034ea11754166ba360eed57d838ed3
+  noyau/agents/chrome-pilot.md: 70e1517108dec1f44afa196245335f49498ffd7ad833cdd50e40bc4de2272e45
+  noyau/agents/ci-cd.md: 2d021ed32528b2657617164636fca24999450206dec181fe5e48ea36828382c1
+  noyau/agents/coach-boot.md: 8a38ea17055c6c4f0b5ed5de067c55f931595b1c0240050464681673f6e8d567
+  noyau/agents/coach.md: f4f15b5d5a1a89d0419344903cb13eb2d2416731ee9c215223fb5d8de7f2a0e2
+  noyau/agents/code-review.md: 2bc63fac0a5dfbd9c3ff50570824db8819e513a372079e01712df1787657ada1
+  noyau/agents/conciergerie.md: 474cd703927d589e37899f549b8fb5cad7a73d38e04eecde606c9e0d88169297
+  noyau/agents/config-scribe.md: 1b777f5ecb7bd6df66bbea265ba22f5dc2c8767d58e74f8068cce1dcf3cb5026
+  noyau/agents/content-scribe.md: e2664f9875b806895d7a29c2d1f2fd36cfca5a4a1dc3661e20a4b4e012cf7543
+  noyau/agents/content-strategist.md: e9fd280d37541d1b63564e843f887e5b632300edfb42a03ed7ac07ff1f1833be
+  noyau/agents/content-writer.md: a08b739bb2ba60b7f8db7bf90d2c46d34a1fc7e2f3c6e0c332d14420edb20e49
+  noyau/agents/_conventions.md: 025a54c25e7b8817f30da4890243478f9a4e28ef7685b4117790b20fe09c23fc
+  noyau/agents/copywriter.md: 875d40a505fb61d552a5cc748955cfeae9b831443d3d0eb161bd44119e838e0a
+  noyau/agents/database-architect.md: acd68b14f5deba5669faf991551a0f5f71dbe3206158a92a38e7a37cce25970c
+  noyau/agents/debug.md: 8c24a946c1426a5c0c0c836d55e5757f2afda900cdfa9122fd5a0a85939a88d0
+  noyau/agents/decision-scribe.md: 479e159b55457c67531a2e5a847a17eee99e3e074959a20736696240b34c5ca6
+  noyau/agents/doc.md: fb4f5e723b6304640cae3856ef064be39798314a1d53207ae7c5850a80b65724
+  noyau/agents/french-teacher.md: 04e5055abb534bab768d36624ed121b558259bc689e0113dd64cdc1457cf1bd6
+  noyau/agents/frontend-stack.md: 05e4c126382df5351e3022e5e3dcbed229a93ccf1fcaf29718c3e4e82378e55b
+  noyau/agents/game-designer.md: 8a484f33ffc0c82737653b0eb260edd381c3b7b1519f7bc506695be02741c3eb
+  noyau/agents/git-analyst.md: 4952180826e3944225db7d02df069c336371334279a68fb9902a63b3b35c7c91
+  noyau/agents/guide.md: bbf4ac6e7648e329fefd223db22121674f1a3f86ad05fbf21f7125915772fbfb
+  noyau/agents/helloWorld.md: 572f39a1cbdd7abd5ea1794d006aa4e6a07368fcc1aaf1eef167552671cade6b
+  noyau/agents/i18n.md: db45c741534d05440af398824f79f629e5851ccfc0f00c554a0c1d7af544197c
+  noyau/agents/infra-scribe.md: 5dcda5c0c451c4a71dc55cd33530d00d3c8440ece12671d4a8b10900be4aa08a
+  noyau/agents/integrator.md: 3664cea5c51d168942f108f5a745a970044eded0c98212fee5e0aad4db55c2ed
+  noyau/agents/interprete.md: e165dbbee570dfa5ff382ca8264652493b6b0e48ee5d9dda282cd4206a084d44
+  noyau/agents/kanban-scribe.md: 32f798aab846ffed1b3318a240610cc6c77452d9fd00e3f06bdb042ec3ad8b8c
+  noyau/agents/learning-journal.md: e8a59a6d59a84dd5e4c47454a2122e209764899b7f6b46005f3a64421c101de4
+  noyau/agents/mail.md: dfb6126bf6573fe708de371682bbef2badbb0eb090fdbde477a02aff9c65bcd8
+  noyau/agents/mentor.md: 21ce525b436c15f848f1ddd9dd2dc54839309c0913ae231f7f38915555d23d6b
+  noyau/agents/metabolism-scribe.md: c15fb1a75aab7dd68e6f5bed39b392cad4f687fe07045dfc7e31107e66c31458
+  noyau/agents/migration.md: 268203b8ddd1125e2df2af840a5c3d67e1fd4df0c960ccc98da4d5dee2a34c70
+  noyau/agents/monitoring.md: 1dc1f3dcf4525d1281e8278d0cc48414a889141fa00736662a18df021920080f
+  noyau/agents/onboarding-guide.md: 40f006c302c9a372812fabe9f1e94089e06f8ebcb855fe169676606513ea1a30
+  noyau/agents/optimizer-backend.md: f180dbbcc9d3a79db0ccfacd67dcca54fd3c8a95847c08d54d1464a97bb631e2
+  noyau/agents/optimizer-db.md: 575c11ad58b1e29b533cb7a8d98841fe7663bef6a914ac67ebc5ba04bc3099d3
+  noyau/agents/optimizer-frontend.md: 7c16221c33181e7989737c839a09394516a71d53d089aadecb51bbda969a57bf
+  noyau/agents/optimizer.md: efed34f589ea13ad046d1232ab8571aeb49ebe02fb31642b666675b66798246a
+  noyau/agents/orchestrator.md: 95c7983d6d01b57ba1bf85e31452bf45e099366dff5bf21851c948ea104ed6ae
+  noyau/agents/orchestrator-scribe.md: 513dc71c1afb4c0a8e09589bf8f8da3611dbd50402868de426a1b200486ba528
+  noyau/agents/pathfinder.md: dc59c832ac0dd8a5b5e608df77d69c43a8627b90398da909174a65cbec95eb94
+  noyau/agents/pattern-scribe.md: a350ae248176be2ed39e8c1afecf16ba03f3afca16571e8883de9466079d1518
+  noyau/agents/pm2.md: 61217b57cf391b7fdf744aa4d444d1c3a96ad0945ff0c88f4deaa0b8e22e116f
+  noyau/agents/pre-flight.md: c2dc9404cddf731d6429674b6ff00cc58a725c4d682b23f8d2dd503546675667
+  noyau/agents/product-strategist.md: 81c7960322d98bc84d4dc10a9923fc4fad57a8b3abcf102e4fefe15722301eec
+  noyau/agents/pulse.md: 41f6713b931cec0806ca416d8909c56786a3b2ce873160030a602dd5bf03f787
+  noyau/agents/refacto.md: 321136ef011b3d88467d19266da98b41f4a99000f8fc5edeb0e42c572ac1df91
+  noyau/agents/release-manager.md: 9e82535aa65b10e755401170adaaa4cf6f882a125f12dbc48e3254e679da73b2
+  noyau/agents/scribe.md: fb60926da18cc3f9607aaf1df6499a26264e8f28b96706d3eea6cbbbc49df3e4
+  noyau/agents/scriptwriter.md: fc7085349c8d480d7d0d8e2c05e208749b1a9bb4fc2bb63b68a858b133c2c2ea
+  noyau/agents/secrets-guardian.md: c413903b5dd674b393c0f072eb6213a9dad77484df7338e073c11a18a80b53d6
+  noyau/agents/secrets-injector.md: b5a9a451c9d59ae74fcbd5abe9f4c5ed9db9d1786982997b31bb28d7cf3a58ba
+  noyau/agents/secrets-manager.md: a1351e9d4b1e72f25a66b6118e28e17175c87083b7382b2f31d525cd40a907be
+  noyau/agents/security.md: 91a87ba7f4ddf6d21efe02bde805474cb2bbcb81b31ccd7a5a91e803f9e52100
+  noyau/agents/seo-youtube.md: d69d007fe45537fc1155c7f72d32c1d2f9570808ee61e2ba3eb44f085b03e4e2
+  noyau/agents/session-orchestrator.md: 62c865d0fa781a21a56d70a20c281a84b6e76a033ae97e5362e1bcbcae303f57
+  noyau/agents/tech-lead.md: 6d91b33771b00e32e75bf4a82f5cf443b9109ef31f1d7f935d3880885687485b
+  noyau/agents/testing.md: ef16ce9be45a078badb35d4116c9ba226394b73acab354d69edd5e86288e5157
+  noyau/agents/todo-scribe.md: fc2b2dc96afd983b7f429dd7c4010884db93a0973bfa677fb4d6ad853d6eba01
+  noyau/agents/toolkit-scribe.md: 04589105da9be846ef8487401c807c708bf7b54e78e6036c99660bf672a3d101
+  noyau/agents/ux-architect.md: 2456dbd735a6fecc30ccb20f2f2525aa7fca02b1276a8d76c9095bc6cd86eebc
+  noyau/agents/vps.md: 07c538ebbb2145088f3f50d94c12c935a92ad86eeb82760c86a29de0a26a4b7a
+  noyau/agents/watch.md: fff0eb180eb3f4505323bb0f49817c4333234c0beafc5231665e8ad6b208e7bc
+  scripts/aligne.py: ab2228934f9e6bcb7dfb2a43091d3915a704ab3957fa6d287e89b8f4d7d0a652
   scripts/brain: 5dfd33146ed0a650aa9fc475a7036361fc219c8aaf540917b31176c326f59d2f
   scripts/brain-db-sync.sh: a32572dc06560ba6d84eb02e9f71483435590f7f26b9b42cc4e1e7f00b0cad76
   scripts/brain-engine.sh: 6988e5b7ce59ecc580a9a567a19bcea2cbe5f57b5f8e1e70d2e2c1b9cf74b595
@@ -101,7 +173,7 @@ files:
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
   scripts/install-brain-hooks.sh: eda4670e27087475c5f1808848e272d9768dfae67ac33d96dd6ac47174d1116b
-  scripts/kernel-isolation-check.sh: 5be418cebccbf08cc01665f1227c6f8d555d326cfdaa239ec7854c6eacd146be
+  scripts/kernel-isolation-check.sh: 20b5048eb48063d5c290abd0aa335d5a43ba8685818cba389f8f7b892049a00c
   scripts/kernel-lock-gen.sh: 8c1fa9850dd2ca8645223d6bfad34d50057b6d2000a94f7770a26a2251ca5d6b
   scripts/lib/filiation.py: e5f1db9f91ed6b050e5c743948d20237227c622b238efb6adc1b7fb827cd628a
   scripts/lib/instance.py: 9b395ad1345fb11175de963acbbb06c038bec46bf520a0efdb212715f2d9dd97
@@ -114,4 +186,4 @@ files:
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: b99f52706b128c29eed7b4320f67535f39e353bae9fdc05392ac4db8da8d4082
-  scripts/vue.py: 8fc30a6524f5e3694c65766bf72b8619360c7eb51b69970c2f5fc5e1f8a13b6f
+  scripts/vue.py: 4356069b9a3f2a2f0f3aacec2ed3ab28541346429ce8681188ad9c34c8e7dc7b

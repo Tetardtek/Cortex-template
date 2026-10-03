@@ -43,6 +43,9 @@ import sys
 from pathlib import Path
 
 CALCULES = {Path("CATALOG.yml")}
+#: Des données de l'instance dans `agents/` : les revues des agents, ignorées par git
+#: avant la vue comme après — le jour J (3/10) les a trouvées. Ni liées ni jugées.
+DONNEES = {"reviews"}
 
 
 def attendu(brain: Path) -> dict[Path, Path]:
@@ -78,7 +81,7 @@ def ecarts(brain: Path) -> list[str]:
             if p.is_symlink():
                 if rel not in v:
                     e.append(f"lien orphelin : agents/{rel}")
-            elif p.is_file() and rel not in v and rel not in CALCULES:
+            elif p.is_file() and rel not in v and rel not in CALCULES and rel.parts[0] not in DONNEES:
                 e.append(f"rien ne le fournit : agents/{rel} — un fichier réel que git ne voit pas")
     suivis = subprocess.run(["git", "-C", str(brain), "ls-files", "--others", "--exclude-standard",
                              "--", "noyau"], capture_output=True, text=True)

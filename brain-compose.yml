@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.6.5"
+version: "2.7.0"
 
 # ---
 # Ownership — kerneluser
@@ -178,3 +178,6 @@ changelog:
   - version: "2.6.5"
     date: "2026-10-03"
     notes: "La version-relais vers la vue des agents : a recevoir AVANT la v2.7.0. Elle ne migre rien. En v2.7.0, agents/ devient une vue : des liens vers noyau/agents/ (le noyau livre) et instance/agents/ (tes surcharges, qui l'emportent), construite par brain vue et ignoree par git ; tous les chemins agents/<nom>.md restent justes. brain maj sait desormais recevoir cette version : avant la fusion, il range dans instance/agents/ les agents que tu as modifies (ta version gagne, celle de l'amont reste dans noyau/) et ceux que tu as crees ; le catalogue se calcule dans la vue ; une annulation remet l'arbre tel qu'il etait (celui de la v2.6.4 pouvait le laisser sale, et ne sait pas migrer). brain vue construit la vue et dit son etat : un agent ecrit dans la vue (git ne le voit pas), un lien faux, le verrou ; une instance dont la posture refuse le kernel a son noyau/ en lecture seule. brain aligne reprend la branche suivie sur une telle instance : le verrou leve le temps de la fusion, puis repose ; jamais git pull. Les hooks reconstruisent la vue apres un checkout (un worktree neuf) et une fusion ; le pre-commit juge la doc d'un brain migre ; le setup construit la vue (etape 12) ; le doctor juge la vue (la vue des agents ; abstenu sur un brain a plat). Mise a jour depuis la v2.6.4 : brain maj --appliquer, puis bash scripts/install-brain-hooks.sh (six hooks : post-checkout est nouveau) ; brain doctor pour voir. Passe par la 2.6.5 avant la 2.7.0."
+  - version: "2.7.0"
+    date: "2026-10-03"
+    notes: "La vue des agents. agents/ devient une vue : des liens vers noyau/agents/ (le noyau livre) et instance/agents/ (tes surcharges, qui l'emportent), construite par brain vue et ignoree par git ; tous les chemins agents/<nom>.md restent justes. La recevoir DEPUIS LA v2.6.5 : le brain maj de la v2.6.4 ne sait pas migrer. brain maj range d'abord tes agents dans instance/agents/ - ceux que tu as modifies (ta version gagne ; celle du gabarit reste dans noyau/agents/ pour comparer) et ceux que tu as crees - puis fusionne ; le catalogue se calcule dans la vue, il ne se commite plus. Desormais, ton agent s'ecrit dans instance/agents/<nom>.md, puis brain vue --construire ; un fichier ecrit directement dans agents/ est signale (git ne le voit pas). Une instance dont la posture refuse le kernel a son noyau/ en lecture seule et s'aligne par brain aligne ; un worktree n'est pas verrouille (la garde y est le commit). La doc du noyau (KERNEL.md, la skill, docs/) dit noyau/ et instance/. Mise a jour depuis la v2.6.5 : brain maj (le plan dit ce qui est range), brain maj --appliquer, puis brain vue et brain doctor."

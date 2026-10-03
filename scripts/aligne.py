@@ -63,6 +63,8 @@ def main() -> int:
     if migre or (brain / "noyau" / "agents").is_dir():
         v = vue(brain, "--construire")                 # repose le verrou, réussite ou non
         verrou = next((l.strip() for l in v.stdout.splitlines() if "noyau/" in l), "")
+        # Un catalogue qui ne se calcule pas se dit : tu le taisais, le jour J (3/10).
+        verrou += "".join(f"\n  {l.strip()}" for l in v.stdout.splitlines() if "catalogue non calculé" in l)
     else:
         verrou = ""
     apres = git(brain, "rev-parse", "--short", "HEAD").stdout.strip()

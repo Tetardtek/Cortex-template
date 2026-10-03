@@ -65,3 +65,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# agents/ est une vue de noyau/agents/ et instance/agents/, construite par `brain vue`
+/agents/

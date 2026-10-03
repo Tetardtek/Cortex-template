@@ -49,7 +49,7 @@ session, quel que soit le type, et charge sa propre liste : elle **s'ajoute**
 | Type | Écrit | N'écrit pas |
 |---|---|---|
 | **work** | ton projet, l'instance, les satellites | le noyau |
-| **brain** | le noyau (`agents/`, `profil/`), l'instance, les satellites | ton projet |
+| **brain** | le noyau (`noyau/agents/`, `profil/`), l'instance, les satellites | ton projet |
 | **explore** | `todo/` | le reste — et rien du tout en `explore/audit`, sauf le rapport |
 | **pilote** | tout, avec une confirmation sur les décisions irréversibles | — |
 | **chill** | à la demande | — |

@@ -2676,6 +2676,22 @@ class TestSyncTemplate(unittest.TestCase):
         self.assertIn(ligne, (self.brain / 'agents' / 'AGENTS.md').read_text(),
                       "la SOURCE garde sa ligne — c'est l'index de l'owner")
 
+    def test_le_rendu_juge_son_propre_noyau(self):
+        """Le contrôle d'isolation jugeait le clone DÉJÀ publié, jamais le rendu : la v2.7.0
+        a passé tous ses rendus, puis le vrai `--push` l'a refusée (3/10)."""
+        kernel = self.brain / 'KERNEL.md'
+        motif = 'source ' + 'MY' + 'SECRETS'               # construit : ce fichier part au gabarit
+        kernel.write_text(kernel.read_text() + f'\nUn agent fait `{motif}` hors du bloc.\n')
+        self._git('commit', '-qam', 'faute', '--no-verify', cwd=self.brain)
+        r = self._sync('--rendre', str(self.tmp / 'rendu'))
+        self.assertEqual(r.returncode, 1, r.stdout[-600:])
+        self.assertIn("isolation refuse", r.stdout)
+
+    def test_le_bloc_des_interdits_renomme_reste_exempte(self):
+        """« INTERDIT dans noyau/agents/ (distribué) » : le titre de la vue — et l'ancien."""
+        r = self._sync('--rendre', str(self.tmp / 'rendu'))
+        self.assertNotIn("isolation refuse", r.stdout, r.stdout[-600:])
+
     def test_un_nom_de_l_instance_refuse_la_synchro(self):
         """L'incident du 28/09 : des agents publiés disaient « l'infra réelle de
         <owner> » et prenaient ses projets en exemple — le filet ne cherchait que
@@ -2828,6 +2844,11 @@ class TestSyncDUnBrainMigre(unittest.TestCase):
         ignore = rendu / '.gitignore'
         self.assertIn('/agents/', ignore.read_text().splitlines() if ignore.is_file() else [],
                       "la vue d'un fork ne se versionne pas — posé par la synchro")
+        import yaml
+        niveaux = yaml.safe_load((rendu / 'NIVEAUX.yml').read_text())['entrees']
+        self.assertIn('agents/', niveaux, "la vue reste déclarée : sinon `agents/…` tombe en zone "
+                      "libre chez le fork, et le noyau s'écrit par l'API sans la garde kernel")
+        self.assertEqual(niveaux['agents/'].get('vue_de'), ['noyau/agents/', 'instance/agents/'])
         lock = (rendu / 'kernel.lock').read_text()
         self.assertIn('  noyau/agents/coach.md:', lock, 'le lock scelle le noyau')
         self.assertNotIn('\n  agents/', lock, 'la vue ne se scelle pas')
@@ -6937,6 +6958,32 @@ class TestVueDesAgents(unittest.TestCase):
         (self.brain / 'agents' / 'nouveau.md').unlink()
         self.assertEqual(self._vue().returncode, 0, 'retiré : la vue est juste, le catalogue compris')
 
+    def test_les_revues_de_l_instance_restent_des_donnees(self):
+        """`agents/reviews/` : les revues des agents, ignorées par git — le jour J les a
+        trouvées signalées comme des fichiers que rien ne fournit (3/10)."""
+        self._vue('--construire')
+        (self.brain / 'agents' / 'reviews' / 'Projet').mkdir(parents=True)
+        (self.brain / 'agents' / 'reviews' / 'Projet' / 'debug-v1.md').write_text('une revue\n')
+        r = self._vue()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn('reviews', r.stdout)
+        (self.brain / 'agents' / 'ailleurs.md').write_text('pas une revue\n')
+        self.assertEqual(self._vue().returncode, 1, 'le reste de la vue reste jugé')
+
+    def test_sans_myeline_root_le_chemin_declare_suffit(self):
+        """Par `ssh laptop '…'`, le `.bashrc` n'exporte pas `MYELINE_ROOT` : la vue s'est
+        construite sans catalogue, le jour J (3/10). `satellites.yml` déclare le chemin."""
+        (self.brain / 'brain-engine' / 'doctor' / 'agent_registry.py').unlink()
+        myeline = self.brain.parent / (self.brain.name + '-myeline')
+        (myeline / 'tools').mkdir(parents=True)
+        (myeline / 'tools' / 'agent_registry.py').write_text(self.REGISTRE)
+        self.addCleanup(shutil.rmtree, myeline, True)
+        (self.brain / 'satellites.yml').write_text(
+            f'satellites:\n  myeline:  {{depot: myeline, machines: [desktop], chemin: {myeline}}}\n')
+        r = self._vue('--construire')
+        self.assertIn('catalogue calculé', r.stdout, r.stdout + r.stderr)
+        self.assertTrue((self.brain / 'agents' / 'CATALOG.yml').is_file())
+
     def test_le_catalogue_se_calcule_dans_la_vue(self):
         self._vue('--construire')
         cat = self.brain / 'agents' / 'CATALOG.yml'
@@ -7020,6 +7067,131 @@ class TestVueDesAgents(unittest.TestCase):
         r = self._vue('--construire')
         self.assertEqual(r.returncode, 0)
         self.assertFalse((self.brain / 'agents').exists())
+
+
+class TestLaVueDUnWorktree(unittest.TestCase):
+    """Le verrou garde le checkout principal ; un worktree le dit, sans se verrouiller.
+
+    Mesuré le 3/10 : un worktree au `noyau/` en lecture seule, `git worktree remove`
+    échoue à moitié — il désinscrit le worktree et laisse le dossier. L'owner a tranché :
+    explicite plutôt qu'aligné (la garde d'un worktree est le commit)."""
+
+    REGISTRE, _posture = TestVueDesAgents.REGISTRE, TestVueDesAgents._posture
+
+    def setUp(self):
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        TestVueDesAgents.setUp(self)
+        b = self.brain
+        (b / 'scripts').mkdir()
+        shutil.copy(TestVueDesAgents.SCRIPT, b / 'scripts' / 'vue.py')
+        (b / '.gitignore').write_text('/agents/\nbrain-compose.local.yml\n')
+        self._posture('replica-nomad')
+        for a in (['init', '-q'], ['add', '-A'], ['commit', '-qm', 'x']):
+            subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=b,
+                           capture_output=True, check=True)
+        self.wt = Path(str(b) + '-wt')
+        subprocess.run(['git', 'worktree', 'add', '-q', str(self.wt)], cwd=b, capture_output=True, check=True)
+
+    def tearDown(self):
+        for racine in (self.brain, self.wt):
+            for p in [racine, *racine.rglob('*')] if racine.exists() else []:
+                if not p.is_symlink():
+                    p.chmod(p.stat().st_mode | 0o200)
+        shutil.rmtree(self.wt, ignore_errors=True)
+        shutil.rmtree(self.brain, ignore_errors=True)
+
+    def _vue(self, ou, *args):
+        env = {k: v for k, v in os.environ.items() if k != 'MYELINE_ROOT'}
+        return subprocess.run([sys.executable, str(ou / 'scripts' / 'vue.py'), *args], capture_output=True,
+                               text=True, timeout=120, env={**env, 'BRAIN_ROOT': str(ou)})
+
+    def test_le_principal_est_verrouille(self):
+        self.assertIn('lecture seule', self._vue(self.brain, '--construire').stdout)
+        self.assertFalse(os.access(self.brain / 'noyau' / 'agents', os.W_OK))
+
+    def test_le_worktree_le_dit_et_se_retire_entier(self):
+        r = self._vue(self.wt, '--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('le commit le refusera', r.stdout)
+        self.assertTrue(os.access(self.wt / 'noyau' / 'agents', os.W_OK))
+        e = self._vue(self.wt)
+        self.assertEqual(e.returncode, 0, e.stdout)
+        self.assertIn('le commit le refusera', e.stdout)
+        rm = subprocess.run(['git', 'worktree', 'remove', '--force', str(self.wt)], cwd=self.brain,
+                            capture_output=True, text=True)
+        self.assertEqual(rm.returncode, 0, rm.stderr)
+        self.assertFalse(self.wt.exists(), 'le worktree part entier')
+
+
+class TestGardeDuDistribue(unittest.TestCase):
+    """Le garde du distribué refuse au COMMIT ce que la synchro refuserait à la publication.
+
+    Le 3/10, quatre fautes sont passées par des PR fusionnées avant qu'un rendu ne les
+    arrête. Chaque cas est l'une d'elles, construite à l'exécution : ce fichier part au
+    gabarit, et la faute écrite ici le ferait refuser. Outil d'instance : absent d'un
+    fork, la classe s'abstient."""
+
+    GARDE = BRAIN_ROOT_PATH / 'scripts' / 'garde-distribue.py'
+
+    def setUp(self):
+        if not self.GARDE.is_file():
+            self.skipTest('garde-distribue.py absent — outil d\'instance')
+        self.d = Path(tempfile.mkdtemp(prefix='garde-distribue-'))
+        (self.d / 'scripts').mkdir()
+        shutil.copy(self.GARDE, self.d / 'scripts' / 'garde-distribue.py')
+        (self.d / 'scripts' / 'sync-template.sh').write_text('# le brain qui publie\n')
+        self.nom = 'Ke' + 'vin'
+        (self.d / 'marqueurs-instance.txt').write_text(f'# les noms\n\\b{self.nom}\\b\n')
+        (self.d / 'agents').mkdir()
+        (self.d / 'agents' / 'CATALOG.yml').write_text(
+            'agents:\n- id: public\n  distributable: true\n- id: prive\n  distributable: false\n')
+        self._git('init', '-q')
+        # `i/` au lieu de `b/` : la config de la machine de l'owner, qui rendait le garde
+        # aveugle. Posée ici, le cas est joué partout.
+        self._git('config', 'diff.mnemonicPrefix', 'true')
+        self._git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x')
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _git(self, *a):
+        return subprocess.run(['git', *a], cwd=self.d, capture_output=True, text=True, check=True)
+
+    def _juge(self, chemin, ligne):
+        f = self.d / chemin
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(ligne + '\n')
+        self._git('add', '-f', chemin)
+        r = subprocess.run([sys.executable, 'scripts/garde-distribue.py'], cwd=self.d,
+                           capture_output=True, text=True, timeout=60)
+        self._git('reset', '-q')
+        f.unlink()
+        return r
+
+    def test_les_quatre_fautes_du_jour_sont_refusees(self):
+        tag = 'MY' + '-232'
+        for chemin, ligne in (
+                ('brain-engine/test_x.py', f'    # laisse le dossier. {self.nom} a tranché :'),
+                ('brain-engine/maj.py', f'    # sinon la vue reste vide (vu le 3/10, {tag}).'),
+                ('brain-engine/bsi.py', f'    # vu à la répétition générale de {tag} (3/10).'),
+                ('docs/page.md', f"C'est ce que [{tag}] a corrigé dans le moteur.")):
+            r = self._juge(chemin, ligne)
+            self.assertEqual(r.returncode, 1, f'{chemin} : {ligne}\n{r.stdout}')
+
+    def test_les_formes_justes_passent(self):
+        tag = 'MY' + '-232'
+        for ligne in (f'    # vu le 3/10. [{tag}]', f'[{tag}]', f'    """Une phrase (3/10) [{tag}]."""',
+                      f'| 2026-10-03 | la vue. [{tag}] |', f'    # la règle [{tag}] [MY' + '-14]'):
+            r = self._juge('brain-engine/x.py', ligne)
+            self.assertEqual(r.returncode, 0, f'{ligne}\n{r.stdout}')
+
+    def test_ce_qui_ne_part_pas_n_est_pas_juge(self):
+        for chemin in ('workspace/backlog/fiche.md', 'agents/prive.md', 'contexts/session-x.yml'):
+            r = self._juge(chemin, f'{self.nom} a tranché, vu dans MY' + '-232 ici')
+            self.assertEqual(r.returncode, 0, f'{chemin}\n{r.stdout}')
+        r = self._juge('agents/public.md', f'{self.nom} a tranché')
+        self.assertEqual(r.returncode, 1, "un agent distribuable, lui, est jugé")
 
 
 class TestBrainAligne(unittest.TestCase):
@@ -7118,6 +7290,16 @@ class TestBrainAligne(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn('noyau/agents/watch.md', r.stdout)
         self.assertTrue((self.laptop / 'noyau' / 'agents' / 'watch.md').exists(), 'jamais effacé')
+
+    def test_un_catalogue_qui_ne_se_calcule_pas_se_dit(self):
+        """Le jour J (3/10) : la vue du laptop sans catalogue, et `brain aligne` muet."""
+        for racine in (self.laptop, self.src):
+            (racine / 'brain-engine' / 'doctor' / 'agent_registry.py').chmod(0o644)
+        (self.laptop / 'brain-engine' / 'doctor' / 'agent_registry.py').unlink()
+        self._publier(lambda s: (s / 'noyau/agents/coach.md').write_text('coach v2\n'))
+        (self.laptop / 'brain-engine' / 'doctor' / 'agent_registry.py').unlink(missing_ok=True)
+        r = self._run('aligne.py')
+        self.assertIn('catalogue non calculé', r.stdout, r.stdout + r.stderr)
 
     def test_sans_branche_suivie_il_refuse(self):
         self._g(self.laptop, 'branch', '--unset-upstream')
@@ -7821,6 +8003,10 @@ class TestNiveauxDuGabarit(unittest.TestCase):
                                               'contenu/atelier/brouillon.md'),
                          ['kernel', 'kernel', 'libre'],
                          "vie/ et scripts/ en kernel chez le fork ; contenu/, le témoin voisin, libre")
+        if (rendu / 'noyau' / 'agents').is_dir():
+            self.assertEqual(self._zones_du_rendu(rendu, 'agents/debug.md'), ['kernel'],
+                             "la vue d'un fork reste en zone kernel : le noyau ne s'écrit pas "
+                             "par l'API sans la garde (l'épreuve de la v2.7.0, 3/10)")
         texte = (rendu / 'NIVEAUX.yml').read_text(encoding='utf-8')
         entrees = yaml.safe_load(texte)['entrees']
         # Rien qui nomme cette instance : seules les entrées que le fork a, que
@@ -7828,8 +8014,9 @@ class TestNiveauxDuGabarit(unittest.TestCase):
         # commentaire de la source.
         partent = {f'{n}/' for n, c in TestCouchesDuGabarit._table(self)['couches'].items()
                    if c['part'] in ('contenu', 'readme')}
+        # Une vue (`vue_de:`) est absente du rendu par nature : le fork la construit.
         absentes = [n for n, v in entrees.items() if n != 'NIVEAUX.yml'
-                    and not (isinstance(v, dict) and v.get('cree_par'))
+                    and not (isinstance(v, dict) and (v.get('cree_par') or v.get('vue_de')))
                     and n not in partent and not (rendu / n.rstrip('/')).exists()]
         self.assertTrue(all(isinstance(entrees.get(n), dict) and entrees[n].get('cree_par')
                             for n in self.INSTALLE), "ce que l'installation crée porte `cree_par:`")

@@ -17,8 +17,8 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 2.6.5, kerneluser, postures)
-- `agents/` — les 70 agents
+- `brain-compose.yml` — la configuration du programme (version 2.7.0, kerneluser, postures)
+- `noyau/agents/` — les 70 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
 - `brain-engine/` — le moteur : API, recherche, serveur MCP
@@ -61,9 +61,9 @@ cause.
 
 | Zone | Contient | Protection |
 |---|---|---|
-| **noyau** | `KERNEL.md`, `CLAUDE.md`, `PATHS.md`, `BRAIN-INDEX.md`, `brain-constitution.md`, `brain-compose.yml`, `agents/`, `profil/` | aucune modification sans décision humaine explicite |
+| **noyau** | `KERNEL.md`, `CLAUDE.md`, `PATHS.md`, `BRAIN-INDEX.md`, `brain-constitution.md`, `brain-compose.yml`, `noyau/agents/`, `profil/` | aucune modification sans décision humaine explicite |
 | **satellites** | `todo/`, `toolkit/`, `progression/`, `reviews/`, `handoffs/`, `workspace/` | chaque satellite a son scribe |
-| **instance** | `focus.md`, `projets/`, `brain-compose.local.yml` | propre à une machine |
+| **instance** | `focus.md`, `projets/`, `brain-compose.local.yml`, `instance/` | propre à une machine |
 | **work** | tes dépôts de projets | le brain documente, ne possède pas |
 
 Le type de session décide lesquelles il peut écrire — voir **Sessions**.
@@ -76,6 +76,11 @@ Un agent est un fichier `agents/<nom>.md` : un en-tête qui déclare sa portée,
 son rôle et ses déclencheurs, puis ce qu'il sait faire. Il arrive de trois
 façons : le manifest de la session le charge (L1), son domaine est détecté, ou
 tu le demandes — « charge l'agent security ». La liste complète : **Agents**.
+
+`agents/` est une **vue** que `brain vue` construit : chaque `agents/<nom>.md` est un
+lien vers ta version (`instance/agents/<nom>.md`) si tu en as une, sinon vers celle
+du noyau livré (`noyau/agents/<nom>.md`). Tu gardes les deux : `brain maj` met le
+noyau à jour sans toucher à tes surcharges.
 
 ---
 

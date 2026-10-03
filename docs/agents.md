@@ -133,7 +133,10 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 ## Créer le tien
 
 `agents/_template.md` est le gabarit d'un agent, et `agents/_conventions.md`
-ses conventions. `agent-review` audite un agent existant : ce qu'il promet,
+ses conventions. Ton agent s'écrit dans `instance/agents/<nom>.md` — pas dans
+`agents/`, qui est une vue — puis `brain vue --construire` le rend visible. Pour
+modifier un agent du noyau, copie-le dans `instance/agents/` : ta version
+l'emporte, et celle du noyau reste là pour comparer. `agent-review` audite un agent existant : ce qu'il promet,
 ce qu'il fait, ce qui chevauche un autre.
 
 Certains agents renvoient à des agents que ce brain n'a pas : ceux de l'instance

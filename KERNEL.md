@@ -7,7 +7,7 @@ context_tier: always
 # KERNEL.md — Loi des zones
 
 > **Type :** Invariant absolu — chargé Couche 0 par helloWorld, avant tout agent.
-> Dernière révision : 2026-03-15
+> Dernière révision : 2026-10-03
 > Propriétaire : kernel (aucun agent ne modifie ce fichier seul — décision humaine requise)
 > Complété par : `brain-constitution.md` — identité + protocoles Layer 0 (ne pas répéter, ne pas surcharger)
 
@@ -32,7 +32,7 @@ Un agent qui sait dans quelle zone il opère sait automatiquement ce qu'il peut 
 ```
 Fichiers : KERNEL.md, CLAUDE.md, PATHS.md, brain-compose.yml, BRAIN-INDEX.md
            brain-constitution.md
-           agents/   profil/
+           noyau/agents/   profil/
 ```
 
 | Règle | Détail |
@@ -50,6 +50,19 @@ profil/   →  Invariant (collaboration, kernel-zones, architecture) : jamais su
               Référence (bsi-spec, scribe-system) : mis à jour sur changement de spec
 ```
 Le profil modèle la **personnalité** du brain. Un Invariant profil = valeur aussi dure que le kernel.
+
+**Sous-zone AGENTS — le noyau, ses surcharges, et la vue**
+```
+noyau/agents/      →  le noyau livré : versionné, reçu par `brain maj`, jamais modifié chez un fork
+instance/agents/   →  la surcharge de l'instance (ZONE INSTANCE) : un agent du même nom l'emporte
+agents/            →  la VUE : des liens, ignorée par git, construite par `brain vue`
+```
+Tous les lecteurs lisent `agents/X.md` : la vue pointe vers `instance/agents/X.md` s'il existe,
+sinon vers `noyau/agents/X.md` — la version publiée et la surcharge restent là toutes les deux.
+`agents/CATALOG.yml` est **calculé** dans la vue, jamais suivi. Un fichier réel dans `agents/`
+est une écriture que git ne voit pas : `brain vue` le signale et ne le touche jamais.
+Une instance dont la posture refuse le kernel (`kernel_write: false`) a son `noyau/` en lecture
+seule — une garde contre l'accident, pas contre le propriétaire de la machine.
 
 ---
 
@@ -74,6 +87,7 @@ Repos : toolkit/   progression/   todo/   reviews/
 
 ```
 Fichiers : focus.md, projets/*, PATHS.md (valeurs réelles), brain-compose.local.yml
+           instance/   (les surcharges du noyau — instance/agents/)
 ```
 
 | Règle | Détail |
@@ -194,7 +208,7 @@ Repos projets : GitHub, Gitea projets clients/perso
 **Règles d'isolation — non négociables :**
 
 ```
-INTERDIT dans agents/ distribuables :
+INTERDIT dans noyau/agents/ (distribué) :
   - Chemin machine absolu hardcodé (/home/<user>/..., /root/...)
   - toolkit/private/ — patterns privés non distribués
   - require:/load:/source: vers MYSECRETS ou tout fichier zone:personal
@@ -216,7 +230,7 @@ bash scripts/kernel-isolation-check.sh --strict  # zéro tolérance
 ```bash
 bash scripts/kernel-lock-gen.sh    # régénère kernel.lock après chaque modification kernel
 ```
-`kernel.lock` — l'empreinte SHA-256 des fichiers du noyau, régénérée à chaque version. Il sert à **l'amont** : `brain doctor` y mesure la dérive du noyau entre deux versions. Il n'est pas distribué — un fork se met à jour par git (fusion du tag de la version), voir la page de doc **Se mettre à jour**.
+`kernel.lock` — l'empreinte SHA-256 des fichiers du noyau (`noyau/agents/`, jamais `instance/`), régénérée à chaque version. Il sert à **l'amont** : `brain doctor` y mesure la dérive du noyau entre deux versions. Il n'est pas distribué — un fork se met à jour par git (fusion du tag de la version), voir la page de doc **Se mettre à jour**.
 
 ---
 
@@ -327,3 +341,4 @@ Toutes les conventions sont **orthogonales et complémentaires** — elles s'app
 | 2026-04-24 | Conventions agents ajoutées — pointer vers `agents/_conventions.md` (triplet BRAIN-065/066/067 émergé en session pilote `sess-20260424-1438-pilote-drift-memoire`) |
 | 2026-04-01 | Sessions V2 extension — 5ème type "chill" : présence longue durée, wrap OFF, coach mode "présent", transition work→chill. |
 | 2026-09-07 | `learning` entre au registre : 6ᵉ type déclaré dans `CLAUDE.md` et `contexts/session-learning.yml` depuis le 18/05, absent de ce tableau. Zones reprises de son contexte, non inventées. |
+| 2026-10-03 | `agents/` devient une vue de `noyau/agents/` (le noyau livré) et `instance/agents/` (la surcharge de l'instance) ; le catalogue est calculé dans la vue. |

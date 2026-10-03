@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v2.6.5.
+> machine. Kernel v2.7.0.
 
 ---
 

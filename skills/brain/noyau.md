@@ -8,9 +8,9 @@ pas. Ce qui suit en est le résumé opérationnel.
 
 | Zone | Contient | Qui écrit |
 |---|---|---|
-| **noyau** | `KERNEL.md`, `CLAUDE.md`, `PATHS.md`, `BRAIN-INDEX.md`, `brain-constitution.md`, `brain-compose.yml`, `agents/`, `profil/` | personne sans décision humaine explicite |
+| **noyau** | `KERNEL.md`, `CLAUDE.md`, `PATHS.md`, `BRAIN-INDEX.md`, `brain-constitution.md`, `brain-compose.yml`, `noyau/agents/`, `profil/` | personne sans décision humaine explicite |
 | **satellites** | `todo/`, `toolkit/`, `progression/`, `reviews/`, `handoffs/`, `workspace/` | le scribe propriétaire de chacun |
-| **instance** | `focus.md`, `projets/`, `brain-compose.local.yml`, `PATHS.md` | propre à la machine |
+| **instance** | `focus.md`, `projets/`, `brain-compose.local.yml`, `PATHS.md`, `instance/` | propre à la machine |
 | **work** | les dépôts de projets | le brain documente, ne possède pas |
 
 ## Les gates
@@ -23,13 +23,22 @@ pas. Ce qui suit en est le résumé opérationnel.
 
 ## Les agents
 
+`agents/` est une **vue** : des liens, ignorés par git, construits par `brain vue`.
+`agents/<nom>.md` pointe vers `instance/agents/<nom>.md` s'il existe (la surcharge de
+l'instance), sinon vers `noyau/agents/<nom>.md` (le noyau livré). On lit toujours
+`agents/<nom>.md` ; on écrit dans la couche voulue, puis `brain vue --construire`.
+Un fichier réel dans `agents/` est une écriture que git ne voit pas : `brain vue`
+le signale, ne le touche jamais. Un fork ne modifie pas `noyau/` — il surcharge
+dans `instance/agents/`, et `brain maj` met le noyau à jour sans toucher à la
+surcharge.
+
 Un agent est `agents/<nom>.md` : un frontmatter (`description`, `brain.scope`,
 `brain.type`, `brain.triggers`, `brain.ipc`), puis son texte — souvent un
 `## boot-summary` court, chargé d'abord, et un `## detail`. Le gabarit d'un nouvel agent : `agents/_template.md` ; ses
 conventions : `agents/_conventions.md`.
 
-`agents/CATALOG.yml` est **généré** depuis les frontmatters, par un outil de
-l'instance d'origine — ne jamais l'éditer à la main. Un agent qu'il ne connaît
+`agents/CATALOG.yml` est **calculé** dans la vue depuis les frontmatters, par
+`brain vue --construire` — jamais suivi par git, jamais édité à la main. Un agent qu'il ne connaît
 pas (créé dans un fork) compte quand même, s'il n'est pas `scope: personal`. Un agent `scope: personal` est privé : il ne part pas avec
 le gabarit, et un agent distribué ne doit pas compter sur lui.
 

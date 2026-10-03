@@ -48,10 +48,14 @@ EXEMPTES=()
 #   - si le bloc disparait ou est renomme, l'exemption ne couvre plus rien —
 #     elle ne peut pas devenir un trou permanent, elle reste capable de rougir.
 # Tranche par l'owner le 04/09.
+# Le titre a change avec la vue des agents : « INTERDIT dans noyau/agents/ (distribue) ».
+# Les deux sont reconnus — l'ancien vit encore chez les forks d'avant la v2.7.0. Le
+# renommage, fait sans chercher qui lisait ce titre, a fait refuser la publication de la
+# v2.7.0 — refus voulu : le bloc renomme ne couvrait plus rien.
 lignes_exemptees() {
   local f="$1"
   [ "$(basename "$f")" = "KERNEL.md" ] || return 0
-  awk '/^INTERDIT dans agents\/ distribuables/ { inb=1 }
+  awk '/^INTERDIT dans (noyau\/)?agents\/ (distribuables|\(distribu)/ { inb=1 }
        inb { print NR }
        inb && /^```/ { inb=0 }' "$f"
 }
@@ -100,7 +104,11 @@ WARN_PATTERNS=(
 # inspecte ne peut pas rougir la ou ca compte.
 SCAN_DIRS=("$AGENTS_DIR")
 SCAN_PORTEE="agents/ (source)"
-TEMPLATE_DIR="$BRAIN_ROOT/brain-template"
+# Le gabarit a juger : celui que la synchro vient d'ecrire (`GABARIT_A_JUGER`), sinon le
+# clone de publication. Sans cette variable, un `--rendre` jugeait le clone — le gabarit
+# DEJA publie — et laissait passer ce qu'il rendait : la v2.7.0 a passe trois repetitions
+# et une epreuve de bout en bout, puis le vrai `--push` l'a refusee (3/10).
+TEMPLATE_DIR="${GABARIT_A_JUGER:-$BRAIN_ROOT/brain-template}"
 if [ -d "$TEMPLATE_DIR" ]; then
   SCAN_DIRS+=("$TEMPLATE_DIR")
   SCAN_PORTEE="agents/ (source) + brain-template/ (ce qui part reellement,"

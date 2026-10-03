@@ -37,6 +37,12 @@ lecture seule ; les autres le gardent modifiable. git ne garde pas ce droit : il
 reposé à chaque construction. Une garde contre l'accident, pas contre le propriétaire
 de la machine.
 
+Le verrou garde le checkout PRINCIPAL — celui qu'on aligne, où tournent les services. Un
+worktree garde son `noyau/` modifiable : verrouillé, `git worktree remove` échoue à
+moitié (il désinscrit le worktree et laisse le dossier — mesuré le 3/10). Là, la garde
+est le commit : le hook de posture lit la posture du dépôt principal. `brain vue` le dit.
+
+
 Sans `noyau/`, il s'abstient : rien à construire. Sortie 0 : la vue est juste (ou
 construite). 1 : elle est à construire, ou un fichier réel bloque une entrée ou
 n'est fourni par rien.
@@ -51,6 +57,14 @@ import sys
 from pathlib import Path
 
 CALCULES = {Path("CATALOG.yml")}        # écrits dans la vue, jamais liés
+#: Des données de l'instance qui vivent DANS `agents/` : les revues que `agent-review`,
+#: `recruiter` et `scribe` y écrivent (ignorées par git avant la vue comme après). Ni
+#: liées ni signalées. Trouvé le jour J (3/10), tranché par l'owner.
+DONNEES = {Path("reviews")}
+
+
+def donnee(rel: Path) -> bool:
+    return bool(rel.parts) and Path(rel.parts[0]) in DONNEES
 
 
 def racines(brain: Path) -> tuple[Path, Path, Path]:
@@ -93,7 +107,8 @@ def etat(brain: Path) -> dict:
             rel = l.relative_to(vue)
             if l.is_symlink() and rel not in v:
                 e["orphelins"].append(rel)
-            elif l.is_file() and not l.is_symlink() and rel not in v and rel not in CALCULES:
+            elif (l.is_file() and not l.is_symlink() and rel not in v and rel not in CALCULES
+                  and not donnee(rel)):
                 e["etrangers"].append(rel)
     return e
 
@@ -115,14 +130,28 @@ def construire(brain: Path) -> dict:
     return e
 
 
+def myeline_declare(brain: Path) -> Path | None:
+    """Le chemin de Myéline que `satellites.yml` déclare (`myeline: {… chemin: …}`).
+
+    `MYELINE_ROOT` vit dans le `.bashrc`, qu'un shell non interactif ne lit pas : par
+    `ssh laptop '…'`, le jour J (3/10), la vue s'est construite sans son catalogue, et
+    personne ne l'a dit. La déclaration du brain ne dépend pas du shell."""
+    import re
+    sat = brain / "satellites.yml"
+    texte = sat.read_text(encoding="utf-8", errors="replace") if sat.is_file() else ""
+    m = re.search(r"^\s*myeline:\s*\{[^}]*\bchemin:\s*([^,}\s]+)", texte, re.M)
+    return Path(m.group(1)).expanduser() if m else None
+
+
 def generateur(brain: Path) -> Path | None:
-    """Le registre des agents : livré avec le doctor du gabarit, sinon celui de Myéline."""
+    """Le registre des agents : livré avec le doctor du gabarit, sinon celui de Myéline
+    (`MYELINE_ROOT`, sinon le chemin que `satellites.yml` déclare)."""
     livre = brain / "brain-engine" / "doctor" / "agent_registry.py"
     if livre.is_file():
         return livre
-    myeline = os.environ.get("MYELINE_ROOT")
-    if myeline and (Path(myeline) / "tools" / "agent_registry.py").is_file():
-        return Path(myeline) / "tools" / "agent_registry.py"
+    for myeline in (os.environ.get("MYELINE_ROOT"), myeline_declare(brain)):
+        if myeline and (Path(myeline) / "tools" / "agent_registry.py").is_file():
+            return Path(myeline) / "tools" / "agent_registry.py"
     return None
 
 
@@ -166,6 +195,16 @@ def ecrit_le_kernel(brain: Path) -> bool:
         return True
     finally:
         sys.path.pop(0)
+
+
+def principal(brain: Path) -> Path | None:
+    """Le dépôt principal quand `brain` est un worktree ; None sinon (ou hors git)."""
+    r = subprocess.run(["git", "-C", str(brain), "rev-parse", "--path-format=absolute",
+                        "--git-dir", "--git-common-dir"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    propre, commun = (Path(l) for l in r.stdout.split())
+    return commun.parent if propre != commun else None
 
 
 def droit_d_ecrire(brain: Path, ecrire: bool) -> None:
@@ -214,7 +253,10 @@ def main() -> int:
         # L'état dit aussi le verrou : la posture le décide, le disque peut l'avoir perdu
         # (un `--deverrouiller` resté sans `--construire`).
         ouvert = os.access(noyau, os.W_OK) and os.geteuid() != 0
-        if ecrit_le_kernel(brain):
+        depot = principal(brain)
+        if depot is not None:
+            print(dit_le_worktree(depot))
+        elif ecrit_le_kernel(brain):
             print("  noyau/ modifiable (posture qui écrit le kernel)")
         elif ouvert:
             print("  ⚠️ la posture refuse le kernel et noyau/ est modifiable")
@@ -225,11 +267,24 @@ def main() -> int:
             print("  `brain vue --construire` pour la construire")
         return 1 if (a_faire or bloque) else 0
     print(f"  {calculer_catalogue(brain)}")
+    depot = principal(brain)
+    if depot is not None:                          # un worktree : jamais verrouillé
+        droit_d_ecrire(brain, True)
+        print(dit_le_worktree(depot))
+        return 1 if bloque else 0
     ecrire = ecrit_le_kernel(brain)
     droit_d_ecrire(brain, ecrire)
     print("  noyau/ modifiable (posture qui écrit le kernel)" if ecrire
           else "  🔒 noyau/ en lecture seule (la posture refuse le kernel)")
     return 1 if bloque else 0
+
+
+def dit_le_worktree(depot: Path) -> str:
+    """Un worktree n'est pas verrouillé ; la posture du dépôt principal garde le commit."""
+    if ecrit_le_kernel(depot):
+        return "  noyau/ modifiable (un worktree ; la posture de l'instance écrit le kernel)"
+    return ("  worktree : noyau/ modifiable — la posture de l'instance refuse le kernel, "
+            "le commit le refusera (le verrou garde le checkout principal)")
 
 
 if __name__ == "__main__":

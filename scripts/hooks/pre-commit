@@ -6,6 +6,7 @@
 #   2. la zone d'écriture du type de session, si le garde existe
 #   3. docs-generer --check quand une source de la doc change
 #   4. pas de marqueur de conflit git dans ce que le commit AJOUTE
+#   5. le garde du distribué, s'il existe : ce qui part au gabarit, jugé au commit
 #
 # Le Python, la base et la posture sont ceux du dépôt PRINCIPAL ; les fichiers,
 # ceux du commit. Voir _racines.sh.
@@ -71,4 +72,12 @@ if [[ -n "$marqueurs" ]]; then
     echo "pre-commit : marqueur(s) de conflit git dans ce commit — résoudre avant de commiter."
     echo "$marqueurs" | sed 's/^/  /'
     exit 1
+fi
+
+# Le garde du distribué — un outil de l'instance qui publie le gabarit, absent d'un
+# fork : ce que le commit fait partir au gabarit ne porte ni renvoi au backlog privé
+# pris dans la phrase, ni le nom de l'instance. La synchro le juge au moment de
+# publier ; ici, au moment d'écrire.
+if [[ -f "$BRAIN_WT/scripts/garde-distribue.py" ]]; then
+    (cd "$BRAIN_WT" && python3 scripts/garde-distribue.py) || exit 1
 fi
