@@ -11,6 +11,11 @@ modules sont ses unités de progression.
     ce qu'elle nourrit       `feeds:` — des slugs qui EXISTENT : un projet
                              (`projets/<slug>.md`), une track, ou un élément de `vie/`
     ses liens                `liens:` — une URL, ou un chemin du brain qui existe
+    sa machine               une fiche qui porte un CONSTAT SYSTÈME (un chemin `/etc/`,
+                             `~/.config/`, un service, `ufw`, un paquet…) dit où il a été
+                             pris : `mesure_sur:` en tête, ou `> 📍 mesuré sur …` par
+                             section. Une track sans constat système n'a rien à
+                             marquer, et ne rougit jamais.
 
 Ce qui pourrirait en silence sans lui (mesuré le 2/10) : la table de
 `learning/README.md`, écrite à la main, contredisait les fiches ; `feeds:` était
@@ -38,6 +43,13 @@ from pathlib import Path
 STATUTS = ("seed", "exploring", "active", "pause", "close")
 DEBUT, FIN = "<!-- genere:tracks -->", "<!-- /genere:tracks -->"
 URL = re.compile(r"^https?://")
+# Un constat système : vrai sur UNE machine, faux lu sur l'autre — le 26/09,
+# `/etc/sddm.conf.d` cherché deux fois sur le fixe ; il vivait sur le laptop.
+CONSTAT_SYSTEME = re.compile(r"(?<![\w.])(/etc/|/usr/|/var/|/boot/|/proc/|/sys/|~/\.config/|"
+                             r"systemctl\b|journalctl\b|\bufw\b|\bpacman -|\byay -|\.service\b|"
+                             r"\bmkinitcpio\b|\bfstab\b)")
+# Les noms de machine sont ceux de l'instance : on exige qu'il y en ait un, pas lequel.
+MACHINE = re.compile(r"^mesure_sur:[ \t]*\S|^>[ \t]*📍[ \t]*mesuré sur \S", re.M)
 
 
 def _meta(fichier: Path) -> dict:
@@ -65,6 +77,19 @@ def tracks(brain: Path) -> dict[str, dict]:
     racine = Path(brain) / "learning"
     return {d.name: _meta(d / "README.md") for d in sorted(racine.iterdir())
             if d.is_dir() and not d.name.startswith((".", "_")) and (d / "README.md").is_file()}
+
+
+def fiches_de_learning(brain: Path) -> list[Path]:
+    """Les `.md` de `learning/` que le dépôt suit — un `node_modules` ou un outil
+    vendu dans un lab n'est pas une fiche. Hors dépôt git : tout, sauf les dossiers cachés."""
+    import subprocess
+    racine = Path(brain) / "learning"
+    r = subprocess.run(["git", "-C", str(racine), "ls-files", "-z", "--", "*.md"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and (racine / ".git").exists():
+        return sorted(racine / x for x in r.stdout.split("\0") if x)
+    return sorted(f for f in racine.rglob("*.md")
+                  if not any(p.startswith(".") or p == "node_modules" for p in f.relative_to(racine).parts))
 
 
 def cible_existe(brain: Path, slug: str) -> bool:
@@ -110,6 +135,16 @@ def juger(brain: Path) -> list[str]:
         elif tracks(brain):
             # Sans track, rien à tabler : un fork installé avant la table ne rougit pas.
             defauts.append(f"learning/README.md : pas de table générée ({DEBUT} … {FIN})")
+    # 6. un constat système dit sur quelle machine il a été pris
+    for f in fiches_de_learning(brain):
+        if not f.is_file():
+            continue
+        texte = f.read_text(encoding="utf-8", errors="replace")
+        constat = CONSTAT_SYSTEME.search(texte)
+        if constat and not MACHINE.search(texte):
+            defauts.append(f"learning/{f.relative_to(racine)} porte un constat système "
+                           f"(« {constat.group(1)} ») sans dire sur quelle machine — "
+                           f"`mesure_sur:` en tête, ou `> 📍 mesuré sur …` par section")
     return defauts
 
 
@@ -133,7 +168,7 @@ def tracks_de(brain: Path, projet: str) -> list[str]:
 
 def auto_epreuve() -> list[str]:
     def brain_jetable(tmp: Path, fiches: dict[str, str], racine: dict[str, str] | None = None,
-                      sans_fiche: tuple = ()) -> Path:
+                      sans_fiche: tuple = (), modules: dict[str, str] | None = None) -> Path:
         (tmp / "projets").mkdir()
         (tmp / "projets" / "mon-projet.md").write_text("---\nname: mon-projet\n---\n", encoding="utf-8")
         (tmp / "vie" / "un-terrain").mkdir(parents=True)
@@ -145,6 +180,8 @@ def auto_epreuve() -> list[str]:
             (tmp / "learning" / nom).write_text(f"---\n{tete}\n---\n", encoding="utf-8")
         for d in sans_fiche:
             (tmp / "learning" / d).mkdir()
+        for chemin, texte in (modules or {}).items():
+            (tmp / "learning" / chemin).write_text(texte, encoding="utf-8")
         (tmp / "learning" / "README.md").write_text(f"# idx\n{DEBUT}\n{FIN}\n", encoding="utf-8")
         (tmp / "learning" / "README.md").write_text(f"# idx\n{DEBUT}\n{table(tmp)}\n{FIN}\n", encoding="utf-8")
         return tmp
@@ -159,7 +196,20 @@ def auto_epreuve() -> list[str]:
         "un dossier de track sans fiche": ({"t": sain, "autre": autre}, None, ("orpheline",)),
         "un type faux": ({"t": sain.replace("learning-track", "learning-module"), "autre": autre}, None, ()),
     }
+    # L'incident d'origine, copié tel quel : un constat du laptop, lu sur le fixe.
+    incident = ("---\nname: m07\ntype: learning-module\n---\n\n"
+                "SDDM est en autologin dans `/etc/sddm.conf.d/` ; la règle `ufw` IGMP laisse passer le mDNS.\n")
     rates = []
+    with tempfile.TemporaryDirectory(prefix="zone-learning-") as tmp:
+        if not juger(brain_jetable(Path(tmp), {"t": sain, "autre": autre}, modules={"t/m07.md": incident})):
+            rates.append("non vu : un constat système qui ne dit pas sa machine (l'incident d'origine)")
+    with tempfile.TemporaryDirectory(prefix="zone-learning-") as tmp:
+        b = brain_jetable(Path(tmp), {"t": sain, "autre": autre}, modules={
+            "t/m07.md": incident.replace("type: learning-module", "type: learning-module\nmesure_sur: laptop"),
+            "t/m09.md": "# m09\n\n## 1\n\n> 📍 mesuré sur le fixe\n\n`systemctl --user status`\n",
+            "autre/pitch.md": "# Le pitch\n\nTrois phrases, une promesse, une preuve.\n"})
+        if juger(b):
+            rates.append(f"témoin négatif : un constat marqué, ou une track sans constat, rougit ({juger(b)[0]})")
     for nom, (fiches, racine, sans) in cas.items():
         with tempfile.TemporaryDirectory(prefix="zone-learning-") as tmp:
             if not juger(brain_jetable(Path(tmp), fiches, racine, sans)):
@@ -219,10 +269,10 @@ def main() -> int:
         print("  ✍️  learning/README.md — la table régénérée")
     defauts = juger(brain)
     print("\nLA ZONE LEARNING\n")
-    print("  auto-épreuve         8 défauts vus, une zone saine ne rougit pas")
+    print("  auto-épreuve         9 défauts vus, une zone saine ne rougit pas")
     print(f"  tracks               {len(tracks(brain))}")
     if not defauts:
-        print("\n  ✅ chaque track a sa fiche, un statut, des feeds et des liens qui désignent quelque chose")
+        print("\n  ✅ chaque track a sa fiche, un statut, des feeds et des liens qui désignent quelque chose ; chaque constat système dit sa machine")
         return 0
     for d in defauts[:14]:
         print(f"  ❌ {d}")

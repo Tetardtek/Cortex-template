@@ -77,9 +77,16 @@ fichier de secrets se **lit** comme un `EnvironmentFile` de systemd — des lign
 Le mode vient de `BRAIN_MODE`, sinon du `mode:` de `brain-compose.local.yml`
 (le setup écrit `prod`).
 
+Une exception passe avant : quand la posture de l'instance refuse d'écrire le
+kernel (`kernel_write: false` dans `brain-compose.yml` § postures, comme
+`replica-nomad`), le moteur démarre en `satellite`. Un `BRAIN_MODE` posé ne peut
+alors que le durcir (`template`, `demo`), jamais le lever. C'est le moteur qui
+refuse, plus la session qu'il restreint.
+
 | Mode | Écriture par l'API |
 |---|---|
 | `owner`, `prod`, `dev` | oui |
+| `satellite` | oui, sauf la zone kernel |
 | `template`, `demo` | non — lecture seule |
 
 ---

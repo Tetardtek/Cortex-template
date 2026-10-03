@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "2.6.2"
+version: "2.6.3"
 
 # ---
 # Ownership — kerneluser
@@ -169,3 +169,6 @@ changelog:
   - version: "2.6.2"
     date: "2026-10-03"
     notes: "Le doctor juge les pistes d'apprentissage et chaque fiche de projet. La zone learning : une piste est learning/<piste>/README.md (son index et ses liens), avec un status: (seed, exploring, active, pause, close) et des feeds: qui designent quelque chose qui existe (un projet, une autre piste, vie/) ; la table de learning/README.md se genere (zone_learning.py --ecrire), et un projet sait quelles pistes le nourrissent (--projet). La zone projet : chaque fichier de projets/ est une fiche type: projet avec un status: dans l'enumeration ; une annexe se range dans projets/<slug>/. Le gabarit d'une fiche de projet est a jour (tous les statuts, repo:, vitrine:, prefixe:, palier:, et la regle : une fiche, c'est ce qui se construit). La fraicheur des fiches compte une relecture datee (Remesure le ...), meme faite sur beaucoup de fiches a la fois. Mise a jour depuis la v2.6.1 : rien a migrer ; brain doctor pour voir."
+  - version: "2.6.3"
+    date: "2026-10-03"
+    notes: "Le moteur lit la posture de l'instance. Une instance dont la posture refuse d'ecrire le kernel (kernel_write: false dans brain-compose.yml, comme replica-nomad) demarre son moteur en mode satellite : PUT /brain y refuse la zone kernel, avant le jeton, le claim et la base ; un BRAIN_MODE pose ne peut que durcir ce mode (template, demo), jamais le lever. Jusqu'ici, seules les sessions lisaient la posture. La zone learning juge aussi la machine : une fiche de learning/ qui porte un constat systeme (/etc/, ~/.config/, un service, ufw, un paquet...) dit ou il a ete pris, par mesure_sur: en tete ou `> 📍 mesuré sur …` par section ; une piste sans constat systeme ne rougit jamais. Mise a jour depuis la v2.6.2 : rien a migrer ; une instance satellite redemarre son moteur (systemctl --user restart brain-engine brain-mcp) ; brain doctor pour voir."

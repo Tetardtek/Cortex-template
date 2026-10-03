@@ -25,8 +25,20 @@ dernier :
     l'environnement      ce qui est déjà posé gagne toujours (une unité
                          systemd, un `BRAIN_PORT=… brain serve` à la main)
 
-Le mode : `BRAIN_MODE`, sinon le premier `mode:` de `brain-compose.local.yml`,
-sinon `dev` — la règle de `brain-engine.sh`, reprise telle quelle.
+Le mode : `satellite` quand la posture de l'instance refuse d'écrire le kernel
+(un `BRAIN_MODE` posé ne peut que le durcir) ; sinon `BRAIN_MODE`, puis le premier
+`mode:` de `brain-compose.local.yml`, puis `dev` — la règle de `brain-engine.sh`,
+plus la posture.
+
+── La posture, lue par le moteur ──────────────────────────────────
+
+La posture d'une instance (`posture:` de l'instance active, dans
+`brain-compose.local.yml`) déclare si elle écrit le kernel (`kernel_write:` de
+`brain-compose.yml` § postures). Jusqu'au 3/10, seules les sessions la lisaient :
+la machine restreinte appliquait sa propre restriction. Une posture qui refuse le
+kernel (`replica-nomad`, le laptop) lance désormais le moteur en `satellite`, et
+c'est le moteur qui refuse d'écrire la zone kernel. Une seule source — la posture
+déjà déclarée ; aucun second réglage qui pourrait la contredire.
 
 ── Les secrets ne s'exécutent pas ──────────────────────────────────────────
 
@@ -104,11 +116,45 @@ def lire_fichier_env(chemin: Path) -> dict[str, str]:
     return valeurs
 
 
+def _yaml(chemin: Path) -> dict:
+    try:
+        import yaml
+        return yaml.safe_load(chemin.read_text(encoding='utf-8')) or {}
+    except Exception:                                          # noqa: BLE001
+        return {}
+
+
+def posture_de(donnees: Path) -> str:
+    """La posture de l'instance active — la règle de `posture-gate-check.sh` ;
+    `master` quand rien ne la déclare (un fork, une instance seule)."""
+    instances = _yaml(donnees / 'brain-compose.local.yml').get('instances') or {}
+    for inst in instances.values():
+        if isinstance(inst, dict) and inst.get('active'):
+            return str(inst.get('posture') or 'master')
+    return 'master'
+
+
+def ecrit_le_kernel(donnees: Path, posture: str) -> bool:
+    """`kernel_write:` de la posture dans `brain-compose.yml` — vrai sauf refus déclaré."""
+    postures = _yaml(donnees / 'brain-compose.yml').get('postures') or {}
+    return (postures.get(posture) or {}).get('kernel_write', True) is not False
+
+
+# Les seuls modes qu'un `BRAIN_MODE` posé peut imposer à un satellite : plus
+# restrictifs que lui. `BRAIN_MODE=prod brain serve` ne lève pas la posture.
+PLUS_STRICTS_QUE_SATELLITE = ('template', 'demo')
+
+
 def mode_de(environ: dict[str, str], donnees: Path) -> str:
-    """`BRAIN_MODE`, sinon le premier `mode:` indenté de `brain-compose.local.yml`,
-    sinon `dev` — la règle de `brain-engine.sh` (`detect_mode`)."""
-    if environ.get('BRAIN_MODE'):
-        return environ['BRAIN_MODE']
+    """Une posture qui refuse le kernel donne `satellite` — un `BRAIN_MODE`
+    posé ne peut que la durcir (`template`, `demo`), jamais la lever. Sinon :
+    `BRAIN_MODE`, puis le premier `mode:` indenté de `brain-compose.local.yml`,
+    puis `dev` — la règle de `brain-engine.sh` (`detect_mode`)."""
+    pose = environ.get('BRAIN_MODE')
+    if not ecrit_le_kernel(donnees, posture_de(donnees)):
+        return pose if pose in PLUS_STRICTS_QUE_SATELLITE else 'satellite'
+    if pose:
+        return pose
     try:
         texte = (donnees / 'brain-compose.local.yml').read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError):

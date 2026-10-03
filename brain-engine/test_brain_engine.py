@@ -1335,6 +1335,52 @@ class TestLectureZonePrivee(unittest.TestCase):
         self.assertTrue(embed.is_private('vie/x.md') and embed.is_private('profil/identity/x.md'))
 
 
+class TestSatelliteNEcritPasLeKernel(unittest.TestCase):
+    """🔴 Un moteur `satellite` refuse d'écrire la zone kernel — même en local.
+
+    La posture était appliquée par la session qu'elle restreint. Le refus vient
+    maintenant du moteur, et passe avant le claim et la base : `_open_claims` et
+    `_foreign_lock` sont piégés, un refus qui les lirait échouerait. Joué dans un
+    brain jetable (`srv.BRAIN_ROOT` redirigé, listes de zones en dur). Le témoin : le
+    même `PUT` en `owner` dépasse la garde et bute sur le claim (409)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-satellite-'))
+        self._racine = srv.BRAIN_ROOT
+        srv.BRAIN_ROOT = self.tmp
+        self.client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+
+    def tearDown(self):
+        srv.BRAIN_ROOT = self._racine
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _put(self, mode, chemin):
+        with patch.object(srv, 'BRAIN_MODE', mode), patch.object(srv, '_TOKEN_MAP', {}), \
+             patch.object(srv, '_open_claims', return_value=[]), \
+             patch.object(srv, '_foreign_lock', return_value=None), \
+             patch.object(srv, '_demander_reindex', return_value=False):
+            return self.client.put(f'/brain/{chemin}', json={'content': '# x\n'})
+
+    def test_le_kernel_est_refuse_au_satellite(self):
+        self.assertEqual(srv._write_zone('agents/un-agent.md'), 'kernel')
+        with patch.object(srv, '_open_claims', side_effect=AssertionError('base lue')):
+            with patch.object(srv, 'BRAIN_MODE', 'satellite'), patch.object(srv, '_TOKEN_MAP', {}):
+                r = self.client.put('/brain/agents/un-agent.md', json={'content': '# x\n'})
+        self.assertEqual(r.status_code, 403, r.text)
+        self.assertIn('satellite', r.text)
+        self.assertFalse((self.tmp / 'agents' / 'un-agent.md').exists())
+
+    def test_le_temoin_en_owner_depasse_la_garde(self):
+        r = self._put('owner', 'agents/un-agent.md')
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn('aucun claim', r.text)
+
+    def test_le_satellite_ecrit_hors_du_kernel(self):
+        r = self._put('satellite', 'workspace/une-note.md')
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue((self.tmp / 'workspace' / 'une-note.md').exists())
+
+
 class TestLectureParZone(unittest.TestCase):
     """`GET /brain/{path}` applique à la lecture les zones de `_SCOPE_ACCESS`.
 
@@ -1531,8 +1577,12 @@ class TestServerScript(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
-class TestServerBe3c(unittest.TestCase):
-    """BE-3c — mode=service masquage filepath, fichiers VPS."""
+class TestModeServiceEtJeton(unittest.TestCase):
+    """Le mode `service` masque les chemins ; MYSECRETS déclare `BRAIN_TOKEN`.
+
+    Né sous le nom `TestServerBe3c` (BE-3c, le moteur servi depuis le VPS). Quatre
+    de ses tests éprouvaient l'unité système et le script d'installation du VPS,
+    que plus rien n'installait depuis le 27/09 : retirés avec eux le 3/10."""
 
     def setUp(self):
         self.client = TestClient(srv.app, client=LOCAL)
@@ -1558,30 +1608,6 @@ class TestServerBe3c(unittest.TestCase):
         item = resp.json()['results'][0]
         self.assertIn('filepath', item)
         self.assertEqual(item['filepath'], 'ADR/001.md')
-
-    def test_systemd_service_file_exists(self):
-        """brain-engine.service présent dans scripts/."""
-        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
-        self.assertTrue(svc.exists(), f"Service absent : {svc}")
-
-    def test_systemd_service_has_mysecrets_env(self):
-        """Le service charge MYSECRETS via EnvironmentFile."""
-        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
-        content = svc.read_text()
-        self.assertIn('EnvironmentFile', content)
-        self.assertIn('MYSECRETS', content)
-
-    def test_systemd_service_has_brain_token(self):
-        """Le service ne hardcode pas BRAIN_TOKEN — il vient de EnvironmentFile."""
-        svc = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'brain-engine.service')
-        content = svc.read_text()
-        self.assertNotIn('BRAIN_TOKEN=', content)  # jamais hardcodé dans le service
-
-    def test_install_script_exists_and_executable(self):
-        """install-brain-engine.sh existe et est exécutable."""
-        script = script_d_instance(Path(__file__).parent.parent / 'scripts' / 'install-brain-engine.sh')
-        self.assertTrue(script.exists())
-        self.assertTrue(os.access(script, os.X_OK))
 
     def test_mysecrets_has_brain_token_entry(self):
         """MYSECRETS declare BRAIN_TOKEN — sans qu'aucune valeur ne bouge.
@@ -5054,6 +5080,54 @@ class TestConceptScribeDestination(unittest.TestCase):
         self.assertIn('traité', ligne)
         self.assertNotIn('non traité', ligne)
 
+    def _lot_range_ailleurs(self, dest):
+        """Le lot n'est QUE dans `dest` ; la destination courante est celle par défaut."""
+        (self.tmp / 'workspace' / 'scratch').mkdir(parents=True)
+        (self.tmp / 'workspace' / 'scratch' / 'un-lot.md').write_text('# un lot\n')
+        shutil.rmtree(self.tmp / 'workspace' / 'concepts')
+        shutil.rmtree(self.tmp / 'vie' / 'concepts')
+        d = self.tmp / dest / 'un-lot'
+        d.mkdir(parents=True)
+        (d / 'une-idee.md').write_text('# une idée\n')
+
+    def _script(self, nom, *args):
+        env = {k: v for k, v in os.environ.items() if k != 'CONCEPTS_DIR'}
+        return subprocess.run(['bash', str(self.SCRIPTS / nom), *args], capture_output=True, text=True,
+                              timeout=60, env={**env, 'BRAIN_ROOT': str(self.tmp)})
+
+    def test_un_lot_range_dans_une_autre_destination_est_traite(self):
+        """`list.sh` cherche le lot dans toutes les destinations, pas la seule courante."""
+        for dest in ('vie/concepts', 'contenu/concepts', 'projets/un-projet/concepts'):
+            with self.subTest(dest=dest):
+                self.tearDown(); self.setUp()
+                self._lot_range_ailleurs(dest)
+                r = self._script('list.sh')
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                ligne = next(l for l in r.stdout.splitlines() if 'un-lot.md' in l)
+                self.assertNotIn('non traité', ligne)
+                self.assertIn(f'dans {dest}/un-lot', ligne)
+
+    def test_un_lot_jamais_range_reste_non_traite(self):
+        """Le témoin : sans lot nulle part, `list.sh` dit toujours « non traité »."""
+        self._lot_range_ailleurs('vie/concepts')
+        shutil.rmtree(self.tmp / 'vie' / 'concepts')
+        ligne = next(l for l in self._script('list.sh').stdout.splitlines() if 'un-lot.md' in l)
+        self.assertIn('non traité', ligne)
+
+    def test_run_ne_refait_pas_un_lot_range_ailleurs(self):
+        """`run.sh`, en lot comme seul, saute un scratch dont le lot est rangé ailleurs —
+        et ne crée rien dans la destination courante. Simulation : aucun appel au modèle."""
+        self._lot_range_ailleurs('projets/un-projet/concepts')
+        (self.tmp / 'scripts').symlink_to(BRAIN_ROOT_PATH / 'scripts')   # le lot appelle `$BRAIN_ROOT/scripts/…/list.sh`
+        lot = self._script('run.sh', '--dry-run', '--all-unprocessed', '--yes')
+        self.assertEqual(lot.returncode, 0, lot.stdout + lot.stderr)
+        self.assertIn('Skippés : 1', lot.stdout)
+        self.assertNotIn('Aurait lancé', lot.stdout)
+        seul = self._script('run.sh', '--dry-run', str(self.tmp / 'workspace' / 'scratch' / 'un-lot.md'))
+        self.assertEqual(seul.returncode, 0, seul.stdout + seul.stderr)
+        self.assertIn('déjà rangé dans projets/un-projet/concepts/un-lot', seul.stdout)
+        self.assertFalse((self.tmp / 'workspace' / 'concepts' / 'un-lot').exists())
+
 
 class TestProjetsRecursif(unittest.TestCase):
     """La connaissance d'un projet, dans `projets/<slug>/`, est du corpus [BRAIN-080].
@@ -7500,6 +7574,32 @@ class TestBrainServe(unittest.TestCase):
         (self.donnees / 'brain-compose.local.yml').write_text('instance:\n    mode: prod\n')
         self.assertEqual(self._declarer().mode, 'prod', 'le premier mode: indenté du compose')
         self.assertEqual(self._declarer({'BRAIN_MODE': 'template'}).mode, 'template', 'BRAIN_MODE gagne')
+
+    def _posture(self, posture, kernel_write=False):
+        (self.donnees / 'brain-compose.yml').write_text(
+            f'postures:\n  master:\n    kernel_write: true\n'
+            f'  {posture}:\n    kernel_write: {str(kernel_write).lower()}\n')
+        (self.donnees / 'brain-compose.local.yml').write_text(
+            f'instances:\n  autre:\n    active: false\n    posture: master\n    mode: prod\n'
+            f'  ici:\n    active: true\n    posture: {posture}\n    mode: prod\n')
+
+    def test_une_posture_qui_refuse_le_kernel_lance_un_satellite(self):
+        """La posture DÉCLARÉE de l'instance active décide — plus le `mode:` du fichier."""
+        self._posture('replica-nomad')
+        self.assertEqual(self._declarer().mode, 'satellite')
+        self._posture('replica-nomad', kernel_write=True)
+        self.assertEqual(self._declarer().mode, 'prod', 'le témoin : une posture qui écrit le kernel garde son mode')
+        self._posture('master', kernel_write=True)
+        self.assertEqual(self._declarer().mode, 'prod')
+
+    def test_un_brain_mode_pose_ne_leve_pas_la_posture(self):
+        """`BRAIN_MODE=prod brain serve` sur un satellite ne s'octroie pas le kernel ;
+        un mode plus strict, lui, passe."""
+        self._posture('replica-nomad')
+        for leve in ('prod', 'owner', 'dev'):
+            self.assertEqual(self._declarer({'BRAIN_MODE': leve}).mode, 'satellite', leve)
+        for strict in ('template', 'demo'):
+            self.assertEqual(self._declarer({'BRAIN_MODE': strict}).mode, strict, strict)
 
     def test_les_secrets_se_lisent_et_ne_s_executent_pas(self):
         temoin = self.tmp / 'execute'

@@ -146,7 +146,7 @@ from racines import DONNEES as BRAIN_ROOT, PROGRAMME, annonce as _annonce_racine
 from core.bsi import VERROU_ACTIF
 log.info(_annonce_racines())
 DB_PATH    = Path(os.getenv('BRAIN_DB_PATH') or str(BRAIN_ROOT / 'brain.db'))
-BRAIN_MODE = os.getenv('BRAIN_MODE') or 'owner'  # 'owner' (full) | 'prod' | 'template' (read-only) | 'demo' (vitrine)
+BRAIN_MODE = os.getenv('BRAIN_MODE') or 'owner'  # 'owner' (full) | 'prod' | 'satellite' (kernel en lecture) | 'template' (read-only) | 'demo' (vitrine)
 
 
 def _readonly_guard():
@@ -1001,6 +1001,16 @@ async def brain_put(
         raise HTTPException(
             status_code=403,
             detail=f'{rel} est un invariant kernel — édition humaine en session, jamais par l\'API',
+        )
+
+    # 1ter. Un satellite n'écrit pas le kernel. Sa posture le déclare
+    #       (`kernel_write: false`) ; `serve.py` la lit et lance le moteur en
+    #       `satellite`. Le refus vient du moteur, plus de la session qu'il
+    #       restreint — et il passe avant le jeton, le claim et la base.
+    if zone == 'kernel' and BRAIN_MODE == 'satellite':
+        raise HTTPException(
+            status_code=403,
+            detail=f'instance satellite — la zone kernel s\'écrit sur le master, pas ici ({rel})',
         )
 
     # 1bis. Autorisation PAR ZONE, et non globale. Le rôle `mcp` a les scopes
