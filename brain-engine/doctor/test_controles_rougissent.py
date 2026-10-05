@@ -264,6 +264,33 @@ def main() -> int:
                  joue("contextes_de_session.py", base), 1)
         ctx.write_text(vrai, encoding="utf-8")
 
+        # Une donnée de satellite pas encore écrite n'est pas un boot cassé : un
+        # fork neuf n'a pas de `handoffs/LATEST.md`. Hors d'un satellite
+        # déclaré, le même absent rougit.
+        ctx.write_text(vrai.replace("agents/coach.md", "notes/carte.md"), encoding="utf-8")
+        garantie("contextes / absent hors satellite",
+                 joue("contextes_de_session.py", base), 1)
+        niv = base / "NIVEAUX.yml"
+        avant_niv = niv.read_text(encoding="utf-8") if niv.is_file() else None
+        niv.write_text("entrees:\n  notes/:\n    niveau: donnee\n    versionne: depot-separe\n",
+                       encoding="utf-8")
+        garantie("contextes / donnée de satellite à écrire",
+                 joue("contextes_de_session.py", base), 0)
+
+        # Le README que le gabarit livre dans `projets/` n'est pas une fiche : un
+        # fork neuf rougissait sur « `type: None` ».
+        neuf = Path(tmp) / "fork-neuf"
+        (neuf / "projets").mkdir(parents=True)
+        (neuf / "workspace" / "backlog").mkdir(parents=True)
+        (neuf / "projets" / "README.md").write_text("# projets/\n\n> L'état de tes projets.\n", encoding="utf-8")
+        garantie("zone projet / le README livré n'est pas une fiche",
+                 joue("zone_projet.py", neuf), 0)
+        if avant_niv is None:
+            niv.unlink()
+        else:
+            niv.write_text(avant_niv, encoding="utf-8")
+        ctx.write_text(vrai, encoding="utf-8")
+
         garantie("lock / absent",
                  joue("derive_du_lock.py", base), 1)
 
@@ -1925,7 +1952,12 @@ def cmd_close_stale():
     # Le cycle de l'incident (3/10), dans un dossier jetable : une base qui
     # s'ordonne après `default.target`, un moteur après la base, la target qui
     # réclame les deux. Aucune vraie unité n'est lue ni démarrée.
-    if _outils_presents("unites_sans_cycle.py") and shutil.which("systemd-analyze"):
+    # Sans session systemd (un bac à sable, `env -i`), l'outil s'abstient : rien à
+    # éprouver — la garantie le dit au lieu de tomber.
+    sans_session = not os.environ.get("XDG_RUNTIME_DIR")
+    if sans_session and _outils_presents("unites_sans_cycle.py"):
+        print("  ⏭  unités / pas de session systemd (XDG_RUNTIME_DIR) — l'outil s'abstient, rien à éprouver")
+    if _outils_presents("unites_sans_cycle.py") and shutil.which("systemd-analyze") and not sans_session:
         with tempfile.TemporaryDirectory(prefix="temoin-unites-") as tmp:
             u = Path(tmp)
             (u / "base-temoin.service").write_text(

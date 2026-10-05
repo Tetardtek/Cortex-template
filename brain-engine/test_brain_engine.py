@@ -4249,7 +4249,17 @@ class TestDocsGenerer(unittest.TestCase):
         (self.brain / 'instance' / 'README.src.md').write_text('<!-- genere:satellites -->\n')
         r = self._gen('--ecrire')
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('/projets)', (self.brain / 'README.md').read_text())
+        self.assertIn('projets', (self.brain / 'README.md').read_text())
+
+    def test_sans_forge_reconnaissable_la_table_n_a_pas_de_liens(self):
+        """Un remote en chemin local (un bac à sable, un fork sans forge) : la table
+        des satellites s'affiche sans liens — pas une doc illisible."""
+        self._readme(str(self.brain.parent / 'quelque-part' / 'gabarit.git'))
+        r = self._gen('--ecrire')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        page = (self.brain / 'README.md').read_text()
+        self.assertIn('| `projets/` | `projets` |', page)
+        self.assertNotIn('](', page.split('| Dossier')[1])
 
     def test_un_identifiant_du_remote_n_arrive_jamais_dans_le_readme(self):
         """Un clone HTTPS garde parfois son identifiant dans l'URL (le laptop) :
@@ -5082,12 +5092,23 @@ class TestInstallSystemd(unittest.TestCase):
 
     Joué pour de vrai : un faux `systemctl` en tête du PATH note ses appels,
     les unités s'écrivent dans un XDG_CONFIG_HOME jetable, les ports sont ceux
-    d'un bac à sable — rien ne touche aux unités de la machine."""
+    d'un bac à sable — rien ne touche aux unités de la machine.
 
-    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh'
+    Et rien ne touche au MOTEUR de la machine : `install systemd` arrête
+    l'instance manuelle de SON brain (celle qui a un `.brain-engine.pid`). Joué
+    sur le vrai brain, il tuait le moteur d'un fork lancé par `start` — à chaque
+    `brain doctor`, mesuré dans le bac de `essai-fork.sh`. Le script tourne donc
+    depuis une racine jetable : des liens vers le brain, sans son fichier de PID ;
+    il s'y croit chez lui (`cd` suit le chemin logique)."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='install-systemd-'))
+        self.racine = self.tmp / 'brain'
+        self.racine.mkdir()
+        for e in BRAIN_ROOT_PATH.iterdir():
+            if e.name not in ('.brain-engine.pid', '.git'):
+                (self.racine / e.name).symlink_to(e)
+        self.SCRIPT = self.racine / 'scripts' / 'brain-engine.sh'
         self.bin = self.tmp / 'bin'
         self.bin.mkdir()
         self.appels = self.tmp / 'appels'
@@ -5112,6 +5133,16 @@ class TestInstallSystemd(unittest.TestCase):
                            env=env, capture_output=True, text=True, timeout=60)
         appels = self.appels.read_text().splitlines() if self.appels.exists() else []
         return r, appels
+
+    def test_le_moteur_du_vrai_brain_n_est_pas_vise(self):
+        """Le témoin de l'isolement : les unités écrites désignent la racine
+        jetable, jamais le vrai brain — dont le moteur, lancé à la main, aurait
+        été arrêté."""
+        r, _ = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        service = (self.unites / 'brain-engine.service').read_text()
+        self.assertIn(str(self.racine), service)
+        self.assertNotIn(f'{BRAIN_ROOT_PATH}/', service.replace(str(self.racine), ''))
 
     def test_la_commande_brain_se_pose_dans_le_home_recu(self):
         vrai = Path(os.path.expanduser('~/.local/bin/brain'))
@@ -5207,7 +5238,7 @@ class TestInstallSystemd(unittest.TestCase):
         # annoncé « instance manuelle », puis `stop` répondait « pas lancé par
         # ce script ». Un faux moteur de CE brain — la ligne de commande que
         # `pid_en_cours` reconnaît, sans port — tient le rôle de systemd.
-        serveur = BRAIN_ROOT_PATH / 'brain-engine' / 'server.py'
+        serveur = self.racine / 'brain-engine' / 'server.py'      # le brain du script : la racine jetable
         faux = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', str(serveur)])
         try:
             r, _ = self._installer()
@@ -6810,6 +6841,16 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
     sans un mot. Il dérive désormais ses chemins de `NIVEAUX.yml` par le `Registre`
     du CORE — la règle du garde de zone. Le hook n'avait aucun test. Joué dans un
     dépôt git jetable, avec le vrai `NIVEAUX.yml`."""
+
+    HOOKS = ('scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
+             'scripts/posture-gate-check.sh')
+
+    def setUp(self):
+        # Les gardes de posture ne partent pas au gabarit : chez un fork, rien à
+        # jouer — s'abstenir, pas échouer sur un fichier absent.
+        absents = [r for r in self.HOOKS if not (BRAIN_ROOT_PATH / r).is_file()]
+        if absents:
+            self.skipTest(f'garde de posture absente de ce brain ({absents[0]})')
 
     def _jouer(self, posture: str, chemin: str) -> int:
         with tempfile.TemporaryDirectory(prefix='brain-posture-') as tmp:

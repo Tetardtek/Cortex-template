@@ -44,7 +44,14 @@ def main() -> int:
         cible = str(a.unites.resolve() / "default.target")
     r = subprocess.run(["systemd-analyze", "--user", "verify", cible], capture_output=True,
                        text=True, env=env, timeout=60)
-    cycles = [l.strip() for l in (r.stdout + r.stderr).splitlines() if "ordering cycle" in l]
+    sortie = r.stdout + r.stderr
+    # Sans gestionnaire de session (pas de `XDG_RUNTIME_DIR` : un `env -i`, un bac à
+    # sable), `systemd-analyze --user` ne s'initialise pas — et le contrôle disait
+    # « aucun cycle » sans avoir rien jugé. Un faux vert : il s'abstient.
+    if "Failed to initialize manager" in sortie or "Failed to lookup RuntimeDirectory" in sortie:
+        print("SKIP systemd --user ne s'initialise pas ici (pas de session : XDG_RUNTIME_DIR) — rien de jugé")
+        return 0
+    cycles = [l.strip() for l in sortie.splitlines() if "ordering cycle" in l]
     for l in cycles:
         print(f"  ❌ {l[:200]}")
     if cycles:

@@ -61,6 +61,12 @@ entrees:
   ecosystem.config.js:
     niveau: artefact
     cree_par: brain-engine.sh install pm2
+  brain-engine.log:
+    niveau: etat
+    cree_par: brain-engine.sh start
+  brain-mcp.log:
+    niveau: etat
+    cree_par: brain-engine.sh start
   focus.md:
     niveau: donnee
     versionne: ici

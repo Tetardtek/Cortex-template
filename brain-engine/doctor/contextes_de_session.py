@@ -25,6 +25,12 @@ Ce qu'il vérifie :
     L0 unanime    les six types partent du MÊME socle — un L0 qui diverge
                   n'est plus un niveau zéro, c'est une préférence
 
+Ce qu'il ne compte pas comme manquant : un fichier d'un SATELLITE — un dossier que
+`NIVEAUX.yml` déclare `versionne: depot-separe`. C'est de la donnée, pas du
+programme : `handoffs/LATEST.md` n'existe pas chez un fork neuf tant qu'il n'a
+pas écrit son premier handoff, et le gabarit ne doit pas le livrer (un fichier
+livré à ce chemin écraserait le sien). Il est dit, pas compté.
+
 Ce qu'il ne vérifie pas, et le dit : que le fichier chargé ait le bon contenu,
 ni que les six types de session soient les bons. Un contrôle doit annoncer sa
 portée, sinon il rassure au-delà de ce qu'il a regardé.
@@ -61,6 +67,12 @@ def main() -> int:
         return 1
 
     manquants: list[tuple[str, str, str]] = []
+    a_ecrire: list[tuple[str, str, str]] = []
+    niveaux = racine / "NIVEAUX.yml"
+    entrees = ((yaml.safe_load(niveaux.read_text(encoding="utf-8")) or {}).get("entrees") or {}
+               if niveaux.is_file() else {})
+    satellites = {n.rstrip("/") for n, v in entrees.items()
+                  if isinstance(v, dict) and v.get("versionne") == "depot-separe"}
     comptes = 0
     socles: dict[str, tuple] = {}
 
@@ -79,7 +91,7 @@ def main() -> int:
                     continue
                 comptes += 1
                 if not (racine / ref).exists():
-                    manquants.append((f.name, niveau, ref))
+                    (a_ecrire if ref.split("/")[0] in satellites else manquants).append((f.name, niveau, ref))
 
         l2 = d.get("L2")
         if isinstance(l2, dict):
@@ -120,6 +132,9 @@ def main() -> int:
         return 1
     print(f"  ✅ socle L0 unanime — {list(next(iter(formes))) if formes else []}")
 
+    if a_ecrire:
+        print(f"  ⓘ {len(a_ecrire)} donnée(s) de satellite pas encore écrite(s) — "
+              + ", ".join(sorted({r for _, _, r in a_ecrire})))
     if manquants:
         print(f"\n  ❌ {len(manquants)} déclaré(s) et introuvable(s) :")
         for nom, niveau, ref in manquants:

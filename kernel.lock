@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.0.0"
-generated_at: "2026-10-05T12:03"
+kernel_version: "3.0.1"
+generated_at: "2026-10-05T13:44"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 1444e1fff3e162c762831a5254fb41bc72d885bd6623b7c40bec85b26fc6d1fd
+  brain-compose.yml: b33d59ea7eae402f558ff7a062113e1a5cc4919e7ceb33cf890a9df26ef92e1c
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 5b0b9e013626cacc3945764c865679e47c6f4df0ba8d80107ae151d2ea0733e3
   noyau/agents/AGENTS.md: 9d8873c425314ed9797a42cbdb29fee9c14deb0c04ba4f0edbe247569882a370
@@ -80,7 +80,7 @@ files:
   scripts/bsi-claim.sh: e2fe88a232171a6540e43e87d6a23600a8aa9b1f7f0cc1765020ea30fa3f8cfa
   scripts/bsi-query.sh: 9138a62bb72b301f9071a4728a93d04ca2db4b3d71afb33f69bf94fbbc149b1b
   scripts/bsi-signal.sh: 22bf02f4f87293442c7bbc0f3bfa3b84f5ffab540d8a1643b62fd57c14439ae2
-  scripts/docs-generer.py: 5226fd307494f1b05db2864619504612cb9655428e407d9e36cd5790ae02a663
+  scripts/docs-generer.py: c2fac8d3cf54d94e6e0d645787eb57712c8fdefc191eba2b72e9bb5935858092
   scripts/docs-verite.py: e5a16a44a25db2d9e8f1439004b6d9c7ff7fd6f9231d16f75add8879f6e65c28
   scripts/dolt-dump-reparer.py: 958ebb311df192f26a3a0eec6cc2ab086fc0f9ffffb111cc7dc1231e8ef4836b
   scripts/dolt-schema-gen.sh: 24795b978f4b9f1042ff1599a8cae7a40091193815b9c70dbd77df3ed687cc18

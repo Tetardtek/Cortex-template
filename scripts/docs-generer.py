@@ -334,10 +334,11 @@ class Mesures:
                 break
         m = (re.match(r"^[\w.-]+@([\w.-]+):([\w.-]+)/", url)
              or re.match(r"^https?://(?:[^@/]+@)?([\w.:-]+)/([\w.-]+)/", url))
-        if not m:
-            raise Illisible("le remote `origin` du brain ne dit pas sa forge")
-        forge = f"https://{m.group(1)}/{m.group(2)}"
-        return [{"dossier": d, "depot": v.get("depot", d), "url": f"{forge}/{v.get('depot', d)}",
+        # Sans forge reconnaissable (un remote en chemin local — un bac à sable, un
+        # fork sans forge) : la table sans liens, plutôt qu'une doc illisible.
+        forge = f"https://{m.group(1)}/{m.group(2)}" if m else None
+        return [{"dossier": d, "depot": v.get("depot", d),
+                 "url": f"{forge}/{v.get('depot', d)}" if forge else None,
                  "machines": v.get("machines") or [], "chemin": v.get("chemin")}
                 for d, v in sats.items() if isinstance(v, dict)]
 
@@ -399,10 +400,12 @@ def bloc_outils(m: dict) -> str:
 def bloc_satellites(m: dict) -> str:
     lignes = ["| Dossier | Dépôt | Machines |", "|---|---|---|"]
     for s in m["satellites"]:
-        # un wiki Gitea se lit à l'adresse du dépôt, suivie de /wiki
-        url = s["url"][:-len(".wiki")] + "/wiki" if s["depot"].endswith(".wiki") else s["url"]
+        url = s["url"]
+        if url and s["depot"].endswith(".wiki"):
+            url = url[:-len(".wiki")] + "/wiki"       # un wiki Gitea se lit à l'adresse du dépôt
         ou = f"`{s['chemin']}` (hors du brain)" if s["chemin"] else f"`{s['dossier']}/`"
-        lignes.append(f"| {ou} | [{s['depot']}]({url}) | {', '.join(s['machines']) or '—'} |")
+        depot = f"[{s['depot']}]({url})" if url else f"`{s['depot']}`"
+        lignes.append(f"| {ou} | {depot} | {', '.join(s['machines']) or '—'} |")
     return "\n".join(lignes)
 
 

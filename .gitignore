@@ -100,3 +100,9 @@ Thumbs.db
 
 # agents/ est une vue de noyau/agents/ et instance/agents/, construite par `brain vue`
 /agents/
+
+# ce que le setup et Python écrivent chez un fork — jamais commité
+.env.local
+
+# ce que le setup et Python écrivent chez un fork — jamais commité
+__pycache__/

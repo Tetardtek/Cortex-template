@@ -85,8 +85,11 @@ def exemptions(brain: Path) -> tuple[dict[str, str], list[str]]:
 def juger(brain: Path) -> list[str]:
     """Les défauts de la zone, un par ligne. Vide = elle tient."""
     brain = Path(brain)
+    # Ni le modèle (`_template.md`), ni le README que le gabarit livre dans le
+    # satellite : ce ne sont pas des fiches. Un fork neuf rougissait sur
+    # `projets/README.md` — « `type: None` ».
     fiches = {p.stem: _meta(p) for p in sorted((brain / "projets").glob("*.md"))
-              if not p.name.startswith("_")}
+              if not p.name.startswith("_") and p.name != "README.md"}
     racine = brain / "workspace" / "backlog"
     dossiers = sorted(p.name for p in racine.iterdir()
                       if p.is_dir() and not p.name.startswith("_")) if racine.is_dir() else []
