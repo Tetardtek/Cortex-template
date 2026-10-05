@@ -7972,6 +7972,78 @@ class TestBrainAligne(unittest.TestCase):
         self._g(self.laptop, 'branch', '--unset-upstream')
         self.assertEqual(self._run('aligne.py').returncode, 1)
 
+    # ── La version reçue se déclare ──────────────────────────────────
+    # Le laptop a dit 2.7.0 du 3/10 au 5/10 : seul `brain maj` déclarait.
+
+    def _local(self, kernel_version=None):
+        texte = 'instances:\n  ici:\n    active: true\n    posture: replica-nomad\n'
+        if kernel_version:
+            texte = f'kernel_version: "{kernel_version}"\n' + texte
+        (self.laptop / 'brain-compose.local.yml').write_text(texte)
+
+    def _kernel_version(self):
+        m = re.search(r'^kernel_version: "([^"]*)"', (self.laptop / 'brain-compose.local.yml').read_text(), re.M)
+        return m.group(1) if m else None
+
+    def _version(self, s, v):
+        c = s / 'brain-compose.yml'
+        texte = re.sub(r'^version:.*\n', '', c.read_text(), flags=re.M)
+        c.write_text(f'version: "{v}"\n' + texte)
+
+    def test_la_version_recue_se_declare(self):
+        self._local('3.0.1')
+        self._publier(lambda s: self._version(s, '3.1.0'))
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._kernel_version(), '3.1.0')
+        self.assertIn('3.0.1 → 3.1.0', r.stdout)
+        self.assertIn('posture: replica-nomad', (self.laptop / 'brain-compose.local.yml').read_text(),
+                      'le reste du fichier ne bouge pas')
+
+    def test_deja_aligne_la_version_perimee_se_declare(self):
+        """Le cas du laptop : aligné depuis longtemps, sa déclaration restée à 2.7.0."""
+        self._publier(lambda s: self._version(s, '3.1.0'))
+        self._run('aligne.py')
+        self._local('2.7.0')
+        r = self._run('aligne.py')
+        self.assertIn('déjà aligné', r.stdout)
+        self.assertEqual(self._kernel_version(), '3.1.0')
+
+    def test_une_fusion_refusee_ne_declare_rien(self):
+        self._local('3.0.1')
+        (self.laptop / 'note.md').write_text('un commit à moi\n')
+        self._g(self.laptop, 'add', 'note.md')
+        self._g(self.laptop, 'commit', '-qm', 'à moi')
+        self._publier(lambda s: self._version(s, '3.1.0'))
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self._kernel_version(), '3.0.1', 'une version refusée n\'est pas reçue')
+
+    def test_l_aligne_recu_prend_la_main(self):
+        """Mesuré le 5/10 : la déclaration arrivée par la fusion n'a joué qu'au second
+        `brain aligne` du laptop. La version reçue prend la main, une fois."""
+        temoin = 'print("TEMOIN : le brain aligne recu a la main")\n'
+        def geste(s):
+            a = s / 'scripts' / 'aligne.py'
+            a.write_text(a.read_text().replace('def main() -> int:\n', 'def main() -> int:\n    ' + temoin, 1))
+            self._version(s, '3.1.0')
+        self._local('3.0.1')
+        self._publier(geste)
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('relais', r.stdout)
+        self.assertEqual(r.stdout.count('TEMOIN'), 1, 'une fois, pas en boucle')
+        self.assertEqual(self._kernel_version(), '3.1.0', 'déclarée dès ce passage')
+        self.assertNotIn('relais', self._run('aligne.py').stdout, 'le même : pas de relais')
+
+    def test_sans_kernel_version_il_le_dit(self):
+        self._local()
+        self._publier(lambda s: self._version(s, '3.1.0'))
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('à déclarer à la main', r.stdout)
+        self.assertIsNone(self._kernel_version(), 'rien d\'inventé')
+
 
 class TestBrainMaj(unittest.TestCase):
     """`brain maj` reçoit une version du gabarit sans rien perdre du fork.
@@ -8832,6 +8904,45 @@ class TestNiveauxDuGabarit(unittest.TestCase):
         rendu, r = self._rendre(self.tmp / 'pas-de-base')
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("vie/ n'est pas en zone kernel", r.stdout + r.stderr)
+
+    def test_la_zone_personal_part_avec_le_rendu(self):
+        """`zone_personal` part au gabarit : la Convention 6, qui part, y renvoie."""
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        import yaml
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        d = yaml.safe_load((rendu / 'NIVEAUX.yml').read_text(encoding='utf-8'))
+        source = yaml.safe_load((self.brain / 'NIVEAUX.yml').read_text(encoding='utf-8'))
+        self.assertEqual(d.get('zone_personal'), source['zone_personal'])
+        self.assertEqual(d.get('zone_aucune'), source['zone_aucune'])
+
+    def test_sans_zone_personal_la_synchro_refuse(self):
+        """Témoin : une source sans `zone_personal` — le rendu refuse."""
+        src = self.brain / 'NIVEAUX.yml'
+        texte = src.read_text(encoding='utf-8')
+        cle = '\nzone_personal:\n'
+        self.assertEqual(texte.count(cle), 1, 'la clé, hors commentaire')
+        debut = texte.index(cle) + 1
+        fin = texte.index('\n\n', debut)
+        src.write_text(texte[:debut] + texte[fin + 2:], encoding='utf-8')
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('zone_personal absente', r.stdout + r.stderr)
+
+    def test_sans_zone_aucune_la_synchro_refuse(self):
+        """Témoin : une source sans `zone_aucune` — `brain-secrets/` retomberait en
+        `instance` chez le fork. Le rendu refuse."""
+        src = self.brain / 'NIVEAUX.yml'
+        texte = src.read_text(encoding='utf-8')
+        cle = '\nzone_aucune:\n'
+        self.assertEqual(texte.count(cle), 1, 'la clé, hors commentaire')
+        debut = texte.index(cle) + 1
+        fin = texte.index('\n\n', debut)
+        src.write_text(texte[:debut] + texte[fin + 2:], encoding='utf-8')
+        rendu, r = self._rendre(self.tmp / 'pas-de-base')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('zone_aucune absente', r.stdout + r.stderr)
 
 
 class TestCatalogueDuGabarit(unittest.TestCase):
@@ -9955,6 +10066,97 @@ class TestInstallPm2(unittest.TestCase):
             self.assertNotIn(lecture, texte, 'la déclaration ne se relit pas ici')
         self.assertIn('`brain serve`', texte, 'le commentaire garde ses accents graves')
         self.assertIn('start ' + str(eco), self.appels.read_text())
+
+
+class TestZoneDuDiff(unittest.TestCase):
+    """La PR d'un worker contre la zone de son agent — `scripts/zone-du-diff.py`.
+
+    La zone vient du `Registre` du CORE : ces témoins éprouvent les LECTURES de
+    l'outil (`zone_personal` exclusive, `zone_aucune`, le préfixe d'un satellite,
+    le dépôt de code, l'agent sans déclaration), sur un brain jetable."""
+
+    OUTIL = BRAIN_ROOT_PATH / 'scripts' / 'zone-du-diff.py'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        b = self.brain = self.tmp / 'brain'
+        (b / 'noyau' / 'agents').mkdir(parents=True)
+        (b / 'NIVEAUX.yml').write_text(
+            'version: 1\nzone_personal:\n  - profil/identity/\n  - profil/capital*\n  - vie/\n'
+            'zone_aucune:\n  - brain-secrets/\nentrees:\n'
+            '  scripts/: programme\n  workspace/: satellite\n  brain-secrets/: satellite\n'
+            '  profil/:\n    niveau: donnee\n    zone: kernel\n'
+            '  vie/:\n    niveau: donnee\n    zone: kernel\n', encoding='utf-8')
+        (b / 'satellites.yml').write_text(
+            'satellites:\n  workspace: {depot: workspace}\n  profil: {depot: brain-profil}\n'
+            '  myeline: {depot: myeline, chemin: ~/ailleurs}\n', encoding='utf-8')
+        for nom, zones in (('ecrit', '[instance]'), ('noyau', '[kernel, instance]'),
+                           ('intime', '[personal]'), ('sans', None)):
+            ipc = f'  ipc:\n    zone_write: {zones}\n' if zones else ''
+            (b / 'noyau' / 'agents' / f'{nom}.md').write_text(
+                f'---\nname: {nom}\nbrain:\n  scope: kernel\n{ipc}---\n', encoding='utf-8')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def juge(self, agent, depot, *chemins):
+        return subprocess.run(
+            [sys.executable, str(self.OUTIL), '--brain', str(self.brain), '--agent', agent,
+             '--depot', depot, '--stdin'], input='\n'.join(chemins) + '\n',
+            capture_output=True, text=True, timeout=60)
+
+    def test_dans_la_zone_d_un_satellite(self):
+        r = self.juge('ecrit', 'workspace', 'backlog/x/X-1.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('workspace/backlog/x/X-1.md', r.stdout, 'le chemin préfixé du satellite')
+
+    def test_hors_zone_refuse_et_nomme(self):
+        r = self.juge('ecrit', 'brain', 'workspace/ok.md', 'scripts/vue.py')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('❌ scripts/vue.py', r.stdout)
+
+    def test_personal_est_exclusive(self):
+        """`vie/` est en `zone: kernel` — un agent `kernel` n'y écrit pas pour autant."""
+        r = self.juge('noyau', 'brain', 'vie/papiers.md')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.juge('intime', 'brain', 'vie/papiers.md', 'profil/capital.md',
+                                   'profil/identity/moi.md').returncode, 0)
+        self.assertEqual(self.juge('intime', 'brain-profil', 'decisions/x.md').returncode, 1,
+                         'le reste de profil/ est kernel')
+
+    def test_zone_aucune_toujours_refusee(self):
+        for agent in ('ecrit', 'noyau', 'intime'):
+            r = self.juge(agent, 'brain', 'brain-secrets/MYSECRETS')
+            self.assertEqual(r.returncode, 1, agent + r.stdout)
+
+    def test_un_depot_de_code_n_est_pas_juge(self):
+        for depot in ('mon-projet', 'myeline'):      # myeline : un satellite hors du brain
+            r = self.juge('ecrit', depot, 'src/app.ts')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('dépôt de code', r.stdout)
+
+    def test_sans_zone_write_rien_a_juger(self):
+        for agent in ('sans', 'absent'):
+            self.assertEqual(self.juge(agent, 'brain', 'x.md').returncode, 2, agent)
+
+    def test_le_diff_git(self):
+        """Sans `--stdin`, les chemins viennent de `git diff base...HEAD`."""
+        d = self.tmp / 'clone'
+        d.mkdir()
+        git = ['git', '-C', str(d), '-c', 'user.email=t@t', '-c', 'user.name=t',
+               '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null']
+        subprocess.run(git + ['init', '-q', '-b', 'base'], check=True)
+        subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'base'], check=True)
+        subprocess.run(git + ['checkout', '-q', '-b', 'pr'], check=True)
+        (d / 'scripts').mkdir()
+        (d / 'scripts' / 'x.sh').write_text('x\n')
+        subprocess.run(git + ['add', '.'], check=True)
+        subprocess.run(git + ['commit', '-q', '-m', 'pr'], check=True)
+        r = subprocess.run([sys.executable, str(self.OUTIL), '--brain', str(self.brain),
+                            '--agent', 'ecrit', '--depot', 'brain', '--git', str(d), '--base', 'base'],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('❌ scripts/x.sh', r.stdout)
 
 
 if __name__ == '__main__':

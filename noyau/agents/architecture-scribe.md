@@ -17,6 +17,7 @@ brain:
     receives_from: [orchestrator, human, audit]
     sends_to:      [orchestrator]
     zone_access:   [kernel, project]
+    zone_write:    [kernel, instance]
     signals:       [SPAWN, RETURN, CHECKPOINT]
 ---
 

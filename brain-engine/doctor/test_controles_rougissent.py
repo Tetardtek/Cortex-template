@@ -594,6 +594,23 @@ def main() -> int:
         garantie("registre / désaccord export",
                  r.returncode if nomme or r.returncode == 0 else 2, 1)
         exporte.unlink()
+
+        # `zone_write` hors vocabulaire : l'ancien mot `project` — celui que
+        # la migration retire — doit rougir, et nommer l'agent sous sa section.
+        # Le témoin juste (`instance`) reste vert : le contrôle ne refuse pas le champ.
+        ecrit = base / "agents" / "ecrit.md"
+        for zones, voulu in (("[project]", 1), ("[instance]", 0)):
+            ecrit.write_text("---\nname: ecrit\ntype: agent\nstatus: active\nbrain:\n"
+                             f"  scope: kernel\n  ipc:\n    zone_write: {zones}\n---\n",
+                             encoding="utf-8")
+            garantie(f"registre / --emit avec zone_write {zones}",
+                     joue("agent_registry.py", base, "--emit", str(catalogue)), 0)
+            r = check()
+            nomme = any("ecrit" in l and "zone_write" in l
+                        for l in section(r.stdout, "FRONTMATTER INCOMPLET"))
+            garantie(f"registre / zone_write {zones}",
+                     r.returncode if nomme or r.returncode == 0 else 2, voulu)
+        ecrit.unlink()
         catalogue.write_text(catalogue_original, encoding="utf-8")
 
         # ── registre → base : un statut rangé n'arrête plus l'écriture ─────

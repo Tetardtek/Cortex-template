@@ -17,6 +17,7 @@ brain:
     receives_from: [orchestrator, human]
     sends_to:      [human]
     zone_access:   [project]
+    zone_write:    []
     signals:       [RETURN]
 ---
 

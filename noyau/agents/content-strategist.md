@@ -17,6 +17,7 @@ brain:
     receives_from: [human]
     sends_to:      [human]
     zone_access:   [project, personal]
+    zone_write:    [instance]
     signals:       [SPAWN, RETURN, ESCALATE]
 ---
 

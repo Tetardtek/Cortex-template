@@ -90,6 +90,10 @@ class Agent:
                 and self.meta.get("status") not in self.STATUTS_RANGES)
 
 
+# Les zones d'écriture d'un agent — Convention 6, leurs chemins dans `NIVEAUX.yml`.
+ZONES_ECRITURE = ("kernel", "instance", "personal")
+
+
 def parse_frontmatter(path: Path, agent_id: str | None = None) -> Agent:
     """Lit le frontmatter. Un fichier illisible est signalé, jamais ignoré."""
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -118,6 +122,19 @@ def parse_frontmatter(path: Path, agent_id: str | None = None) -> Agent:
                             ("writer", "retiré — intention jamais exercée")):
         if obsolete in brain:
             errors.append(f"champ `{obsolete}` obsolète — {motif}")
+    # `zone_write` : où l'agent ÉCRIT — Convention 6 (`_conventions.md`). Facultatif
+    # (un compagnon de session qu'aucun worker ne lance s'en passe), mais déclaré, il
+    # est dans le vocabulaire : le worker est jugé contre lui.
+    ipc = brain.get("ipc") if isinstance(brain.get("ipc"), dict) else {}
+    if "zone_write" in ipc:
+        zones = ipc["zone_write"]
+        if not isinstance(zones, list):
+            errors.append("`zone_write` n'est pas une liste")
+        else:
+            hors = [z for z in zones if z not in ZONES_ECRITURE]
+            if hors:
+                errors.append(f"`zone_write` hors vocabulaire : {hors} — "
+                              f"{' | '.join(ZONES_ECRITURE)} (Convention 6)")
     return Agent(path, meta, brain, errors, agent_id)
 
 

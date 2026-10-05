@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.1.0"
+version: "3.2.0"
 
 # ---
 # Ownership — kerneluser
@@ -187,6 +187,9 @@ changelog:
   - version: "3.0.1"
     date: "2026-10-05"
     notes: "Un fork neuf est sain. brain doctor ne tue plus le moteur d'un fork lance par brain-engine.sh start (un test jouait le vrai install systemd, qui arrete l'instance manuelle de son brain). Le doctor d'un fork neuf est vert : une donnee de satellite pas encore ecrite (handoffs/LATEST.md) est dite, pas comptee ; le README livre dans projets/ n'est pas une fiche ; les journaux du moteur (brain-engine.log, brain-mcp.log) sont declares ; sans session systemd, le controle des unites s'abstient au lieu de dire vert sans rien juger. Le .gitignore ignore .env.local et __pycache__/. Ton README a toi : ecris instance/README.src.md, et python3 scripts/docs-generer.py --ecrire en fait ton README.md (le bloc genere:satellites y liste tes satellites si tu les declares dans satellites.yml) ; sans lui, tu gardes celui du gabarit. Corrige : les notes de la 3.0.0 disaient le briefing pose par le hook SessionStart - ce hook est un reglage de l'instance d'origine, il ne part pas."
+  - version: "3.2.0"
+    date: "2026-10-05"
+    notes: "Ce qu'un agent ecrit, tenu. Chaque agent declare zone_write : les zones du brain ou il ecrit - kernel, instance, personal ; [] s'il n'ecrit rien. Les chemins des zones sont dans NIVEAUX.yml : kernel et instance se derivent du niveau ; zone_personal (profil/identity/, profil/capital*, vie/) est exclusive - seul un agent qui declare personal y ecrit ; zone_aucune (brain-secrets/) : aucun agent n'y ecrit. zone_access garde son sens : ce que l'agent lit. Le worker de l'autonomie part avec un agent qui declare zone_write, et sa PR est jugee contre elle par scripts/zone-du-diff.py, que l'orchestrator rejoue : un chemin hors zone, et le verdict est defavorable. La regle : Convention 6, noyau/agents/_conventions.md. brain doctor refuse une zone_write hors de ce vocabulaire. Tes agents a toi (instance/agents/) : declare leur zone_write pour qu'un worker puisse les lancer. brain aligne declare desormais la version qu'il aligne (kernel_version), comme brain maj, et passe la main a l'aligne qu'il recoit : sur une instance satellite, le premier brain aligne vers cette version tourne encore l'ancien code - relance-le une fois. Rien a faire a la main : brain maj, puis brain doctor."
   - version: "3.1.0"
     date: "2026-10-05"
     notes: "Ta couche au-dela des agents. Trois complements, a toi, dans instance/ - jamais livres par le gabarit, jamais touches par une mise a jour. Ce que ton boot charge en plus : instance/contexts/session-<type>.complement.yml (L1, L2.extras), lu apres le manifest - les manifests de contexts/ restent du programme, n'y ecris plus. Tes regles de travail en plus : instance/specs/collaboration.complement.md, lu par helloWorld apres profil/specs/collaboration.md. Tes pages de la skill : instance/skill/, que brain vue montre a la skill par le lien skills/brain/instance (ignore par git). brain doctor juge les trois : un fichier nomme absent, une cle que le boot ne lit pas, un fichier de instance/specs/ jamais lu, le lien de la skill. Corrige : le L2 du manifest brain valait extras None, il vaut une liste vide. Rien a faire a la main : brain maj, puis brain doctor."

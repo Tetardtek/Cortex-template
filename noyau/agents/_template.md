@@ -12,6 +12,8 @@ brain:
   lifecycle: stable          # permanent | stable | evolving
   read:      trigger         # full | header | trigger
   triggers:  []
+  ipc:
+    zone_write: []   # où il ÉCRIT : kernel | instance | personal ; [] s'il n'écrit rien — Convention 6 (_conventions.md)
 ---
 
 # Agent : <NOM>

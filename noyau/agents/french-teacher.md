@@ -17,6 +17,7 @@ brain:
     receives_from: [human]
     sends_to:      [human]
     zone_access:   [project, kernel]
+    zone_write:    []
     signals:       [RETURN]
 ---
 

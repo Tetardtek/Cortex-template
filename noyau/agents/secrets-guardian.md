@@ -18,6 +18,7 @@ brain:
     receives_from: [human, orchestrator]
     sends_to:      [human]
     zone_access:   [kernel]
+    zone_write:    []
     signals:       [ESCALATE]
 ---
 

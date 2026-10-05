@@ -17,6 +17,7 @@ brain:
     receives_from: [session-orchestrator, orchestrator, human]
     sends_to:      [session-orchestrator, orchestrator]
     zone_access:   [project]
+    zone_write:    [instance]
     signals:       [RETURN, BLOCKED_ON]
 ---
 

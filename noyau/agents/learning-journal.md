@@ -17,6 +17,7 @@ brain:
     receives_from: [coach, human]
     sends_to:      [coach-scribe, human]
     zone_access:   [project, personal]
+    zone_write:    [instance]
     signals:       [RETURN]
 ---
 

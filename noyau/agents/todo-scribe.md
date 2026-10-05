@@ -17,6 +17,7 @@ brain:
     receives_from: [session-orchestrator, orchestrator, human]
     sends_to:      [kanban-scribe, orchestrator]
     zone_access:   [project]
+    zone_write:    [instance]
     signals:       [SPAWN, RETURN]
 ---
 

@@ -17,6 +17,7 @@ brain:
     receives_from: [human, guide]
     sends_to:      [human, guide]
     zone_access:   [kernel]
+    zone_write:    []
     signals:       [RETURN]
 ---
 

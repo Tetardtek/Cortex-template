@@ -17,6 +17,7 @@ brain:
     receives_from: [human]
     sends_to:      [human]
     zone_access:   [kernel, project]
+    zone_write:    []
     signals:       [CHECKPOINT]
 ---
 

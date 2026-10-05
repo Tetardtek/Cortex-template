@@ -17,6 +17,7 @@ brain:
     receives_from: [human, session-brain]
     sends_to:      [human]
     zone_access:   [kernel]
+    zone_write:    []
     signals:       [ESCALATE, CHECKPOINT]
 ---
 

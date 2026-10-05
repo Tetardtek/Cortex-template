@@ -17,6 +17,7 @@ brain:
     receives_from: [human, helloWorld]
     sends_to:      [todo-scribe, kanban-scribe, wiki-scribe, scribe, coach, human]
     zone_access:   [kernel, project]
+    zone_write:    [instance]
     signals:       [SPAWN, CHECKPOINT, HANDOFF]
 ---
 

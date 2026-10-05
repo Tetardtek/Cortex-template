@@ -6,6 +6,10 @@
 #     `vie/`) : zone kernel. Un rôle sans ce scope — le MCP — n'y écrit pas ;
 #   - le reste, et ce qui n'est pas déclaré : zone libre.
 #
+# `zone_personal` : les chemins de la zone `personal` des agents — seul un
+# agent qui la déclare les écrit (Convention 6, `noyau/agents/_conventions.md`).
+# `zone_aucune` : ce qu'aucun agent n'écrit (`brain-secrets/`).
+#
 # Rendu par la synchro depuis la source du brain d'origine, restreint à ce que
 # le gabarit porte. Il est à toi : déclare ici ce que tu ajoutes à la racine.
 
@@ -19,6 +23,12 @@ niveaux:
   artefact: produit par une commande, jamais écrit à la main
   satellite: monté à côté, vit hors du dépôt
   vestige: n'a plus d'usage — la décision de retirer est prise, le geste reste à faire
+zone_personal:
+- profil/identity/
+- profil/capital*
+- vie/
+zone_aucune:
+- brain-secrets/
 entrees:
   NIVEAUX.yml: invariant
   agents/:

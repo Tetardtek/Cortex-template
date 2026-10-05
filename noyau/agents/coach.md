@@ -17,6 +17,7 @@ brain:
     receives_from: [human]
     sends_to:      [human]
     zone_access:   [personal, reference]
+    zone_write:    []
     signals:       [ESCALATE, CHECKPOINT]
 ---
 

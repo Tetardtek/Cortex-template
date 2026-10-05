@@ -18,6 +18,7 @@ brain:
     receives_from: [human, secrets-guardian]
     sends_to:      [human]
     zone_access:   [kernel]
+    zone_write:    []
     signals:       [RETURN, ESCALATE]
 ---
 

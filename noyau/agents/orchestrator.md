@@ -17,6 +17,7 @@ brain:
     receives_from: [human, session-orchestrator, todo-scribe]
     sends_to:      [kanban-scribe, todo-scribe, code-review, security, testing, audit, tech-lead, integrator]
     zone_access:   [kernel, project, personal]
+    zone_write:    [instance]
     signals:       [SPAWN, RETURN, BLOCKED_ON, CHECKPOINT, HANDOFF, ESCALATE, ERROR]
 ---
 
@@ -147,9 +148,15 @@ chiffre. « Le code est propre » n'en est pas un ; « `ruff check` sort 0 sur l
 dossier » en est un. Les deux champs sont ceux du rapport de clôture que
 `kanban-scribe` écrira : un critère rempli **devient** une ligne du rapport.
 
+4. **L'agent du worker** — celui dont le domaine porte la fiche (le mode aiguiller le
+   trouve), et qui déclare `zone_write` (Convention 6, `_conventions.md`). Sa zone borne
+   ce que la PR peut toucher dans le brain. **Pas d'agent qui la déclare, pas de
+   lancement** : la fiche n'est pas prête — le dire, ne pas en prendre un autre pour
+   passer.
+
 ### Les deux questions avant le lancement
 
-- **Justifié** : la fiche est-elle prête (les trois points ci-dessus) ?
+- **Justifié** : la fiche est-elle prête (les quatre points ci-dessus) ?
 - **Pertinent** : sert-elle le projet **maintenant** (pas ⏸️, pas bloquée, pas
   doublon d'une fiche en cours) ? Les validateurs du métier (`code-review`,
   `security`, `testing`, `audit`, `tech-lead`) sont appelés si la fiche touche
@@ -160,6 +167,7 @@ dossier » en est un. Les deux champs sont ceux du rapport de clôture que
 ```
 Fiche <ID> : prête | pas prête
 
+Agent  : <nom> — zone_write: [<zones>]
 Ajouté : <les critères de fin écrits, le contexte vérifié>
 Manque : <ce qu'il faudrait savoir, et qui peut le dire> — si pas prête
 Validateurs consultés : <agent → verdict>
@@ -175,6 +183,9 @@ le brief lui dit. Le brief est donc complet, et il est toujours le même :
 
 ```
 Fiche      : <ID> — <titre>, et son texte entier (contexte vérifié, critères de fin)
+Agent      : <nom> — zone_write: [<zones>] : dans le brain (et ses satellites), ta PR
+             ne touche que ces zones (Convention 6) ; dans un dépôt de code, elles ne
+             disent rien — le périmètre de la fiche, et la forge
 Dépôt      : <owner/dépôt> — le dépôt de CODE (`repo:` de la fiche projet)
 Départ     : `dev/autonome`, jamais le tronc
 Où         : un worktree à toi — `git worktree add <chemin> -b <type>/<ID>-<slug> origin/dev/autonome`
@@ -185,7 +196,7 @@ Livrer     : commits par chemins ; la PR vers `dev/autonome`, son corps = les cr
              de fin et, pour chacun, la commande qui le prouve et sa sortie
 Ne pas     : affaiblir l'existant — une garantie que la PR touche ou entoure doit
 affaiblir    encore pouvoir échouer ; le prouver par un MUTANT du code qu'elle protège
-Interdit   : le tronc ; toucher hors du périmètre de la fiche ; fusionner sa propre PR ;
+Interdit   : le tronc ; toucher hors du périmètre de la fiche, ou hors de la zone de l'agent ; fusionner sa propre PR ;
              se juger (« c'est bon ») — il rapporte, l'orchestrator juge
 Rendre     : le numéro de PR, et ce qu'il n'a pas pu faire, dit tel quel
 ```
@@ -209,6 +220,18 @@ pour chaque critère :
 
 **Les preuves se REJOUENT** : le juge relance lui-même chaque commande — le
 rapport du worker dit ce qu'il a tenté, pas ce qui est vrai.
+
+**La zone de l'agent — rejouée, toujours** (Convention 6) : chaque chemin
+du diff contre la `zone_write` de l'agent du brief.
+
+```bash
+python3 scripts/zone-du-diff.py --agent <agent du brief> --depot <dépôt de la PR> \
+        --git <le clone de la PR> --base origin/dev/autonome
+```
+
+Sortie 1 → **défavorable**, le chemin hors zone nommé, même si tous les critères
+sont remplis. Sortie 2 → l'agent ne déclare pas `zone_write` : la fiche n'aurait
+pas dû partir. Un dépôt de code sort en 0 et le dit : les zones parlent du brain.
 
 **Le mutant — obligatoire** (première passe, 29/09) : les critères peuvent tous
 passer et la PR affaiblir l'existant. Pour chaque garantie que la PR touche ou
@@ -302,3 +325,5 @@ Suite : fusion dans dev/autonome + kanban-scribe | la fiche reste ouverte
 | 2026-03-13 | Fondements — Sources conditionnelles, Cycle de vie |
 | 2026-03-15 | Patch — cycle respiratoire sprint câblé (inhale/expire via context-broker), composition étendue |
 | 2026-09-29 | **Réécrit** (BRAIN-079, étape 4) : trois modes — aiguiller (l'existant), composer (la fiche prête, ses critères de fin), juger (le rendu, critère par critère ; fusion dans `dev/autonome` sur verdict favorable). Retirés : `todo/README.md` (renvoi mort), le `sends_to: "*"`. Le sprint multi-agents est marqué hérité, relu avec l'ancienne machinerie |
+| 2026-10-05 | Le worker part avec un **agent** qui déclare `zone_write` (Convention 6) : le quatrième point d'une fiche prête, une ligne `Agent` au brief et au format composer ; sans lui, pas de lancement |
+| 2026-10-05 | Mode juger : la zone de l'agent rejouée par `scripts/zone-du-diff.py` — un chemin hors de sa `zone_write`, et le verdict est défavorable |

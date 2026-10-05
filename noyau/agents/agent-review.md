@@ -17,6 +17,7 @@ brain:
     receives_from: [human, audit]
     sends_to:      [human, recruiter]
     zone_access:   [kernel]
+    zone_write:    [kernel]
     signals:       [RETURN, ESCALATE]
 ---
 

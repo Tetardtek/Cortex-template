@@ -17,6 +17,7 @@ brain:
     receives_from: [orchestrator]
     sends_to:      [orchestrator, human, scribe, toolkit-scribe]
     zone_access:   [kernel, project]
+    zone_write:    [kernel]
     signals:       [SPAWN, RETURN, ESCALATE]
 ---
 

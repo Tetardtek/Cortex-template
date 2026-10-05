@@ -17,6 +17,7 @@ brain:
     receives_from: [scribe, orchestrator, human]
     sends_to:      [scribe, orchestrator]
     zone_access:   [kernel]
+    zone_write:    [kernel]
     signals:       [SPAWN, RETURN, CHECKPOINT, HANDOFF]
 ---
 

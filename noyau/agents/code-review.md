@@ -17,6 +17,7 @@ brain:
     receives_from: [orchestrator, human]
     sends_to:      [orchestrator, security]
     zone_access:   [project]
+    zone_write:    []
     signals:       [SPAWN, RETURN, ESCALATE]
 ---
 

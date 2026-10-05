@@ -17,6 +17,7 @@ brain:
     receives_from: [human]
     sends_to:      [human, scribe]
     zone_access:   [project]
+    zone_write:    [instance]
     signals:       []
 ---
 

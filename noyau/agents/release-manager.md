@@ -17,6 +17,7 @@ brain:
     receives_from: [orchestrator, human]
     sends_to:      [orchestrator, ci-cd]
     zone_access:   [project]
+    zone_write:    [kernel]
     signals:       [SPAWN, RETURN]
 ---
 

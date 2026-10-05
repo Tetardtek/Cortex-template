@@ -17,6 +17,7 @@ brain:
     receives_from: [human, helloWorld, pathfinder]
     sends_to:      [human, pathfinder]
     zone_access:   [kernel, project]
+    zone_write:    []
     signals:       [RETURN]
 ---
 

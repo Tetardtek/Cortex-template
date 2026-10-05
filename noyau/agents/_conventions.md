@@ -179,6 +179,36 @@ rendu les lignes de ces agents.
 
 ---
 
+## Convention 6 — `zone_write` : où un agent a le droit d'écrire
+
+Un agent déclare, dans `brain.ipc.zone_write`, la liste des zones du brain où il **écrit** — `[]` s'il n'écrit rien.
+Trois zones, dont les chemins sont dans `NIVEAUX.yml` — la déclaration ne les redit pas :
+
+| Zone | Les chemins | Dans `NIVEAUX.yml` |
+|---|---|---|
+| `kernel` | l'invariant et le programme, et les exceptions `zone: kernel` (`profil/`, `scripts/`, `vie/`) | dérivée du niveau (règle du 07/09) |
+| `instance` | tout le reste du brain | dérivée du niveau |
+| `personal` | `profil/identity/`, `profil/capital*`, `vie/` | `zone_personal:` |
+| *(aucune)* | `brain-secrets/` — aucun agent n'y écrit : les secrets s'écrivent en session, jamais par un worker | `zone_aucune:` |
+
+**`personal` est exclusive** : un chemin personnel n'est écrit que par un agent qui la déclare, même si `kernel` le
+couvre aussi (`vie/` et `profil/` sont en `zone: kernel`).
+
+**Qui elle tient** : le **worker** de l'autonomie. Son brief nomme un agent qui déclare `zone_write` — sinon, pas de
+lancement — et quand le dépôt est le brain, chaque chemin du diff de sa PR est jugé contre cette zone : un seul hors
+zone, et le verdict est défavorable. Dans un dépôt de code, les zones ne disent rien : le périmètre est celui de la
+fiche, et la forge. La session, elle, n'est pas tenue par `zone_write` : elle l'est par son type et sa posture
+(`pre-commit-zone`, `pre-commit-posture`). Un agent qu'aucun worker ne lance (un compagnon de session) peut ne pas
+la déclarer. Le jugement : `scripts/zone-du-diff.py`, rejoué par l'orchestrator (mode juger).
+
+À ne pas confondre :
+- `brain.ipc.zone_access` dit ce que l'agent **lit** — les zones de contexte qu'il reçoit (BRAIN-026) : `zone_write`
+  ne le remplace pas, et n'en dérive pas (`helloWorld` lit tout, n'écrit pas le noyau) ;
+- `brain.scope` (`kernel` / `project` / `personal`) dit la **distribution** — `personal` ne part pas au gabarit ;
+- `PATH_SCOPES` (`embed.py`) dit la **diffusion** au RAG.
+
+---
+
 ## Checklist — Avant création / refonte d'un agent
 
 Pour respecter le triplet + Convention 4 en pratique :
@@ -188,6 +218,7 @@ Pour respecter le triplet + Convention 4 en pratique :
 - [ ] **Convention 3** : aucune identité hardcodée ? Brand voice/exemples viennent de Niveau 2+ ?
 - [ ] **Convention 4** : comportement propositif (pas d'impératif caché "tu devrais X") ?
 - [ ] **Convention 5** : chaque renvoi vers un agent non distribuable porte « si présent » ?
+- [ ] **Convention 6** : `zone_write` déclaré (`[]` s'il n'écrit rien), dans le vocabulaire `kernel` / `instance` / `personal` ?
 - [ ] **Documentation** : changelog agent mis à jour ? Liens vers ADRs si décision archi ?
 - [ ] **Test** : si modes, chaque mode déclare ses `config_overrides` explicitement ?
 
@@ -217,3 +248,5 @@ Pour respecter le triplet + Convention 4 en pratique :
 | 2026-04-24 | Création — synthèse triplet doctrines BRAIN-065/066/067 émergées en session pilote `sess-20260424-1438-pilote-drift-memoire` |
 | 2026-04-24 | Convention 4 ajoutée — non-intrusive design (principe transverse) migré depuis CCM `project_brain_non_intrusive_design`. 3 profils utilisateurs (feignant/challenger/pressé) tous accommodés par "propose, ne décide pas". Cohérent avec Conventions 2 et 3. |
 | 2026-09-28 | Convention 5 — un agent absent se dit, il ne se simule pas. Un fork recevait des agents qui déléguaient en silence à des agents privés. |
+| 2026-10-05 | Convention 6 — `zone_access` défini : trois zones, leurs chemins dans `NIVEAUX.yml`, `personal` exclusive, tenu par la PR du worker. |
+| 2026-10-05 | Convention 6 réécrite : le champ est `zone_write`. `zone_access` gardait le sens de BRAIN-026 — la LECTURE — et ses déclarations y restent vraies. |
