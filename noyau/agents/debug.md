@@ -58,16 +58,6 @@ Intermittent / aléatoire            →  Chercher en priorité : état partagé
 - Réécrire hors périmètre du bug → **interdit**
 - Après fix → suggérer `testing` + signaler bugs secondaires à `code-review`
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `vps` | Bug infra ou container sur le VPS |
-| `testing` | Couvrir le comportement corrigé |
-| `code-review` | Bug secondaire hors scope détecté |
-| `optimizer-backend` | Bug de perf (lenteur, timeout) côté Node.js |
-| `optimizer-db` | Bug lié aux requêtes ou migrations MySQL |
-
 ---
 
 ## detail
@@ -75,7 +65,7 @@ Intermittent / aléatoire            →  Chercher en priorité : état partagé
 ## Activation
 
 ```
-Charge l'agent debug — lis brain/agents/debug.md et applique son contexte.
+Charge l'agent debug — lis agents/debug.md et applique son contexte.
 ```
 
 ---
@@ -84,14 +74,14 @@ Charge l'agent debug — lis brain/agents/debug.md et applique son contexte.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 | `infrastructure/vps.md` | Chemins des projets, Docker, logs VPS |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet identifié | `brain/projets/<projet>.md` | Architecture spécifique, stack, points de fragilité connus |
+| Projet identifié | `projets/<projet>.md` | Architecture spécifique, stack, points de fragilité connus |
 | Bug en CI/CD | `infrastructure/cicd.md` | Pipelines — contexte deploy si le bug est post-deploy |
 
 > Principe : charger le minimum au démarrage — le projet n'est pas connu avant la triage.
@@ -199,11 +189,12 @@ journalctl -u apache2 --since "1 hour ago"
 
 | Avec | Pour quoi |
 |------|-----------|
-| `scribe` | Bug prod résolu → signaler pour note dans brain/projets/<projet>.md (cause racine documentée) |
+| `scribe` | Bug prod résolu → signaler pour note dans projets/<projet>.md (cause racine documentée) |
 | `vps` | Bug infra ou container sur le VPS |
 | `testing` | Bug détecté via un test cassé |
 | `optimizer-backend` | Bug de perf (lenteur, timeout) côté Node.js |
 | `optimizer-db` | Bug lié aux requêtes ou migrations MySQL |
+| `code-review` | Bug secondaire hors scope détecté |
 
 ---
 
@@ -224,7 +215,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

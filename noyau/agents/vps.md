@@ -47,7 +47,7 @@ Expert VPS — connaît l'architecture exacte, les patterns de déploiement vali
 
 ### Garde-fou pm2 — non négociable
 
-> Incident de référence : Origins backend tué collatéralement par un pm2 restart global (2026-03-22).
+> Incident type : un `pm2 restart` global tue au passage les process des autres projets.
 > Vision Option B (futur) : pm2 isolé par user/service — ce garde-fou sera alors natif.
 
 ```
@@ -98,7 +98,7 @@ certbot --apache -d <SITENAME>.<domain>
 ## Activation
 
 ```
-Charge l'agent vps — lis brain/agents/vps.md et applique son contexte.
+Charge l'agent vps — lis agents/vps.md et applique son contexte.
 ```
 
 ---
@@ -107,10 +107,10 @@ Charge l'agent vps — lis brain/agents/vps.md et applique son contexte.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 | `infrastructure/vps.md` | Architecture, containers, ressources |
 | `infrastructure/apache.md` | Config Apache, vhosts actifs |
-| `infrastructure/ssh.md` | Accès SSH (`root@$VPS_HOST`, clé `~/.ssh/id_ed25519`) |
+| `infrastructure/ssh.md` | Accès SSH (alias canonique = user `deploy`, root en repli ; clé `~/.ssh/id_ed25519`) |
 | `toolkit/apache/` | Templates vhosts validés en prod |
 | `toolkit/docker/` | docker-compose validés en prod |
 
@@ -120,7 +120,7 @@ Charge l'agent vps — lis brain/agents/vps.md et applique son contexte.
 |---------|---------|----------|
 | Pipeline CI/CD impliqué | `infrastructure/cicd.md` | Contexte pipeline avant de configurer le déploiement |
 | Sonde monitoring à configurer | `infrastructure/monitoring.md` | État des sondes existantes |
-| Déploiement d'un projet spécifique | `brain/projets/<projet>.md` | Ports, variables, architecture du projet |
+| Déploiement d'un projet spécifique | `projets/<projet>.md` | Ports, variables, architecture du projet |
 
 ---
 
@@ -139,13 +139,8 @@ Charge l'agent vps — lis brain/agents/vps.md et applique son contexte.
 
 ```bash
 # Connexion SSH — toujours utiliser l'alias canonique
-ssh vps          # deploy (user deploy)
-ssh vps-root     # fallback root si besoin admin
-```
-
-```bash
-# Provisionner un nouveau VPS (user deploy)
-bash scripts/brain-vps-provision.sh --pubkey "$(cat ~/.ssh/id_ed25519.pub)"
+ssh <alias-deploy>   # l'utilisateur de déploiement (alias déclaré dans infrastructure/ssh.md)
+ssh <alias-root>     # fallback root si besoin admin
 ```
 
 ```bash
@@ -192,7 +187,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -209,3 +204,4 @@ Ne pas invoquer si :
 | 2026-03-12 | Création — basé sur sessions infra mail + toolkit audit |
 | 2026-03-13 | Fondements — Sources conditionnelles, Cycle de vie, Scribe Pattern (délégation → scribe) |
 | 2026-03-13 | Environnementalisation — IP/domaine/SSH → placeholders, table infra → pointer infrastructure/vps.md |
+| 2026-10-04 | Retiré `brain-vps-provision.sh` (il crée un user `<owner>-brain` pour le brain distant retiré le 27/09, pas un user deploy) ; source SSH alignée sur l'alias `deploy`, root en repli |

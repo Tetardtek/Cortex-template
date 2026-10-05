@@ -163,13 +163,8 @@ capacites:
       Même motif que `brain_agents` : HTTP, avec repli sur le disque quand le
       moteur ne répond pas.
 
-  brain_intentions:
-    nature: core
-    brique: persistance
-    http: ["GET /intentions", "GET /intentions/{intention_id}"]
-    mecanisme_http: [base]
-    mcp: brain_intentions
-    mecanisme: http
+  # `brain_intentions` retiré le 4/10 — la table `intentions` n'avait que des
+  # consignes pour écrivain ; le focus se suit dans les fiches.
 
   brain_state:
     nature: instance      # corrigé le 10/09 — était `core`, à tort
@@ -335,7 +330,7 @@ capacites:
       La route `gate`, qui l'alimentait, est retirée avec la
       machinerie archivée.
       Transport, pas capacité. C'est aussi l'une des surfaces qu'il faudra
-      regarder le jour du homelab — origine WebSocket non vérifiée.
+      regarder le jour d'une exposition au réseau — origine WebSocket non vérifiée.
 
   bsi:
     nature: core
@@ -408,7 +403,9 @@ capacites:
     nature: diagnostic
     brique: ~
     http: ["GET /health"]
-    mecanisme_http: ~
+    # `[base]`, pas `~` : la route compte les embeddings indexés (`brain_db.count`).
+    # Invisible tant que l'instrument ignorait `count` (vu le 4/10).
+    mecanisme_http: [base]
     mcp: ~
     mecanisme: ~
     pourquoi: L'identité et la santé du service. Jamais une capacité.

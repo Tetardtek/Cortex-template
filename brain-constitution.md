@@ -96,7 +96,6 @@ NO    (L0 seul)
 ```
 [ORCHESTRATOR_RULE] Session handoff_level: NO → mesurer et loguer cold_start_kpi_pass.
 [ORCHESTRATOR_RULE] cold_start_kpi_pass: false → afficher warning Layer 0 avant briefing.
-[METABOLISM_RULE]   Champ cold_start_kpi_pass obligatoire si handoff_level: NO. N/A sinon.
 ```
 
 > Si le KPI échoue → Layer 0 est insuffisant, pas l'utilisateur.

@@ -178,6 +178,25 @@ def _git(depot: Path, *args: str) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
+def _log_des_fiches(brain: Path, *args: str) -> str:
+    """`git log` des fiches, interrogé DEPUIS `projets/`, chemins relatifs à lui.
+
+    `projets/` peut être un dossier suivi par le brain ou un satellite, son
+    propre dépôt. Depuis le brain, un satellite n'a pas d'historique : les dates
+    se figeraient au jour du déménagement, sans erreur. Depuis `projets/`, git
+    trouve le bon dépôt dans les deux cas, et `--relative` rend les mêmes
+    chemins.
+    """
+    dossier = brain / "projets"
+    if not dossier.is_dir():
+        return ""
+    return _git(dossier, "log", *args, "--relative", "--name-only", "--", ".")
+
+
+def _fiches_du_bloc(lignes: list[str]) -> list[str]:
+    return ["projets/" + l.strip() for l in lignes if l.strip().endswith(".md")]
+
+
 def noms_candidats(fiche: Path) -> list[str]:
     """Les noms sous lesquels le depot de cette fiche peut se presenter.
 
@@ -289,15 +308,14 @@ def ecritures_d_etat(brain: Path) -> dict[str, int]:
     compte les fiches touchees AVANT d'attribuer la date : un commit au-dela
     du seuil est un remaniement, il n'ecrit l'etat de personne.
     """
-    sortie = _git(brain, "log", "--format=%x00%ct", "--name-only", "--", "projets/")
+    sortie = _log_des_fiches(brain, "--format=%x00%ct")
     dernier: dict[str, int] = {}
     for bloc in sortie.split("\x00"):
         if not bloc.strip():
             continue
         lignes = bloc.strip().splitlines()
         horodatage = int(lignes[0])
-        fiches = [l.strip() for l in lignes[1:]
-                  if l.strip().startswith("projets/") and l.strip().endswith(".md")]
+        fiches = _fiches_du_bloc(lignes[1:])
         if len(fiches) > SEUIL_REMANIEMENT:
             continue                      # remaniement : ne rajeunit personne
         for f in fiches:
@@ -325,17 +343,14 @@ MARQUEUR_RELECTURE = r"📏 \*\*Remesuré le"
 def relectures(brain: Path) -> dict[str, int]:
     """Pour chaque fiche, la date du dernier commit qui y a pose (ou touche)
     le marqueur de relecture."""
-    sortie = _git(brain, "log", "--format=%x00%ct", "--name-only",
-                  "-G", MARQUEUR_RELECTURE, "--", "projets/")
+    sortie = _log_des_fiches(brain, "--format=%x00%ct", "-G", MARQUEUR_RELECTURE)
     vues: dict[str, int] = {}
     for bloc in sortie.split("\x00"):
         if not bloc.strip():
             continue
         lignes = bloc.strip().splitlines()
-        for f in lignes[1:]:
-            f = f.strip()
-            if f.startswith("projets/") and f.endswith(".md"):
-                vues.setdefault(f, int(lignes[0]))
+        for f in _fiches_du_bloc(lignes[1:]):
+            vues.setdefault(f, int(lignes[0]))
     return vues
 
 
@@ -572,6 +587,33 @@ def auto_epreuve() -> None:
                 [b for b, _ in a_p], [True])
 
     epreuve_du_parcours()
+    epreuve_du_satellite()
+
+
+def epreuve_du_satellite() -> None:
+    """`projets/` devenu un satellite : son historique vit dans SON dépôt.
+
+    Le témoin du défaut : interrogé depuis le brain, un satellite n'a aucun
+    commit — chaque fiche perdrait sa date sans que rien ne rougisse.
+    """
+    print("\nÉPREUVE — `projets/` en satellite\n")
+    with tempfile.TemporaryDirectory() as tmp:
+        brain = Path(tmp) / "Brain"
+        _depot(brain)
+        _commit(brain, {"README.md": "# brain\n"}, "init", "2026-09-01T10:00:00")
+        sat = brain / "projets"
+        _depot(sat)
+        _commit(sat, {"mon-site.md": "# Mon site\n"}, "scribe: mon-site", "2026-09-10T11:00:00")
+        _commit(sat, {"relu.md": "# Relu\n\n> 📏 **Remesuré le 12/09** — ok\n"},
+                "scribe: relu", "2026-09-12T11:00:00")
+        verifie("témoin du défaut : depuis le brain, le satellite n'a pas d'historique",
+                _git(brain, "log", "--format=%ct", "--", "projets/").strip(), "")
+        ecritures = ecritures_d_etat(brain)
+        verifie("une fiche du satellite garde la date de son commit",
+                ecritures.get("projets/mon-site.md"),
+                int(_git(sat, "log", "-1", "--format=%ct", "--", "mon-site.md").strip()))
+        verifie("… et une relecture datée s'y lit aussi",
+                "projets/relu.md" in relectures(brain), True)
 
 
 def _ancienne_resolution(cible: str, racines: list[Path]) -> Path | None:

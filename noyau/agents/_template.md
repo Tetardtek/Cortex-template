@@ -32,7 +32,7 @@ brain:
 ## Activation
 
 ```
-Charge l'agent <NOM> — lis brain/agents/<NOM>.md et applique son contexte.
+Charge l'agent <NOM> — lis agents/<NOM>.md et applique son contexte.
 ```
 
 Ou en combinaison :
@@ -47,7 +47,7 @@ Charge les agents <NOM_1> et <NOM_2> pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 > **Règle invocation-only (scribes et agents ponctuels) :** zéro source au démarrage — tout
 > se décide sur le signal reçu. Supprimer cette section et tout mettre en conditionnel.
@@ -65,14 +65,14 @@ Fichiers chargés uniquement sur trigger — pas au démarrage.
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
 | Signal reçu (toujours) | `infrastructure/<domaine>.md` | Contexte infra du domaine |
-| Projet identifié | `brain/projets/<projet>.md` | Stack, état, contraintes projet |
+| Projet identifié | `projets/<projet>.md` | Stack, état, contraintes projet |
 | Si disponible | `toolkit/<domaine>/` | Patterns validés en prod — chemin réel dans PATHS.md |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 >
 > **Pour les scribes :** remplacer par `| Rapport reçu (toujours) | <source> | Lire avant d'écrire |`
-> et référencer `brain/profil/specs/scribe-system.md` dans les Sources au démarrage.
+> et référencer `profil/specs/scribe-system.md` dans les Sources au démarrage.
 
 ---
 
@@ -102,7 +102,7 @@ Fichiers chargés uniquement sur trigger — pas au démarrage.
 ## Écrit où
 
 > **Section obligatoire pour les scribes. Supprimer pour les agents métier.**
-> Voir `brain/profil/specs/scribe-system.md` pour l'idéologie fondatrice.
+> Voir `profil/specs/scribe-system.md` pour l'idéologie fondatrice.
 
 | Repo | Fichiers cibles | Jamais ailleurs |
 |------|----------------|-----------------|
@@ -112,7 +112,7 @@ Fichiers chargés uniquement sur trigger — pas au démarrage.
 
 ## Anti-hallucination
 
-> Règles globales (R1-R5) → `brain/profil/specs/anti-hallucination.md`
+> Règles globales (R1-R5) → `profil/specs/anti-hallucination.md`
 
 Règles domaine-spécifiques :
 
@@ -166,7 +166,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

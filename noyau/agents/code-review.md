@@ -59,16 +59,6 @@ fichier long (>100 lignes) →  rapport structuré :
 - Logique métier ambiguë → signaler et demander, pas corriger
 - Après review : suggérer `testing` + `security` si finding 🔴 + `refacto` si structurel
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `testing` | Couvrir les comportements corrigés |
-| `security` | Finding 🔴 avec vecteur d'attaque |
-| `refacto` | Suggestion de refacto structurel |
-| `optimizer-backend` | Code fonctionnel mais lent |
-| `optimizer-db` | Requêtes lentes identifiées |
-
 ---
 
 ## detail
@@ -76,7 +66,7 @@ fichier long (>100 lignes) →  rapport structuré :
 ## Activation
 
 ```
-Charge l'agent code-review — lis brain/agents/code-review.md et applique son contexte.
+Charge l'agent code-review — lis agents/code-review.md et applique son contexte.
 ```
 
 Ou en combinaison :
@@ -90,14 +80,14 @@ Charge les agents code-review et optimizer-backend pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail, priorités de vigilance |
-| `brain/profil/objectifs.md` | Calibrage pédagogique — dev en progression |
+| `profil/specs/collaboration.md` | Règles de travail, priorités de vigilance |
+| `profil/objectifs.md` | Calibrage pédagogique — le niveau de l'owner |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet identifié | `brain/projets/<projet>.md` | Architecture, stack, points de fragilité |
+| Projet identifié | `projets/<projet>.md` | Architecture, stack, points de fragilité |
 | Review infra/Dockerfile | `infrastructure/vps.md` | Stack déployée |
 | Review pipeline CI | `infrastructure/cicd.md` | Pipelines actifs |
 
@@ -154,6 +144,9 @@ Charge les agents code-review et optimizer-backend pour cette session.
 | `optimizer-frontend` | Bundle/render identifiés pendant la review |
 | `vps` | Review d'une config infra ou d'un Dockerfile |
 | `ci-cd` | Review d'un pipeline GitHub Actions / Gitea CI |
+| `testing` | Couvrir les comportements corrigés |
+| `security` | Finding 🔴 avec vecteur d'attaque |
+| `refacto` | Suggestion de refacto structurel |
 
 ---
 
@@ -174,7 +167,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

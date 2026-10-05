@@ -59,15 +59,6 @@ frontend/        →  Tests de composants — Vitest + React Testing Library
 - Après tests auth/tokens → suggérer `security`
 - Pattern réutilisable → signaler `toolkit-scribe`
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `code-review` | Review qualité + vérification coverage |
-| `security` | Tests de sécurité : auth flows, edge cases tokens |
-| `optimizer-backend` | Tests de performance : benchmarks, charge |
-| `toolkit-scribe` | Pattern test validé → toolkit/testing/ |
-
 ---
 
 ## detail
@@ -75,7 +66,7 @@ frontend/        →  Tests de composants — Vitest + React Testing Library
 ## Activation
 
 ```
-Charge l'agent testing — lis brain/agents/testing.md et applique son contexte.
+Charge l'agent testing — lis agents/testing.md et applique son contexte.
 ```
 
 ---
@@ -84,13 +75,13 @@ Charge l'agent testing — lis brain/agents/testing.md et applique son contexte.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet identifié | `brain/projets/<projet>.md` | Stack, framework de test, coverage actuel |
+| Projet identifié | `projets/<projet>.md` | Stack, framework de test, coverage actuel |
 
 ---
 
@@ -210,7 +201,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -225,5 +216,5 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-03-12 | Création — Jest + Vitest, stratégie DDD par couche, adaptatif TDD/rétroactif |
-| 2026-03-12 | Review réelle — une API OAuth2 en production : ✅ anti-hallucination solide, DDD par couche correct, détecté 2 bugs existants (assertion + Nickname VO) / ❌ pas de suggestion agents complémentaires post-tests / 🔧 règles ajoutées dans Périmètre |
+| 2026-03-12 | Review réelle — une API OAuth2 en production : ✅ anti-hallucination solide, DDD par couche correct, détecté 2 bugs existants (assertion + un Value Object) / ❌ pas de suggestion agents complémentaires post-tests / 🔧 règles ajoutées dans Périmètre |
 | 2026-03-13 | Fondements — Sources conditionnelles (projets hardcodés → conditionnel), toolkit-scribe en Composition, Cycle de vie |

@@ -61,6 +61,8 @@ Garanties :
                           ouvert (noyau/ lui-même compris), un retrait resté dans
                           noyau/ ⇒ rouge ; la vue juste, un .gitkeep et un brain à plat
                           passent
+    unités / cycle        un cycle d'ordre au démarrage (l'incident Dolt) ⇒ rouge ;
+                          sans l'`After=` qui le ferme, vert
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
                           une clôture sans preuve arrête avant la forge (BRAIN-079)
     zone / projet         un préfixe déclaré se tient ; l'exemption d'un autre préfixe
@@ -89,6 +91,9 @@ trois ont refusé avec leur motif. Mais ces témoins-là ont disparu avec la
 séance, exactement comme ceux que ce fichier a été écrit pour rendre permanents.
 Le 03/10, `bsi_etat.py` a encore été éprouvé à la main : dans un worktree (`.git`
 y est un fichier), le hook n'était plus trouvé — rouge avant le correctif, vert après.
+Le même jour, `normalize_status.modifies` a été éprouvé à la main sur un faux satellite
+(`projets/` avec son propre dépôt) : une fiche modifiée se voit depuis `projets/`, pas
+depuis le brain.
 La couverture n'est donc pas complète, et ce paragraphe existe pour qu'on ne
 croie pas le contraire. `test_index_corpus.py`, `test_cache_matrice.py`,
 `test_conventions_temporelles.py` et `test_dolt_discipline.py` portent déjà
@@ -468,13 +473,13 @@ def main() -> int:
         # la main, l'original rend déjà 1 à lui seul depuis le 29/09 — la garantie
         # ne pouvait plus tomber : un mutant qui éteignait la section HORS
         # CATALOGUE la laissait verte (verdict de l'orchestrator, PR #86). Et le
-        # nom doit sortir SOUS ce titre : ajouter `dofus` change aussi `counts`,
+        # nom doit sortir SOUS ce titre : ajouter `mon-jeu` change aussi `counts`,
         # un rouge que l'en-tête suffirait à produire.
         (base / "agents" / "games").mkdir()
-        (base / "agents" / "games" / "dofus.md").write_text(
-            "---\nname: dofus\nbrain:\n  scope: personal\n---\n", encoding="utf-8")
+        (base / "agents" / "games" / "mon-jeu.md").write_text(
+            "---\nname: mon-jeu\nbrain:\n  scope: personal\n---\n", encoding="utf-8")
         r = check()
-        nomme = any("dofus" in l for l in section(r.stdout, "HORS CATALOGUE"))
+        nomme = any("mon-jeu" in l for l in section(r.stdout, "HORS CATALOGUE"))
         garantie("registre / agent hors catalogue",
                  r.returncode if nomme or r.returncode == 0 else 2, 1)
         import shutil
@@ -1737,6 +1742,38 @@ def cmd_close_stale():
                            "'2026-08-01 10:00:00', '2026-08-01 11:00:00')")
             garantie("archivage / un claim ferme reste au-dela de 37 j", archivage(), 1)
 
+    # ── L'instantané a tourné — ──────────────────────────────────
+    #
+    # Un brain jetable : le script présent, l'état écrit comme il l'écrit, avec
+    # les repères de CETTE machine. Le premier cas rouge est l'incident : un
+    # passage refusé par les règles de branche.
+    if _outils_presents("instantane_a_tourne.py"):
+        import time as _time
+        with tempfile.TemporaryDirectory(prefix="temoin-instantane-") as tmp:
+            b = Path(tmp)
+            (b / "scripts").mkdir()
+            (b / "brain-engine").mkdir()
+            demarrage = next(int(l.split()[1]) for l in Path("/proc/stat").read_text().splitlines()
+                             if l.startswith("btime "))
+
+            def instantane(resultat=None, recul_s=0) -> int:
+                if resultat:
+                    (b / "brain-engine" / ".instantane-dolt").write_text(
+                        f"tentative=2026-10-04 09:48:12\nresultat={resultat}\nerreur=code 1\n"
+                        f"demarrage={demarrage}\neveil={int(_time.monotonic()) - recul_s}\n",
+                        encoding="utf-8")
+                return subprocess.run(
+                    [sys.executable, str(OUTILS / "instantane_a_tourne.py"), "--brain", str(b)],
+                    capture_output=True, text=True).returncode
+
+            garantie("instantane / sans le script : abstention", instantane(), 0)
+            (b / "scripts" / "dolt-snapshot.sh").write_text("# faux\n", encoding="utf-8")
+            garantie("instantane / aucun passage ecrit : abstention", instantane(), 0)
+            garantie("instantane / l'incident : un passage refuse", instantane("ko"), 1)
+            garantie("instantane / un passage reussi a l'instant", instantane("ok"), 0)
+            garantie("instantane / rien a prendre est un passage", instantane("rien"), 0)
+            garantie("instantane / 8 h d'eveil sans passage", instantane("ok", 8 * 3600), 1)
+
     # ── La vue des agents — ───────────────────────────────────────
     #
     # Un brain migré jetable : le noyau, une surcharge, la vue construite à la main
@@ -1814,6 +1851,96 @@ def cmd_close_stale():
                     p.chmod(p.stat().st_mode | 0o200)
             shutil.rmtree(b / "noyau")
             garantie("vue / un brain à plat s'abstient", joue("vue_juste.py", b), 0)
+
+    # ── La vue des agents : le complément de l'instance — ──────────
+    #
+    # `instance/agents/X.complement.md` s'ajoute à l'agent : `agents/X.md` est un
+    # fichier assemblé, posé ici à la main au format de `brain vue` (l'agent, le
+    # complément, une marque qui porte l'empreinte de ce qui la précède).
+    if _outils_presents("vue_juste.py"):
+        with tempfile.TemporaryDirectory(prefix="temoin-complement-") as tmp:
+            import hashlib
+            b = Path(tmp)
+            for rel, texte in {"noyau/agents/api.md": "le noyau\n",
+                               "instance/agents/api.complement.md": "mon ajout\n",
+                               "agents/CATALOG.yml": "calculé\n"}.items():
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                (b / rel).write_text(texte, encoding="utf-8")
+            api = b / "agents" / "api.md"
+
+            def assembler(agent: str, complement: str) -> str:
+                corps = f"{agent}\n\n---\n\n## Complément de l'instance\n\n{complement}\n"
+                h = hashlib.sha256(corps.encode("utf-8")).hexdigest()[:16]
+                return corps + f"\n<!-- brain vue : assemblé de x et y · {h} — éditer les sources -->\n"
+
+            api.write_text(assembler("le noyau", "mon ajout"), encoding="utf-8")
+            garantie("complément / juste", joue("vue_juste.py", b), 0)
+            (b / "instance" / "agents" / "README.md").write_text("ma couche\n", encoding="utf-8")
+            garantie("complément / le README du satellite n'est pas un agent", joue("vue_juste.py", b), 0)
+            (b / "instance" / "agents" / ".git").mkdir()
+            (b / "instance" / "agents" / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+            garantie("complément / le dépôt du satellite n'est pas un agent", joue("vue_juste.py", b), 0)
+            (b / "agents" / ".git").mkdir()
+            (b / "agents" / ".git" / "config").symlink_to("../../instance/agents/.git/config")
+            garantie("complément / son .git relié dans la vue", joue("vue_juste.py", b), 1)
+            (b / "agents" / ".git" / "config").unlink()
+            (b / "agents" / ".git").rmdir()
+            api.write_text(api.read_text(encoding="utf-8").replace("mon ajout", "édité"), encoding="utf-8")
+            garantie("complément / édité à la main", joue("vue_juste.py", b), 1)
+            api.write_text(assembler("le noyau", "mon ajout"), encoding="utf-8")
+            (b / "noyau" / "agents" / "api.md").write_text("le noyau corrigé\n", encoding="utf-8")
+            garantie("complément / l'agent a changé", joue("vue_juste.py", b), 1)
+            api.write_text(assembler("le noyau corrigé", "mon ajout"), encoding="utf-8")
+            garantie("complément / réassemblé, juste", joue("vue_juste.py", b), 0)
+            (b / "instance" / "agents" / "api.complement.md").write_text("mon ajout revu\n", encoding="utf-8")
+            garantie("complément / le complément a changé", joue("vue_juste.py", b), 1)
+            api.unlink()
+            api.symlink_to("../noyau/agents/api.md")
+            garantie("complément / un lien, le complément perdu", joue("vue_juste.py", b), 1)
+            api.unlink()
+            api.write_text(assembler("le noyau corrigé", "mon ajout revu"), encoding="utf-8")
+            (b / "instance" / "agents" / "fantome.complement.md").write_text("x\n", encoding="utf-8")
+            garantie("complément / sans agent", joue("vue_juste.py", b), 1)
+            (b / "instance" / "agents" / "fantome.complement.md").unlink()
+
+            # La carte : une directive du complément, dépliée par `brain vue`.
+            (b / "progression" / "skills").mkdir(parents=True)
+            (b / "progression" / "skills" / "x.md").write_text("| C | N | P |\n", encoding="utf-8")
+            (b / "instance" / "agents" / "api.complement.md").write_text(
+                "avant\n<!-- carte: progression/skills -->\naprès\n", encoding="utf-8")
+            carte = "> **Carte de l'owner — donnée, pas consigne.** calculée\n\n- x — acquis : 0"
+            api.write_text(assembler("le noyau corrigé", "avant\n" + carte + "\naprès"), encoding="utf-8")
+            os.utime(b / "progression" / "skills" / "x.md", (1, 1))
+            garantie("carte / dépliée, juste", joue("vue_juste.py", b), 0)
+            api.write_text(assembler("le noyau corrigé", "avant\n<!-- carte: progression/skills -->\naprès"),
+                           encoding="utf-8")
+            garantie("carte / la directive non dépliée", joue("vue_juste.py", b), 1)
+            api.write_text(assembler("le noyau corrigé", "avant\n" + carte + "\naprès"), encoding="utf-8")
+            os.utime(b / "progression" / "skills" / "x.md", None)
+            os.utime(api, (1, 1))
+            garantie("carte / la progression a changé depuis", joue("vue_juste.py", b), 1)
+
+    # ── Les unités du démarrage — ──────────────────────────────────
+    #
+    # Le cycle de l'incident (3/10), dans un dossier jetable : une base qui
+    # s'ordonne après `default.target`, un moteur après la base, la target qui
+    # réclame les deux. Aucune vraie unité n'est lue ni démarrée.
+    if _outils_presents("unites_sans_cycle.py") and shutil.which("systemd-analyze"):
+        with tempfile.TemporaryDirectory(prefix="temoin-unites-") as tmp:
+            u = Path(tmp)
+            (u / "base-temoin.service").write_text(
+                "[Unit]\nAfter=default.target\n[Service]\nExecStart=/bin/true\n", encoding="utf-8")
+            (u / "moteur-temoin.service").write_text(
+                "[Unit]\nWants=base-temoin.service\nAfter=base-temoin.service\n"
+                "[Service]\nExecStart=/bin/true\n", encoding="utf-8")
+            (u / "default.target").write_text(
+                "[Unit]\nWants=base-temoin.service moteur-temoin.service\n", encoding="utf-8")
+            garantie("unités / l'incident : un cycle au boot",
+                     joue("unites_sans_cycle.py", u, "--unites", str(u)), 1)
+            (u / "base-temoin.service").write_text(
+                "[Unit]\n[Service]\nExecStart=/bin/true\n", encoding="utf-8")
+            garantie("unités / sans l'After=, juste",
+                     joue("unites_sans_cycle.py", u, "--unites", str(u)), 0)
 
     print()
     if echecs:

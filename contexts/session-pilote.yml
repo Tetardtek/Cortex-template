@@ -12,8 +12,9 @@
 # agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
-# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
-# PATHS.md.
+# s'additionnent ; aucun ne remplace l'autre, et ce que CLAUDE.md charge ne se
+# recharge pas ici — PATHS.md, coach-boot, helloWorld et secrets-guardian étaient
+# relus une seconde fois (mesuré le 4/10, ~20 Ko par session).
 #
 # Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
 # chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
@@ -37,15 +38,13 @@ description: "Co-construction longue duree — humain decide les forks, brain co
 # declare la posture, donc c'est lui qui declare combien elle dure.
 #
 # statut : mesure
-#   59 sessions mesurees, moyenne 11,8 h
-#   16 sur 27 depassaient les 4 h du defaut
+#   sur l'instance qui publie le gabarit — a remesurer sur la tienne
 ttl_hours: 12
 kerneluser_required: true   # axe identite, pas acces — le mode pilote suppose
                             # qu'on est proprietaire du brain (BRAIN-072)
 
 # L0 — Invariant (~5%) — TOUJOURS charge
 L0:
-  - PATHS.md
   - brain-compose.local.yml
   - KERNEL.md
 
@@ -68,11 +67,10 @@ L1:
   #
   # Ce qui le tient a jour : `brain doctor`, controle « l etat annonce vs la
   # forge ». Un index que rien ne verifie ne ferait que deplacer le defaut.
+  - handoffs/LATEST.md              # la carte des chantiers — detail au bout des liens
   # cap servi par brain_focus() MCP — plus de lecture fichier directe
   # focus.md genere depuis Dolt via API /focus — plus de fichier statique
   - agents/coach.md                 # coach complet — observe et anticipe
-  - agents/helloWorld.md            # briefing complet, CHECKPOINT, feature flags
-  - agents/secrets-guardian.md      # gardien MYSECRETS — permanent
 
 # L2 — Scope session (~15%) — contexte de construction actif
 L2:

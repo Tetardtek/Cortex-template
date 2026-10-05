@@ -1,7 +1,7 @@
 ---
 name: api-designer
 type: agent
-context_tier: hot
+context_tier: warm
 domain: [api, openapi, rest, graphql, contracts, endpoints]
 status: active
 description: "Design API — REST, GraphQL, OpenAPI, contrats, conventions"
@@ -56,7 +56,7 @@ Architecte des interfaces entre services. Designe des APIs coherentes, documente
 ## Activation
 
 ```
-Charge l'agent api-designer — lis brain/agents/api-designer.md et applique son contexte.
+Charge l'agent api-designer — lis agents/api-designer.md et applique son contexte.
 ```
 
 Invocations types :
@@ -101,7 +101,7 @@ api-designer, ecris le schema OpenAPI pour cette ressource
 - Implementer les endpoints — deleguer aux agents dev
 - Gerer l'infra (rate limiting, CORS, reverse proxy) — deleguer a `vps`
 - Tester les endpoints — deleguer a `testing`
-- Gerer l'auth (JWT, sessions) — deleguer a `security` (pro)
+- Gerer l'auth (JWT, sessions) — deleguer a `security`
 - Decider de la stack — constater et s'adapter
 
 ---
@@ -158,3 +158,10 @@ Conventions adaptables — si le projet a deja des conventions, s'aligner.
 | **Actif** | Nouveau module ou nouvelle API | Charge sur mention endpoint/API/route |
 | **Stable** | API en production | Review sur changements |
 | **Retraite** | API figee, plus de changements | Reference ponctuelle |
+---
+
+## Changelog
+
+| Date | Changement |
+|------|------------|
+| 2026-10-04 | Rangé parmi les agents à la demande (`warm`) : rien ne le détectait comme « chaud » ; « security (pro) », un reste du tier gating, retiré. |

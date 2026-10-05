@@ -508,13 +508,13 @@ def brain_decisions(last: int = 5) -> str:
 @mcp.tool()
 def brain_focus() -> str:
     """
-    Retourne le focus genere du brain depuis Dolt.
+    Retourne le focus du brain : ce vers quoi on va, et ce qui est en cours.
 
-    Agregation live : cap humain + front rotatif + intentions actives + projets.
-    Remplace la lecture statique de focus.md — zero drift.
+    Le cap (écrit à la main, `brain/cap.md`), les fiches en cours — calculées des
+    PR fusionnées depuis moins de 7 jours, jamais déclarées — et la dernière session.
 
     Returns:
-        Bloc markdown avec le cap, front rotatif, intentions actives et projets.
+        Bloc markdown avec le cap, les fiches en cours et la dernière session.
         Moteur injoignable : le dernier instantané (focus.instantane.md, écrit
         toutes les 2 h par l'indexeur), annoncé comme un repli ; sinon focus.md.
     """
@@ -660,23 +660,33 @@ def _parse_frontmatter(filepath: Path) -> dict | None:
         return None
 
 
+#: Ce qui n'est jamais du contenu à publier, chez tout le monde : les médias.
+CONTENT_EXCLUS = {'assets'}
+
+
+def _exclusions_du_contenu() -> set[str]:
+    """Les noms (dossiers ou fichiers) qui ne sont pas des posts : `assets`, plus ceux que
+    le satellite déclare dans `contenu/.brain-content-ignore` — un nom par ligne, `#` pour
+    commenter. Une liste écrite ici portait l'arborescence du contenu de l'owner qui
+    publie ; chaque instance déclare la sienne, à côté de ses données. Relu à chaque
+    appel : modifier la liste ne demande pas de redémarrer."""
+    f = BRAIN_ROOT / 'contenu' / '.brain-content-ignore'
+    try:
+        lignes = f.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        lignes = []
+    return CONTENT_EXCLUS | {l.strip() for l in lignes if l.strip() and not l.lstrip().startswith('#')}
+
+
 def _scan_content_zone(base: Path, zone: str) -> list[dict]:
     """Scanne une zone content et retourne la liste des posts avec métadonnées."""
     items = []
     if not base.exists():
         return items
-    # Sous-dossiers exclus (specs, visions, stratégie — pas du contenu social)
-    EXCLUDED_DIRS = {'brain-ui', 'assets', 'chardesign', 'story', 'pov'}
-    EXCLUDED_FILES = {'CATALOG.md', 'STRATEGY.md', 'VISUAL-GUIDE.md',
-                      'matiere-brute.md', 'chiffres-verifies.md',
-                      'raw-material.md', 'scripts.md', 'seo-thumbnail.md',
-                      'strategy.md', 'comfy-gen.py', 'cortex.md'}
+    exclus = _exclusions_du_contenu()
     for md in sorted(base.rglob('*.md')):
-        # Ignorer les dossiers exclus
-        if any(part in EXCLUDED_DIRS for part in md.relative_to(base).parts):
-            continue
-        # Ignorer les fichiers de config/stratégie
-        if md.name in EXCLUDED_FILES:
+        # Un nom exclu écarte le dossier qui le porte, ou le fichier qui le porte
+        if any(part in exclus for part in md.relative_to(base).parts):
             continue
         fm = _parse_frontmatter(md)
         rel = str(md.relative_to(BRAIN_ROOT))
@@ -789,7 +799,7 @@ def brain_content_promote(path: str, target_status: str) -> str:
     Le frontmatter est mis à jour automatiquement (status + dates).
 
     Args:
-        path          : Chemin relatif dans le brain (ex: "contenu/atelier/posts/btb-001-postiz-timezone.md")
+        path          : Chemin relatif dans le brain (ex: "contenu/atelier/posts/mon-post.md")
         target_status : Status cible (ready, scheduled, published, recycled)
 
     Returns:
@@ -911,80 +921,6 @@ def brain_content_promote(path: str, target_status: str) -> str:
         log.info('content promoted (in-place) %s [%s]', path, target_status)
 
     return json.dumps({'ok': True, 'path': new_path, 'status': target_status, 'moved': needs_move})
-
-
-@mcp.tool()
-def brain_intentions(project: str = '', status: str = '', front_only: bool = False) -> str:
-    """
-    Retourne les intentions du brain depuis Dolt.
-
-    Les intentions sont les objectifs mesurables du brain — ce sur quoi on travaille.
-    Elles sont liées aux sessions BSI et aux projets.
-
-    Args:
-        project    : Filtrer par projet (ex: "mon-projet", "mon-api"). Vide = tous.
-        status     : Filtrer par status (active, stasis, identified, done, archived). Vide = tous sauf archived.
-        front_only : True = uniquement les intentions du front rotatif (max 5).
-
-    Returns:
-        Tableau markdown avec les intentions, leur status, projet, sessions, et next_step.
-    """
-    import json
-    import urllib.request
-    log.info('brain_intentions project=%r status=%r front=%r', project, status, front_only)
-    try:
-        params = []
-        if project:
-            params.append(f'project={project}')
-        if status:
-            params.append(f'status={status}')
-        if front_only:
-            params.append('front_only=true')
-        qs = f"?{'&'.join(params)}" if params else ''
-        url = f'{BRAIN_API}/intentions{qs}'
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            items = json.loads(resp.read())
-
-        if not items:
-            return 'Aucune intention trouvée avec ces filtres.'
-
-        # Séparer front et reste
-        front = [i for i in items if i.get('front')]
-        rest = [i for i in items if not i.get('front')]
-
-        lines = []
-
-        if front:
-            lines.append('## Front rotatif\n')
-            for i in front:
-                icon = {'active': '🔥', 'stasis': '💤', 'identified': '💡', 'done': '✅'}.get(i['status'], '⚪')
-                sessions = i.get('total_sessions', 0)
-                duration = i.get('total_duration', 0)
-                ns = i.get('next_step', '')
-                lines.append(f"**#{i.get('front_order','')}** {icon} **{i['id']}** — {i.get('project', '')} ({sessions} sessions, {duration}min)")
-                if ns:
-                    lines.append(f"  → {ns}")
-            lines.append('')
-
-        if rest and not front_only:
-            # Group by status
-            for s in ('active', 'stasis', 'identified'):
-                group = [i for i in rest if i['status'] == s]
-                if not group:
-                    continue
-                icon = {'active': '🔥', 'stasis': '💤', 'identified': '💡'}.get(s, '⚪')
-                lines.append(f"### {icon} {s} ({len(group)})\n")
-                for i in group:
-                    ns = i.get('next_step', '')
-                    reason = i.get('stasis_reason', '')
-                    detail = f" — {reason}" if reason and s == 'stasis' else (f" → {ns}" if ns else '')
-                    lines.append(f"- **{i['id']}** [{i.get('project', '')}]{detail}")
-                lines.append('')
-
-        return '\n'.join(lines) if lines else 'Aucune intention.'
-    except Exception as exc:
-        log.warning('brain_intentions failed: %s', exc)
-        return f'Intentions indisponibles : {exc}'
 
 
 # ── Entrypoint ─────────────────────────────────────────────────────────────────

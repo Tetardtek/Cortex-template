@@ -19,8 +19,8 @@ description: >
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v2.7.0 — 70 agents, 6 types de session,
-25 routes d'API, 11 outils MCP.
+Kernel v3.0.0 — 57 agents, 6 types de session,
+23 routes d'API, 10 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
 qui persistent, des types de session qui chargent ce qu'ils déclarent, et une
@@ -56,7 +56,7 @@ tort — et c'est un défaut à signaler, pas à contourner.*
    → [`doc.md`](doc.md)
 5. **Les secrets ne se lisent pas.** `brain-secrets/MYSECRETS` n'est jamais
    affiché, ni cité, ni copié dans une commande.
-6. **Chaque commit porte un type**, parmi `kernel:`, `feat:`, `fix:`, `bsi:`, `integrator:`, `scribe:`, `metabolism:`, `todo:`, `toolkit:`, `config:` — et aucun autre :
+6. **Chaque commit porte un type**, parmi `kernel:`, `feat:`, `fix:`, `bsi:`, `integrator:`, `scribe:`, `todo:`, `toolkit:`, `config:` — et aucun autre :
    le hook `commit-msg` refuse le reste. Il dit quel scribe possède le
    changement. Le tableau : `KERNEL.md`, « Commit types ».
 7. **Ce qui tourne n'est pas une cible d'essai.** Le moteur, la base, les

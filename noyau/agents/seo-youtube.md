@@ -14,7 +14,7 @@ brain:
   read:      trigger
   triggers:  [youtube, seo, thumbnail, vignette, description, tags, titre, chaîne]
   ipc:
-    receives_from: [human, content-orchestrator]
+    receives_from: [human]
     sends_to:      [human]
     zone_access:   [project, personal]
     signals:       [SPAWN, RETURN]

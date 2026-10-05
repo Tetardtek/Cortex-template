@@ -65,9 +65,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-# Les venvs ne sont pas du brain : `.venv` et `.venv.popos` portaient ~9 200
-# fichiers .py/.sh sous brain-engine/, relus pour chaque script — 1149 s pendant
-# la migration Omarchy, 561 s au doctor du 27/09.
+# Les venvs ne sont pas du brain : deux venvs (l'actif et celui d'une ancienne
+# machine) portaient ~9 200 fichiers .py/.sh sous brain-engine/, relus pour chaque
+# script — 1149 s au changement de machine, 561 s au doctor du 27/09.
 EXCLUS = re.compile(r"viz_cache|\.json$|/archive/|/__pycache__/|/\.git/"
                     r"|/\.?venv[^/]*/|/node_modules/")
 SUFFIXES = (".sh", ".py", ".md", ".yml")

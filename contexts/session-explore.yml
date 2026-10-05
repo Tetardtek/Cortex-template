@@ -13,8 +13,9 @@
 # agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
-# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
-# PATHS.md.
+# s'additionnent ; aucun ne remplace l'autre, et ce que CLAUDE.md charge ne se
+# recharge pas ici — PATHS.md, coach-boot, helloWorld et secrets-guardian étaient
+# relus une seconde fois (mesuré le 4/10, ~20 Ko par session).
 #
 # Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
 # chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
@@ -38,12 +39,11 @@ description: "Session d'exploration — navigation, brainstorm, coaching, audit"
 # declare la posture, donc c'est lui qui declare combien elle dure.
 #
 # statut : mesure
-#   32 sessions mesurees, moyenne 5,6 h
+#   sur l'instance qui publie le gabarit — a remesurer sur la tienne
 ttl_hours: 8
 
 # L0 — Invariant (~4%) — TOUJOURS charge
 L0:
-  - PATHS.md
   - brain-compose.local.yml
   - KERNEL.md
 
@@ -67,9 +67,9 @@ L1:
   #
   # Ce qui le tient a jour : `brain doctor`, controle « l etat annonce vs la
   # forge ». Un index que rien ne verifie ne ferait que deplacer le defaut.
+  - handoffs/LATEST.md              # la carte des chantiers — detail au bout des liens
   # cap servi par brain_focus() MCP — plus de lecture fichier directe
   # focus.md genere depuis Dolt via API /focus — plus de fichier statique
-  - agents/coach-boot.md            # garde comportemental
   - agents/coach.md                 # coach complet — mentorat, bilan, structure
   - agents/pulse.md                 # snapshot live brain — 3 modes
   - BRAIN-INDEX.md                  # aiguillage BSI — les claims et signaux sont en base
@@ -85,12 +85,12 @@ L2:
 # L3 — On demand (0% au boot)
 # Agents charges a la demande selon scope :
 #   /brainstorm → wiki/patterns.md si présent (brainstorm-before-build enforcement)
-#   /coach      → metabolism/README.md, profil/specs/collaboration.md (coach dimension primaire)
+#   /coach      → profil/specs/collaboration.md (coach dimension primaire)
 #   /capital    → profil/objectifs.md, profil/capital.md, progression/README.md
 #   /audit      → agents/security.md, agents/code-review.md (write-lock implicite)
 #   (vide)      → lobby navigate : agents/guide.md, agents/pathfinder.md
 L3:
-  hint: "Charger selon scope : brainstorm→patterns, coach→metabolism, capital→profil, audit→security+review"
+  hint: "Charger selon scope : brainstorm→patterns, coach→collaboration, capital→profil, audit→security+review"
 
 # --- Comportements absorbes ---
 # navigate   : lobby pattern (scope vide = navigation legere)
@@ -98,9 +98,8 @@ L3:
 # brainstorm : pas de code, pas de commit — reflexion pure
 #              wiki/patterns.md charge en L3 si présent (brainstorm-before-build)
 # coach      : coach.md devient dimension primaire (override contexte projet)
-#              metabolisme + collaboration charges en L3
+#              collaboration chargee en L3
 # capital    : profil/objectifs.md + profil/capital.md charges en L3
-#              capital-scribe auto-trigger sur changement capital.md
 # audit      : write-lock implicite (lecture seule sauf rapport final)
 #              agents security + code-review charges en L3
 

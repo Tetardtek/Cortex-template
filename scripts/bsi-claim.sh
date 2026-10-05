@@ -761,7 +761,7 @@ def cmd_close():
 
     # Enrichment fields (BRAIN-046)
     energy = energie(opts.get("energy"))  # high/medium/low — normalisee, ou refus
-    intention = opts.get("intention")    # slug intention liée
+    intention = opts.get("intention")    # ce que la session visait, en texte libre — plus un lien : la table `intentions` est retirée le 4/10
     tags = opts.get("tags")              # comma-separated
     deliverables = opts.get("deliverables")  # texte libre
 
@@ -1131,7 +1131,7 @@ def cmd_restore():
         print("   detenait plus rien que Dolt n'ait pas, verifie ligne a ligne.")
         print("   Le gel est dans brain-db-backup/sqlite-fossile-20260906.db,")
         print("   versionne et pousse — le copier ici pour restaurer.")
-        print("   Sources alternatives : git log --grep='bsi:' / progression/metabolism/")
+        print("   Source alternative : git log --grep='bsi:'")
         sys.exit(1)
 
     import sqlite3 as sl

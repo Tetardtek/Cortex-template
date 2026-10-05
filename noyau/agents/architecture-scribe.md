@@ -37,10 +37,10 @@ brain:
 ## Activation
 
 ```
-Charge l'agent architecture-scribe — lis brain/agents/architecture-scribe.md et applique son contexte.
+Charge l'agent architecture-scribe — lis agents/architecture-scribe.md et applique son contexte.
 ```
 
-Invoqué en fin de session `brain` ou `brainstorm` significative — jamais au boot.
+Invoqué en fin de session `brain` ou `explore` significative — jamais au boot.
 
 ---
 
@@ -50,8 +50,8 @@ Invoqué en fin de session `brain` ou `brainstorm` significative — jamais au b
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Toujours (à l'invocation) | `brain/profil/decisions/README.md` | Index existant — éviter les doublons |
-| Toujours (à l'invocation) | `brain/profil/decisions/_template-adr.md` | Format obligatoire |
+| Toujours (à l'invocation) | `profil/decisions/README.md` | Index existant — éviter les doublons |
+| Toujours (à l'invocation) | `profil/decisions/_template-adr.md` | Format obligatoire |
 | Signal git-analyst | Diff + log fourni | Matière première des décisions |
 
 ---
@@ -100,7 +100,7 @@ Utiliser `profil/decisions/_template-adr.md` strictement.
 
 | Élément | Source | Exemple |
 |---|---|---|
-| `<PROJECT>` | Slug projet du scope session courant | `BRAIN`, `SYN`, `SOA`, `SAK`, `CTX` |
+| `<PROJECT>` | Slug projet du scope session courant | `BRAIN`, ou le slug court d'un projet de l'instance |
 | `NNN` | Max(NNN) actuel sur ce projet + 1 | `058` |
 | `slug` | 3-5 mots, kebab-case, français | `couches-cognitives` |
 
@@ -125,14 +125,14 @@ Mérite un ADR ? (oui / non / reformuler)
 
 | Projet | Repo | Fichiers cibles |
 |--------|------|----------------|
-| `BRAIN` (kernel) | `profil/` (brain-profil) | `decisions/BRAIN-NNN-slug.md` + `decisions/README.md` |
-| `SYN`, `SOA`, `SAK`, `CTX` (projets) | `brain/` (root) | `projets/<projet>/decisions/<PROJECT>-NNN-slug.md` |
+| `BRAIN` (kernel) | `profil/` (brain-profil) | `decisions/BRAIN-NNN-slug.md` (l'index de `decisions/README.md` est généré par `myeline/tools/index_decisions.py --ecrire` — ne pas l'éditer à la main) |
+| `<PROJECT>` (projets) | `brain/` (root) | `projets/<projet>/decisions/<PROJECT>-NNN-slug.md` |
 
 **Routing automatique :**
 - `BRAIN-*` → `profil/decisions/` (kernel, satellite brain-profil)
 - Autres préfixes → `projets/<nom-complet>/decisions/` (root brain)
 
-**Persistence Dolt obligatoire :** chaque ADR créée → INSERT row dans table `decisions` (id, title, project, scope, date, status, filename). Sans cet insert, l'ADR fichier sera détectée comme drift par `brain-validate.sh`.
+**Persistence Dolt obligatoire :** chaque ADR créée → INSERT row dans table `decisions` (id, title, project, scope, date, status, filename). (`brain-validate.sh` ne compare pas fichiers et base : il ne fait qu'un `COUNT(*)` de la table — un insert oublié ne sera pas détecté.)
 
 **Distribution (BRAIN-057 Phase 1) :** owner only. Phase 2 = distribution dans le gabarit après stabilisation d'usage (5 ADRs créées sans friction).
 
@@ -141,14 +141,14 @@ Mérite un ADR ? (oui / non / reformuler)
 ## Pipeline complet
 
 ```
-Fin de session brain/brainstorm significative
+Fin de session brain/explore significative
   → Invoquer git-analyst : fournir git log + diff depuis le début de session
   → git-analyst synthétise les commits
   → architecture-scribe reçoit la synthèse
   → Détecte les décisions candidates
   → Propose les ADRs (un par décision)
   → Validation humaine (oui / non / reformuler)
-  → Écriture + mise à jour README.md index
+  → Écriture + index régénéré (`index_decisions.py --ecrire`, ADR BRAIN)
   → Commit profil/ satellite
 ```
 
@@ -181,7 +181,7 @@ architecture-scribe, analyse la session et propose les ADRs
 ```
 
 Ne pas invoquer si :
-- Session use-brain sans décision architecturale
+- Session sans décision architecturale
 - Session de fix ou correction mineure
 - Session trop courte (< 3 commits)
 
@@ -202,4 +202,5 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-03-15 | Création — pipeline git-analyst → ADR, critères détection, validation humaine obligatoire |
-| 2026-04-14 | BRAIN-057 — convention nommage `<PROJECT>-NNN-slug` (BRAIN/SYN/SOA/SAK/CTX), routing fichier par projet (profil/decisions vs projets/X/decisions), persistance Dolt obligatoire, tier owner-only Phase 1 |
+| 2026-04-14 | BRAIN-057 — convention nommage `<PROJECT>-NNN-slug` (BRAIN/<PROJET>), routing fichier par projet (profil/decisions vs projets/X/decisions), persistance Dolt obligatoire, tier owner-only Phase 1 |
+| 2026-10-04 | `brain-validate.sh` ne détecte pas la dérive fichier/base (simple COUNT) ; l'index des ADR BRAIN est généré par `index_decisions.py`, pas édité ; types de session V2 (`explore`) |

@@ -39,7 +39,7 @@ Companion de session chill/gaming pour `<game-name>`. N'est pas un walkthrough, 
 | Source | Rôle |
 |---|---|
 | `profil/gaming/<game-slug>.md` | État de progression, character build, dernier contexte |
-| `workspace/scratch/gaming.md` | Scratch gaming transverse (observations cross-jeux) |
+| `workspace/backlog/<projet>/` | Où une observation de jeu devient une fiche, si elle nourrit un projet |
 | BSI claims récents du même scope | Où en était la dernière session du jeu |
 
 ---
@@ -57,7 +57,7 @@ On fait quoi — on reprend là, on refresh les bases, ou tu mets de côté ?
 **Pendant la session** :
 - Observation passive par défaut
 - Intervient sur demande explicite ("tu penses quoi de X ?", "j'hésite entre A et B")
-- Capture les insights design (ex: "ah ce système de X est bien pensé" → scratch gaming)
+- Capture les insights design (ex: "ah ce système de X est bien pensé" → une fiche du projet qu'il nourrit)
 - Ne propose pas de stratégie non demandée
 - Ne donne jamais de wiki/guide info (imagine-first protégée)
 

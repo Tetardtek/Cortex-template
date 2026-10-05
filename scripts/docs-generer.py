@@ -33,6 +33,8 @@ Dans `docs/src/*.md`, deux formes, remplacées dans `docs/*.md` :
 Deux cibles, même mécanisme : `docs/src/` → `docs/` (la doc humaine) et
 `skills/brain/src/` → `skills/brain/` (la skill, la doc que l'AGENT croit —
 une route morte y serait suivie avec aplomb).
+Et un fichier seul : `instance/README.src.md` → `README.md`, le README de
+l'instance — absent chez un fork, qui garde celui du gabarit.
 
 La source de chaque valeur est le brain qu'on lui donne, jamais un autre :
 lancé sur le gabarit rendu, il compte ce que le gabarit contient. Un agent
@@ -51,6 +53,7 @@ from __future__ import annotations
 import argparse
 import functools
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,6 +69,13 @@ EN_TETE_TEXTE = "Généré depuis {nom} par scripts/docs-generer.py — ne pas �
 #: (sources, sortie) relatives à la racine du brain. Une cible dont le dossier
 #: source n'existe pas est ignorée : un brain sans skill a quand même sa doc.
 CIBLES = (("docs/src", "docs"), ("skills/brain/src", "skills/brain"))
+
+#: (source, sortie) — un FICHIER, pas un dossier. Le README de la racine ne peut pas
+#: être une cible-dossier : `--ecrire` retire toute page sans source au premier
+#: niveau d'une cible, et la racine porte KERNEL.md, BRAIN-INDEX.md… Sa source vit
+#: dans `instance/`, qui ne part jamais au gabarit : un fork n'a pas cette source,
+#: la cible est ignorée, et son README reste celui du gabarit.
+FICHIERS = (("instance/README.src.md", "README.md"),)
 EN_TETE = "<!-- " + EN_TETE_TEXTE + " -->\n"
 
 #: Les familles d'agents, par (portée, rôle) — les deux champs que tous les
@@ -302,6 +312,35 @@ class Mesures:
             raise Illisible("version introuvable dans brain-compose.yml")
         return m.group(1)
 
+    @functools.cached_property
+    def satellites(self) -> list[dict]:
+        """Les satellites déclarés, et l'adresse de leur dépôt sur la forge.
+
+        La forge se déduit du remote du brain : ses satellites vivent chez le même
+        propriétaire. Un identifiant dans l'URL (un clone HTTPS l'y garde parfois)
+        est retiré avant toute écriture — il finirait dans le README."""
+        decl = self.brain / "satellites.yml"
+        if yaml is None or not decl.is_file():
+            raise Illisible("satellites.yml absent ou PyYAML manquant")
+        sats = (yaml.safe_load(decl.read_text(encoding="utf-8")) or {}).get("satellites") or {}
+        # Le brain jugé n'a pas toujours de remote : le hook pre-commit juge une COPIE
+        # de l'index, sans .git. La forge se lit alors dans le dépôt du script lui-même.
+        url = ""
+        for depot in (self.brain, Path(__file__).resolve().parent.parent):
+            r = subprocess.run(["git", "-C", str(depot), "remote", "get-url", "origin"],
+                               capture_output=True, text=True)
+            url = r.stdout.strip()
+            if url:
+                break
+        m = (re.match(r"^[\w.-]+@([\w.-]+):([\w.-]+)/", url)
+             or re.match(r"^https?://(?:[^@/]+@)?([\w.:-]+)/([\w.-]+)/", url))
+        if not m:
+            raise Illisible("le remote `origin` du brain ne dit pas sa forge")
+        forge = f"https://{m.group(1)}/{m.group(2)}"
+        return [{"dossier": d, "depot": v.get("depot", d), "url": f"{forge}/{v.get('depot', d)}",
+                 "machines": v.get("machines") or [], "chemin": v.get("chemin")}
+                for d, v in sats.items() if isinstance(v, dict)]
+
     def __getitem__(self, cle: str):  # les blocs lisent m["agents"]…
         return getattr(self, cle)
 
@@ -357,8 +396,18 @@ def bloc_outils(m: dict) -> str:
     return "\n".join(f"- **`{nom}`** — {resume or 'sans résumé déclaré'}" for nom, resume in m["outils"])
 
 
+def bloc_satellites(m: dict) -> str:
+    lignes = ["| Dossier | Dépôt | Machines |", "|---|---|---|"]
+    for s in m["satellites"]:
+        # un wiki Gitea se lit à l'adresse du dépôt, suivie de /wiki
+        url = s["url"][:-len(".wiki")] + "/wiki" if s["depot"].endswith(".wiki") else s["url"]
+        ou = f"`{s['chemin']}` (hors du brain)" if s["chemin"] else f"`{s['dossier']}/`"
+        lignes.append(f"| {ou} | [{s['depot']}]({url}) | {', '.join(s['machines']) or '—'} |")
+    return "\n".join(lignes)
+
+
 BLOCS = {"sessions": bloc_sessions, "agents": bloc_agents, "tables": bloc_tables,
-         "routes": bloc_routes, "outils": bloc_outils}
+         "routes": bloc_routes, "outils": bloc_outils, "satellites": bloc_satellites}
 
 
 VALEURS = {
@@ -369,6 +418,7 @@ VALEURS = {
     "NB_VUES": lambda m: str(len(m.vues)),
     "NB_ROUTES": lambda m: str(len(m.routes)),
     "NB_OUTILS": lambda m: str(len(m.outils)),
+    "NB_SATELLITES": lambda m: str(len(m.satellites)),
     "TYPES_DE_COMMIT": lambda m: ", ".join(f"`{x}:`" for x in m.types_commit),
 }
 
@@ -438,6 +488,10 @@ def attendu(brain: Path) -> dict[str, str]:
                                                   f"{src_rel}/{p.name}", m)
     if not vues or not voulu:
         raise Illisible(f"aucune source dans {', '.join(c for c, _ in CIBLES)}")
+    for src_rel, out_rel in FICHIERS:
+        if (brain / src_rel).is_file():
+            voulu[out_rel] = rendre((brain / src_rel).read_text(encoding="utf-8"), src_rel,
+                                    m or mesurer(brain))
     return voulu
 
 

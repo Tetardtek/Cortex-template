@@ -5,38 +5,70 @@ brain-ui/node_modules/
 # Brain engine
 brain-engine/.venv/
 
-# Satellite repos (replaced by your own clones during setup)
-# Each satellite is autonomous with its own git remote.
-# Placeholder READMEs are tracked to guide new users.
+# >>> satellites — calculé depuis gabarit/couches.yml par sync-template.sh, ne pas éditer
+# Chaque satellite est un dossier à toi : son dépôt l'ignore, sauf ce que le
+# gabarit y livre (README, modèles). Tu le versionnes à part — docs/satellites.md.
+profil/*
+!profil/CLAUDE.md.example
+!profil/README.md
+!profil/identity.exemple/
+profil/identity.exemple/*
+!profil/identity.exemple/INDEX.md
+!profil/identity.exemple/README.md
+!profil/identity.exemple/career.md
+!profil/identity.exemple/collaboration-rules.md
+!profil/identity.exemple/convictions.md
+!profil/identity.exemple/methods.md
+!profil/identity.exemple/origin.md
+!profil/identity.exemple/personality.md
+!profil/identity.exemple/relationships.md
+!profil/identity.exemple/schedule.md
+!profil/specs/
+profil/specs/*
+!profil/specs/anti-hallucination.md
+!profil/specs/architecture.md
+!profil/specs/bsi-spec.md
+!profil/specs/collaboration.md
+!profil/specs/context-hygiene.md
+!profil/specs/file-types.md
+!profil/specs/handoff-matrix.md
+!profil/specs/memory-integrity.md
+!profil/specs/orchestration-patterns.md
+!profil/specs/plan-review-agents.md
+!profil/specs/scribe-system.md
+projets/*
+!projets/README.md
+!projets/_template.md
+handoffs/*
+!handoffs/README.md
+!handoffs/_template.md
+infrastructure/*
+!infrastructure/README.md
+workspace/*
+!workspace/README.md
+!workspace/backlog/
+workspace/backlog/*
+!workspace/backlog/.gitkeep
+!workspace/scratch/
+workspace/scratch/*
+!workspace/scratch/.gitkeep
+learning/*
+!learning/README.md
+todo/*
+!todo/README.md
 toolkit/*
 !toolkit/README.md
-profil/*
-!profil/README.md
-!profil/CLAUDE.md.example
-# Les specs du PROGRAMME partent avec le gabarit (tranché le 04/09) — ce sont
-# les données personnelles de profil/ qui restent au fork.
-!profil/specs/
-# La FORME de l'identité, sans contenu : un fork sait quoi remplir. `identity/`
-# lui-même ne part jamais (BRAIN-056).
-!profil/identity.exemple/
 progression/*
 !progression/README.md
 reviews/*
 !reviews/README.md
-todo/*
-!todo/README.md
-# Ce qu'écrit une session `learning` : un satellite comme les autres.
-learning/*
-!learning/README.md
-# BRAIN-080 — la vie (privée, jamais indexée) et la production (lue par le MCP).
 vie/*
 !vie/README.md
 contenu/*
 !contenu/README.md
-
-# Le brouillon des sessions : volatile, jamais versionne (le dossier, seulement)
-workspace/scratch/*
-!workspace/scratch/.gitkeep
+# Tes surcharges et compléments d'agents : un satellite aussi (brain vue crée le dossier).
+/instance/agents/
+# <<< satellites
 # Instance-specific (never committed)
 # L'instantane du focus, reecrit a chaque passage de l'indexeur (toutes les 2 h)
 focus.instantane.md

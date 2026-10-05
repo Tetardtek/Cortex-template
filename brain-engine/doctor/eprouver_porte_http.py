@@ -54,7 +54,7 @@ LECTURES = [
     ("/state",       "l'environnement dérivé — Layer 2"),
     ("/focus",       "la direction active — base + disque"),
     ("/agents",      "le registre des agents — disque"),
-    ("/intentions",  "les intentions — base"),
+    # `/intentions` retirée le 4/10 : le focus se suit dans les fiches.
     ("/workflows",   "ce qui avance en autonomie — sous-processus"),
     ("/bsi/claims",  "les claims, SANS include_peers"),
     ("/bsi/locks",   "les verrous locaux"),

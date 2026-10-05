@@ -9,8 +9,8 @@
     },
     backlog: {
       title: 'Backlog',
-      description: 'Vos visions, intentions et todos — organisees par projet et priorite.',
-      features: ['Visions par projet', 'Intentions avec dependances', 'Progression en temps reel', 'Promote intention → sprint'],
+      description: 'Les fiches de chaque projet : ouvertes, en cours, livrées.',
+      features: ['Fiches par projet', 'En cours, calculé des PR fusionnées', 'Livrées sur preuve', 'Visions par projet'],
     },
     agents: {
       title: 'Agents',

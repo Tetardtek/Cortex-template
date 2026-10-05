@@ -14,8 +14,8 @@ ordre: 6
 ## Pourquoi Dolt
 
 Dolt est une base SQL **versionnée comme git** : chaque changement se commite,
-se compare, se retrouve. Ce que le brain structure — sessions, intentions,
-todos, décisions, index de recherche — se requête en une ligne de SQL au lieu
+se compare, se retrouve. Ce que le brain structure — sessions, décisions,
+catalogue des agents, index de recherche — se requête en une ligne de SQL au lieu
 d'être recoupé à la main entre des fichiers.
 
 ## Où elle vit
@@ -39,7 +39,7 @@ remplit en travaillant.
 `brain-engine/views-dolt.sql`.*
 
 Chaque table appartient à un **module** (les sessions, le catalogue, la
-recherche, les intentions…) : `brain-engine/modules.yml` les range, et la suite
+recherche…) : `brain-engine/modules.yml` les range, et la suite
 de tests refuse une table que personne ne possède.
 
 Les tables qui comptent au quotidien :
@@ -47,7 +47,6 @@ Les tables qui comptent au quotidien :
 | Table | Ce qu'elle garde |
 |---|---|
 | `claims` | une ligne par session : type, périmètre, durée, résultat |
-| `intentions` | les objectifs qui durent plusieurs sessions |
 | `projects` | les projets et leur statut |
 | `decisions` | les décisions d'architecture |
 | `embeddings` | l'index de la recherche sémantique |
@@ -73,8 +72,8 @@ Avec n'importe quel client MySQL, sur `127.0.0.1:3307`, base `brain-dolt` :
 -- les projets par statut
 SELECT status, COUNT(*) FROM projects GROUP BY status;
 
--- les intentions au front, dans l'ordre
-SELECT id, title FROM intentions WHERE front = 1 ORDER BY front_order;
+-- les dernières décisions acceptées
+SELECT id, title FROM decisions WHERE status = 'accepted' ORDER BY date DESC LIMIT 5;
 
 -- les sessions ouvertes, par type
 SELECT type, COUNT(*) FROM claims WHERE status = 'open' GROUP BY type;

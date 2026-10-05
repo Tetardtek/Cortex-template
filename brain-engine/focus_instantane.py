@@ -43,37 +43,13 @@ def rendre(data: dict) -> str:
         lines.append(cap)
         lines.append('')
 
-    front = data.get('front', [])
-    if front:
-        lines.append('## Front rotatif\n')
-        for i, item in enumerate(front, 1):
-            ns = item.get('next_step', '')
-            sessions = item.get('total_sessions', 0)
-            lines.append(f"**#{i}** {item['id']} — {item.get('project', '')} ({sessions}s)")
-            if ns:
-                lines.append(f"  → {ns}")
-        lines.append('')
-
-    active = data.get('active', [])
-    if active:
-        lines.append(f"## Actives ({len(active)} + {len(front)} front)\n")
-        for item in active:
-            lines.append(f"- **{item['id']}** [{item.get('project', '')}]")
-        lines.append('')
-
-    stasis_count = data.get('stasis_count', 0)
-    if stasis_count:
-        lines.append(f"## Stasis ({stasis_count})\n")
-        lines.append(f"> {stasis_count} intentions en pause — `brain_intentions(status=\"stasis\")` pour le detail.")
-        lines.append('')
-
-    projects = data.get('projects', [])
-    if projects:
-        lines.append('## Projets\n')
-        lines.append('| Projet | Actives | Stasis |')
-        lines.append('|--------|---------|--------|')
-        for p in projects:
-            lines.append(f"| {p['project']} | {p.get('active_count', 0)} | {p.get('stasis_count', 0)} |")
+    en_cours = data.get('en_cours', [])
+    if en_cours:
+        lines.append('## En cours\n')
+        lines.append('> Calculé : une PR fusionnée depuis moins de 7 jours porte la fiche.\n')
+        for item in en_cours:
+            lines.append(f"- **{item['fiche']}** [{item.get('projet', '')}] {item.get('titre', '')} "
+                         f"— {item.get('prs', 0)} PR, la dernière le {item.get('derniere', '')[:10]}")
         lines.append('')
 
     last = data.get('last_session')

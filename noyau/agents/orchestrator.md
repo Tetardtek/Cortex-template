@@ -90,7 +90,7 @@ Demande soumise
   ├─ symptôme vague, sans données → UNE question ciblée
   ├─ symptômes clairs, code, logs → identifier les domaines, déléguer
   └─ plusieurs domaines → les agents dans l'ordre d'intervention
-       (ex. code-review avant optimizer, vps avant ci-cd)
+       (ex. code-review avant optimizer-backend, vps avant ci-cd)
 ```
 
 ### Matrice de délégation

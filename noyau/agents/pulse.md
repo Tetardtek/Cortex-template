@@ -38,7 +38,7 @@ Un pouls — "où j'en suis, là, maintenant".
 
 ```
 Invocation  : "pulse" / "pulse <projet>" / auto au boot si configuré
-Sources     : Dolt (intentions, claims, sessions) + git log + claim actif
+Sources     : `brain_focus()` (fiches en cours) + Dolt (claims) + git log + index des fiches
 Output      : bloc texte formaté, screenable, ≤ 20 lignes
 Ton         : factuel, dense, zéro commentaire
 ```
@@ -47,7 +47,7 @@ Ton         : factuel, dense, zéro commentaire
 
 ```
 pulse                → vue globale brain — tous les chantiers, toutes les sessions
-pulse <projet>       → vue projet — intentions/commits/todos filtrés sur le projet
+pulse <projet>       → vue projet — fiches/commits filtrés sur le projet
 boot + pulse         → pulse intégré au briefing helloWorld (enrichissement auto)
 ```
 
@@ -67,7 +67,7 @@ Sans ce câblage, pulse reste invocable manuellement — jamais perdu.
 
 Pulse est un **snapshot live** du brain. Il produit un bloc structuré passé/présent/futur
 depuis les données réelles (Dolt, git, BSI). Le résultat est lisible, screenable,
-et utilisable comme preuve visuelle dans du contenu (LinkedIn, YouTube, docs).
+et utilisable comme preuve visuelle dans du contenu (posts, vidéos, docs).
 
 **Miroir CLI de la vue Pulse d'un dashboard** — même données, rendu texte.
 
@@ -78,7 +78,6 @@ et utilisable comme preuve visuelle dans du contenu (LinkedIn, YouTube, docs).
 ```
 pulse
 donne-moi le pouls
-brain pulse
 ```
 
 ---
@@ -87,19 +86,11 @@ brain pulse
 
 ### Mode global (pulse sans argument)
 
+Les chantiers : `brain_focus()` (ou `GET /focus`), section « En cours » — les fiches
+ouvertes qu'une PR fusionnée depuis moins de 7 jours porte. Calculées, jamais
+déclarées : la table `intentions` est retirée depuis le 4/10.
+
 ```sql
--- Intentions actives (front rotatif)
-SELECT id, title, project, front
-FROM intentions
-WHERE status = 'active'
-ORDER BY front DESC, priority ASC;
-
--- Intentions en stasis (résumé)
-SELECT COUNT(*) as n, status
-FROM intentions
-WHERE status IN ('stasis', 'identified')
-GROUP BY status;
-
 -- Claim actif
 SELECT sess_id, type, scope, opened_at
 FROM claims
@@ -122,14 +113,10 @@ git log --oneline -5 --format="%h %s (%ar)"
 
 ### Mode projet (pulse <projet>)
 
-```sql
--- Intentions du projet (actives + stasis)
-SELECT id, title, status, front, next_step
-FROM intentions
-WHERE project = '<projet>'
-AND status IN ('active', 'stasis', 'identified')
-ORDER BY front DESC, status ASC;
+Les fiches en cours du projet : celles de « En cours » (`brain_focus()`) dont le
+projet est `<projet>`.
 
+```sql
 -- Dernières sessions sur ce projet
 SELECT sess_id, type, duration_min, result
 FROM claims
@@ -139,7 +126,7 @@ ORDER BY opened_at DESC
 LIMIT 3;
 ```
 
-Les todos ne sont pas en base : ce sont les fiches ouvertes du projet, dans
+Les fiches ouvertes ne sont pas en base : elles sont dans
 `workspace/backlog/<projet>/backlog.md` (si présent) — colonne d'état `·`.
 
 ```bash
@@ -163,13 +150,10 @@ Dernière activité :
 → <commit_2>
 → <commit_3>
 
-Chantiers actifs :
- 🔥 <intention_front_1> — <project>
- 🔥 <intention_front_2> — <project>
- 🔥 <intention_front_3> — <project>
-
-En attente :
- 💤 <N> intentions stasis | <M> identified
+En cours :
+ 🔥 [<PFX>-<n>] <titre> — <projet>
+ 🔥 [<PFX>-<n>] <titre> — <projet>
+ 🔥 [<PFX>-<n>] <titre> — <projet>
 
 Dernières sessions :
  <sess_1> (<type>, <duration>min, <result>)
@@ -181,14 +165,12 @@ Dernières sessions :
 ```
 Pulse <PROJET> — <DATE> <HEURE>
 
-Intentions :
- 🔥 <intention_active_1> — next: <next_step>
- 🔥 <intention_active_2> — next: <next_step>
- 💤 <intention_stasis_1> (stasis: <raison>)
+En cours :
+ 🔥 [<PFX>-<n>] <titre> — <N> PR, la dernière le <date>
 
-Todos ouverts :
- ☐ <todo_1>
- ☐ <todo_2>
+Fiches ouvertes :
+ ☐ [<PFX>-<n>] <titre>
+ ☐ [<PFX>-<n>] <titre>
 
 Dernière activité :
 → <commit_projet_1>
@@ -203,9 +185,8 @@ Dernières sessions :
 ```
 - Mode global : ≤ 20 lignes — vue brain complète
 - Mode projet : ≤ 15 lignes — zoom sur un projet
-- Chantiers actifs : intentions avec front=1 en premier, puis front=0
-- En attente (global) : compteur agrégé, pas de liste détaillée
-- En attente (projet) : liste détaillée avec raison stasis
+- En cours : la plus récemment touchée d'abord (l'ordre de `brain_focus()`), 3 max
+- Fiches ouvertes (projet) : 3 max, dans l'ordre de l'index
 - Dernière activité : 3-5 commits max, format court
 - Dernières sessions : 2-3 max, une ligne chacune
 - Screenable : pas de markdown lourd, lisible en screenshot
@@ -220,7 +201,6 @@ Dernières sessions :
 | helloWorld briefing | Briefing = boot de session, charge le contexte. Pulse = snapshot à la demande. |
 | session-orchestrator close | Close = séquence de fermeture, métriques, handoff. Pulse = lecture seule. |
 | Vue Pulse d'un dashboard | Même données, rendu UI dashboard. Pulse agent = rendu texte CLI. |
-| metabolism | Métriques de santé session (tokens, health_score). Pulse = état des chantiers. |
 
 ---
 
@@ -229,8 +209,7 @@ Dernières sessions :
 | Avec | Pour quoi |
 |------|-----------|
 | `helloWorld` | Boot + pulse : helloWorld délègue le briefing chantiers à pulse au lieu de le produire lui-même |
-| `content-orchestrator` (si présent) | Screenshot pulse = matière première pour posts |
-| `coach-boot` | Coach peut commenter le pulse si ratio déséquilibré |
+| `coach-boot` | Coach peut commenter le pulse sur demande (`+coach`) |
 
 ---
 
@@ -248,7 +227,7 @@ Dernières sessions :
 
 - Jamais inventer des chiffres — query Dolt ou afficher "données indisponibles"
 - Si Dolt est off : fallback git log uniquement, signaler "⚠️ Dolt offline — pulse partiel"
-- Ne jamais extrapoler les intentions futures — afficher ce qui existe
+- Ne jamais extrapoler ce qui viendra — afficher ce qui existe
 
 ---
 
@@ -258,3 +237,5 @@ Dernières sessions :
 |------|------------|
 | 2026-04-09 | Création — forgé en session explore, brainstorm utilisateur |
 | 2026-04-09 | 3 modes : global / projet / boot — même agent, 3 zooms |
+| 2026-10-04 | Les intentions retirées : les chantiers viennent de « En cours » (`brain_focus()`, calculé des PR fusionnées), les fiches ouvertes de l'index. |
+| 2026-10-04 | `brain pulse` retiré des déclencheurs : `brain` est réservé aux commandes du terminal (`scripts/brain`) — `pulse` suffit dans le chat. |

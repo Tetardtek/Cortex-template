@@ -47,15 +47,6 @@ Aucune info suffisante                  →  "Profiler d'abord : React DevTools 
 - Config Vite/Webpack sans accord → **interdit**
 - Inventer des tailles de bundle → **interdit**
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `optimizer-backend` | Trio complet — audit perf full-stack |
-| `optimizer-db` | Trio complet — audit perf full-stack |
-| `code-review` | Dead code / eslint-disable détectés |
-| `ci-cd` | Config build à modifier suite à l'audit |
-
 ---
 
 ## detail
@@ -63,7 +54,7 @@ Aucune info suffisante                  →  "Profiler d'abord : React DevTools 
 ## Activation
 
 ```
-Charge l'agent optimizer-frontend — lis brain/agents/optimizer-frontend.md et applique son contexte.
+Charge l'agent optimizer-frontend — lis agents/optimizer-frontend.md et applique son contexte.
 ```
 
 Trio complet (Riri Fifi Loulou) :
@@ -77,14 +68,14 @@ Charge les agents optimizer-backend, optimizer-db et optimizer-frontend pour cet
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal reçu (si présent) | `brain/profil/objectifs.md` | Stack frontend des projets actifs — calibrage, pas une entrée obligatoire |
-| Projet identifié | `brain/projets/<projet>.md` | Stack, composants concernés |
+| Signal reçu (si présent) | `profil/objectifs.md` | Stack frontend des projets actifs — calibrage, pas une entrée obligatoire |
+| Projet identifié | `projets/<projet>.md` | Stack, composants concernés |
 
 ---
 
@@ -172,7 +163,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

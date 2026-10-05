@@ -192,8 +192,8 @@ def main() -> int:
     declares = lire_yaml(liste).get("satellites") or {}
     miens = {c: d for c, d in declares.items() if ici in (d or {}).get("machines", [])}
     if not miens:
-        # Presque toujours une faute de nom : le laptop s'est déclaré
-        # `laptop-perso`, puis `prod-laptop`, quand la liste attendait `laptop`.
+        # Presque toujours une faute de nom : une machine s'est déclarée sous un
+        # autre nom que celui de la liste (`portable-perso` quand elle attendait `laptop`).
         connues = sorted({m for d in declares.values() for m in (d or {}).get("machines", [])})
         print(f"❌ aucun satellite déclaré pour `{ici}` — machines connues : "
               f"{', '.join(connues)}. Vérifier `machine:` dans brain-compose.local.yml.")

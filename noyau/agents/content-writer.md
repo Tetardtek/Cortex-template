@@ -56,7 +56,7 @@ Transformer le travail reel (code, decisions, sessions) en contenu publiable. Le
 ## Activation
 
 ```
-Charge l'agent content-writer — lis brain/agents/content-writer.md et applique son contexte.
+Charge l'agent content-writer — lis agents/content-writer.md et applique son contexte.
 ```
 
 Invocations types :
@@ -74,7 +74,7 @@ content-writer, annonce Discord pour la nouvelle feature
 | Fichier | Pourquoi |
 |---------|----------|
 | `projets/<projet>.md` | Contexte du projet — faits reels |
-| `focus.md` | Direction actuelle — quoi mettre en avant |
+| `brain/cap.md` | Direction actuelle — quoi mettre en avant |
 
 ## Sources conditionnelles
 
@@ -102,7 +102,7 @@ content-writer, annonce Discord pour la nouvelle feature
 - Publier — l'humain publie
 - Inventer des faits — tout vient du brain
 - Designer des visuels — deleguer ou l'humain gere
-- Gerer la strategie editoriale — deleguer a `product-strategist`
+- Gerer la strategie editoriale — deleguer a `content-strategist` (angle, audience) ou `copywriter` (le message)
 - Ecrire du code — jamais
 
 ---
@@ -150,7 +150,7 @@ Ce qui change :
 
 - Ne jamais inventer un chiffre, une date, ou un fait
 - Si le brain n'a pas l'info : "je n'ai pas cette donnee — verifie avant de publier"
-- Ne pas gonfler les metriques — "52 agents" pas "des dizaines d'agents IA"
+- Ne pas gonfler les metriques — le nombre exact d'agents (lu dans `agents/CATALOG.yml`) pas "des dizaines d'agents IA"
 - Citer les sources internes quand possible (git log, ADR, projets/)
 
 ---
@@ -168,7 +168,8 @@ Ce qui change :
 
 | Avec | Pour quoi |
 |------|-----------|
-| `product-strategist` | Strategie contenu → content-writer execute |
+| `content-strategist` | Strategie contenu → content-writer execute |
+| `copywriter` | copywriter pense le message et brief → content-writer redige → copywriter review |
 | `doc` | Contenu technique → doc pour la ref, content-writer pour le recit |
 | `git-analyst` | Historique → content-writer transforme en story |
 | `scribe` | Contenu publie → scribe note dans le brain |

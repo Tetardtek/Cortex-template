@@ -54,9 +54,13 @@ def _statut(fichier: Path) -> str | None:
     return str(s) if s is not None else None
 
 
-def _age_jours(brain: Path, fichier: Path, maintenant: float) -> float:
-    r = subprocess.run(["git", "-C", str(brain), "log", "-1", "--format=%ct", "--",
-                        str(fichier.relative_to(brain))], capture_output=True, text=True)
+def _age_jours(fichier: Path, maintenant: float) -> float:
+    # Interrogé DEPUIS le dossier du handoff : `handoffs/` peut être un dossier
+    # suivi par le brain ou un satellite, son propre dépôt. Depuis le brain, un
+    # satellite n'a pas d'historique — tous les âges retomberaient sur la date de
+    # modification, sans erreur. Depuis le dossier, git trouve le bon dépôt.
+    r = subprocess.run(["git", "-C", str(fichier.parent), "log", "-1", "--format=%ct", "--",
+                        fichier.name], capture_output=True, text=True)
     quand = float(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else fichier.stat().st_mtime
     return (maintenant - quand) / 86400
 
@@ -76,7 +80,7 @@ def juger(brain: Path, jours: int = SEUIL_JOURS, maintenant: float | None = None
                            f"{' | '.join(sorted(STATUTS))}")
             continue
         if s == "active":
-            age = _age_jours(Path(brain), f, maintenant)
+            age = _age_jours(f, maintenant)
             if age > jours:
                 defauts.append(f"handoffs/{f.name} : actif depuis {int(age)} j (seuil {jours}) — "
                                f"le reprendre, ou le passer consumed / archived")
@@ -122,6 +126,26 @@ def auto_epreuve() -> list[str]:
             (b / "handoffs" / nom).unlink()
             subprocess.run(["git", "commit", "-qam", f"retire {nom}"], cwd=b, env=env,
                            capture_output=True)
+
+    # `handoffs/` en satellite : son historique vit dans SON dépôt.
+    # Le témoin du défaut : daté depuis le brain, le vieil actif — écrit sur le
+    # disque à l'instant — paraîtrait frais.
+    with tempfile.TemporaryDirectory(prefix="handoffs-sat-") as tmp:
+        b = Path(tmp)
+        h = b / "handoffs"
+        h.mkdir()
+        (b / ".gitignore").write_text("/handoffs/\n", encoding="utf-8")
+        for d in (b, h):
+            subprocess.run(["git", "init", "-q"], cwd=d, env=env, capture_output=True)
+        subprocess.run(["git", "add", ".gitignore"], cwd=b, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "brain"], cwd=b, env=env, capture_output=True)
+        date = f"@{int(maintenant - 20 * 86400)} +0000"
+        (h / "vieux.md").write_text("---\nname: vieux\nstatus: active\n---\n", encoding="utf-8")
+        subprocess.run(["git", "add", "vieux.md"], cwd=h, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "vieux"], cwd=h, capture_output=True,
+                       env={**env, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date})
+        if not any("vieux.md" in d for d in juger(b, maintenant=maintenant)[0]):
+            rates.append("non vu : un actif de plus de 14 j dans un satellite handoffs/")
     return rates
 
 
@@ -145,7 +169,7 @@ def main() -> int:
 
     defauts, n = juger(brain, a.jours)
     print("\nLES HANDOFFS\n")
-    print(f"  auto-épreuve         3 défauts vus, des handoffs sains ne rougissent pas")
+    print(f"  auto-épreuve         4 défauts vus (un dans un satellite), des handoffs sains ne rougissent pas")
     print(f"  handoffs jugés       {n} (seuil d'un actif : {a.jours} j)")
     nettoyable = brain / "scripts" / "scratch-nettoyable.py"
     if nettoyable.is_file():

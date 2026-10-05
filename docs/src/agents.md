@@ -38,9 +38,18 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 
 `agents/_template.md` est le gabarit d'un agent, et `agents/_conventions.md`
 ses conventions. Ton agent s'écrit dans `instance/agents/<nom>.md` — pas dans
-`agents/`, qui est une vue — puis `brain vue --construire` le rend visible. Pour
-modifier un agent du noyau, copie-le dans `instance/agents/` : ta version
-l'emporte, et celle du noyau reste là pour comparer. `agent-review` audite un agent existant : ce qu'il promet,
+`agents/`, qui est une vue — puis `brain vue --construire` le rend visible.
+
+Pour **ajouter** à un agent du noyau ce qui t'est propre — ton niveau, ta façon de
+travailler avec lui —, écris seulement l'ajout dans
+`instance/agents/<nom>.complement.md` : la vue assemble l'agent du noyau puis ton
+complément, et une mise à jour du noyau t'arrive toujours. Une ligne
+`<!-- carte: <dossier> -->` dans un complément y devient ta carte de compétences,
+calculée depuis les tableaux « Compétence | Niveau | Preuve » de ce dossier de ta
+progression (`resume` après le dossier : les seuls comptes) — une seule vérité, qui ne
+joue que sur le calibrage des réponses de l'agent. Pour le **remplacer**
+entièrement, copie-le dans `instance/agents/<nom>.md` : ta version l'emporte, mais
+les corrections du noyau ne lui arrivent plus — tu la tiens alignée. `agent-review` audite un agent existant : ce qu'il promet,
 ce qu'il fait, ce qui chevauche un autre.
 
 Certains agents renvoient à des agents que ce brain n'a pas : ceux de l'instance

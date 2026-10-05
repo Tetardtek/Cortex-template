@@ -178,8 +178,9 @@ def main() -> int:
     # se chargeait, pas que le changement etait sans effet.
     #
     # Tous ceux-ci sont en LECTURE. Aucun outil d'ecriture n'est appele ici.
+    # `brain_intentions` retiré le 4/10 : le focus se suit dans les fiches.
     lecture = ["brain_agents", "brain_decisions", "brain_focus", "brain_content",
-               "brain_workflows", "brain_intentions"]
+               "brain_workflows"]
     muets = []
     for nom in lecture:
         f = getattr(m, nom, None)

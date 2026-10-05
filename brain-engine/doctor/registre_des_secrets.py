@@ -7,11 +7,9 @@ exactement comme un registre juste.
 
 Mesuré le 10/09, avant d'écrire ce contrôle :
 
-    MYSECRETS          79 cles a valeur non vide
-    secrets.yml        28 cles declarees
-    non declarees      73
-    declarees fantomes 22   dont OSTIZ_ENCRYPTION_KEY — un `P` manquant devant
-                            POSTIZ_ENCRYPTION_KEY, invisible depuis cinq mois
+    la plupart des cles de MYSECRETS n'etaient declarees nulle part ;
+    une vingtaine de cles declarees n'existaient pas — dont une a qui il
+    manquait sa premiere lettre, invisible depuis cinq mois
 
 Et un second registre, `SECRETS_REGISTRY` (empreintes SHA256), figé le jour
 même de sa création — 16/03 18:22 — que `BRAIN-040` n'a jamais retiré en en

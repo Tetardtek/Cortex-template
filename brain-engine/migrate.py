@@ -675,13 +675,19 @@ def migrate_sessions_backend(dry_run: bool = False) -> int:
     # reference a column, found: __new_ins.date ». Mesuré le 04/09, et l'échec
     # s'est plaint au lieu d'écrire à moitié.
     #
-    # `COALESCE` dans le UPDATE protège ce que metabolism-scribe a déjà
+    # `COALESCE` dans le UPDATE protège ce qu'une autre écriture a déjà
     # renseigné : la dérivation complète, elle n'écrase pas.
+    #
+    # Une session déjà archivée n'est pas recréée, même si son claim vit
+    # encore. Chaque ouverture de claim rejoue cette dérivation : le 27/09, une
+    # session archivée à 11:49 est revenue à 12:09, et l'archivage suivant l'a
+    # refusée comme doublon.
     try:
         db.execute(
             "INSERT IGNORE INTO sessions (sess_id, date, type, handoff_level) "
             "SELECT sess_id, DATE_FORMAT(opened_at, '%%Y-%%m-%%d'), type, "
-            "       CAST(handoff_level AS CHAR) FROM claims")
+            "       CAST(handoff_level AS CHAR) FROM claims "
+            "WHERE sess_id NOT IN (SELECT sess_id FROM sessions_archive)")
         db.execute(
             "UPDATE sessions s JOIN claims c ON s.sess_id = c.sess_id SET "
             "  s.date          = COALESCE(DATE_FORMAT(c.opened_at, '%%Y-%%m-%%d'), s.date), "
@@ -740,8 +746,8 @@ def migrate_sessions(conn: sqlite3.Connection, dry_run: bool = False) -> int:
     Peuple la table sessions depuis claims (BE-2b).
 
     Stratégie : claims = sessions — chaque claim est une session brain.
-    Les champs metabolism (tokens_used, duration_min, etc.) restent NULL
-    jusqu'à ce que metabolism-scribe les alimente directement.
+    Les autres champs (tokens_used, duration_min, etc.) restent NULL : la
+    dérivation ne les invente pas.
 
     Mapping :
       claims.sess_id       → sessions.sess_id
@@ -779,13 +785,21 @@ def migrate_sessions(conn: sqlite3.Connection, dry_run: bool = False) -> int:
         f"{c:19} = COALESCE(excluded.{c}, sessions.{c})"
         for c in colonnes if c != "sess_id")
 
-    # UPSERT : ne pas écraser les champs metabolism déjà renseignés
+    # Une session déjà archivée ne revient pas, même si son claim vit encore :
+    # recréée, l'archivage suivant la refusait comme doublon. Une base plus
+    # ancienne que `sessions_archive` n'a rien à exclure.
+    archive = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                           "AND name='sessions_archive'").fetchone()
+    pas_archivee = ("c.sess_id NOT IN (SELECT sess_id FROM sessions_archive)"
+                    if archive else "TRUE")
+
+    # UPSERT : ne pas écraser les champs déjà renseignés
     conn.execute(f"""
         INSERT INTO sessions({', '.join(colonnes)})
         SELECT
             {', '.join(selection)}
         FROM claims c
-        WHERE TRUE
+        WHERE {pas_archivee}
         ON CONFLICT(sess_id) DO UPDATE SET
             {maj}
     """)

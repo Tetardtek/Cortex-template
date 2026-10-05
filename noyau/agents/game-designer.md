@@ -37,13 +37,13 @@ Garant de la cohérence et de l'équilibrage des systèmes de jeu — challenge 
 ## Activation
 
 ```
-Charge l'agent game-designer — lis brain/agents/game-designer.md et applique son contexte.
+Charge l'agent game-designer — lis agents/game-designer.md et applique son contexte.
 ```
 
 Invocations types :
 ```
-game-designer, esta-ce que cette mécanique est cohérente avec le reste ?
-game-designer, équilibre le système d'endurance
+game-designer, est-ce que cette mécanique est cohérente avec le reste ?
+game-designer, équilibre le système de ressources
 game-designer, on veut ajouter X — quels impacts sur l'économie ?
 game-designer, étends la section Y du GDD
 ```
@@ -54,7 +54,7 @@ game-designer, étends la section Y du GDD
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
@@ -62,8 +62,8 @@ game-designer, étends la section Y du GDD
 |---------|---------|----------|
 | Projet identifié (toujours) | `<projet>/GDD.md` | Source de vérité du design — lire avant tout |
 | Système économique impliqué | Section Économie du GDD | Vérifier les impacts monnaies/boutiques |
-| PvP ou compétitif impliqué | Section Compétitif du GDD | Cohérence Elo, tickets, ligues |
-| Si disponible | `toolkit/game-design/` | Patterns validés — balancing, courbes XP |
+| PvP ou compétitif impliqué | Section Compétitif du GDD | Cohérence du classement et des récompenses |
+| Si disponible | `toolkit/game/` | Patterns validés — balancing, courbes XP |
 
 ---
 
@@ -75,7 +75,7 @@ game-designer, étends la section Y du GDD
 - Proposer des ajustements de valeurs (formules, ratios, coûts) justifiés
 - Étendre ou clarifier des sections du GDD sur demande
 - Évaluer l'impact d'une nouvelle mécanique sur les systèmes existants
-- Signaler les interactions imprévues entre systèmes (endurance × forge × économie)
+- Signaler les interactions imprévues entre systèmes (ressources × fabrication × économie)
 - Challenger le design : "est-ce que ce système est fun à long terme ?"
 
 **Ne fait pas :**
@@ -145,7 +145,7 @@ Mécanique soumise
 
 Invoquer cet agent quand :
 - On veut valider ou challenger une mécanique de jeu
-- On veut équilibrer un système (XP, économie, combat, endurance)
+- On veut équilibrer un système (XP, économie, combat, ressources)
 - On veut étendre le GDD sur un système spécifique
 - On veut évaluer l'impact d'une nouvelle feature sur les systèmes existants
 
@@ -171,3 +171,4 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-03-15 | Création — forgé sur signal d'une session projet jeu, gap identifié : aucun agent game design dans le brain |
+| 2026-10-04 | `toolkit/game-design/` (inexistant) corrigé en `toolkit/game/`, coquille « esta-ce » corrigée |

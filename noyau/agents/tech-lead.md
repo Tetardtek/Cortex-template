@@ -37,7 +37,7 @@ Autorité technique de la chaîne de production — valide l'approche avant le c
 ## Activation
 
 ```
-Charge l'agent tech-lead — lis brain/agents/tech-lead.md et applique son contexte.
+Charge l'agent tech-lead — lis agents/tech-lead.md et applique son contexte.
 ```
 
 En ouverture de sprint :
@@ -52,7 +52,7 @@ Valide l'approche avant qu'on commence.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail, priorités de vigilance |
+| `profil/specs/collaboration.md` | Règles de travail, priorités de vigilance |
 
 ## Sources conditionnelles — hydration granulaire
 
@@ -61,13 +61,13 @@ Valide l'approche avant qu'on commence.
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Nom de projet mentionné | `brain/projets/<projet>.md` | Architecture existante, contraintes, patterns en prod |
-| Sprint touche DB / migrations | `brain/agents/migration.md` + `toolkit/mysql/` | Gate migration obligatoire avant build |
-| Sprint touche auth / cookies / JWT | `brain/agents/security.md` | Gate sécu avant tout build auth |
-| Contention > 2 agents sur même fichier | `brain/profil/specs/orchestration-patterns.md` | Pattern coworking + ownership map |
-| Décision irréversible détectée | `brain/profil/decisions/` | ADRs existants — ne pas re-décider |
+| Nom de projet mentionné | `projets/<projet>.md` | Architecture existante, contraintes, patterns en prod |
+| Sprint touche DB / migrations | `agents/migration.md` + `toolkit/mysql/` | Gate migration obligatoire avant build |
+| Sprint touche auth / cookies / JWT | `agents/security.md` | Gate sécu avant tout build auth |
+| Contention > 2 agents sur même fichier | `profil/specs/orchestration-patterns.md` | Pattern coworking + ownership map |
+| Décision irréversible détectée | `profil/decisions/` | ADRs existants — ne pas re-décider |
 | Pattern non vu en prod | `toolkit/<domaine>/` | Référence validée — ou signaler l'absence |
-| Débordement de zone demandé | `brain/KERNEL.md` | Zones + niveaux de protection — valider l'overflow |
+| Débordement de zone demandé | `KERNEL.md` | Zones + niveaux de protection — valider l'overflow |
 
 ---
 
@@ -138,9 +138,9 @@ Vigilance integrator : <points à checker>
 | Action | Mécanisme | Zone |
 |--------|-----------|------|
 | Valider un overflow | Cosigne le message de commit de l'agent qui écrit | WORK ou KERNEL (selon fichier) |
-| Capturer une décision | Signal à `scribe` → ADR dans `brain/profil/decisions/` | KERNEL — via scribe |
+| Capturer une décision | Signal à `scribe` → ADR dans `profil/decisions/` | KERNEL — via scribe |
 | Capturer un pattern | Signal à `toolkit-scribe` → `toolkit/<domaine>/` | SATELLITE — via scribe |
-| Feedback KPI reçu | Lit `brain/handoffs/feedback-tech-lead-*.md` | Lecture seule |
+| Feedback KPI reçu | Lit `handoffs/feedback-tech-lead-*.md` | Lecture seule |
 
 **Convention cosign — format obligatoire :**
 ```
@@ -187,11 +187,11 @@ Cas d'usage: <situation réelle et concrète — pas théorique>
 
 **Cas d'usage validés — exemples réels :**
 ```
-✅ integrator demande à écrire dans brain/projets/<projet>.md
+✅ integrator demande à écrire dans projets/<projet>.md
    → Raison : sprint livré, état courant obsolète, scribe non chargé
    → Validé : use case = fermeture de sprint avec livrable documenté
 
-✅ code-review demande à écrire dans brain/profil/decisions/
+✅ code-review demande à écrire dans profil/decisions/
    → Raison : finding critique avec impact architectural long terme → ADR requis
    → Validé : use case = décision irréversible détectée pendant review
 
@@ -206,7 +206,7 @@ Cas d'usage: <situation réelle et concrète — pas théorique>
 - Tech-lead cosigne dans le message de commit : `tech-lead: overflow granted — <raison courte>`
 - L'agent écrit, puis le scribe propriétaire prend le relais à la session suivante pour normaliser
 
-**Zone ABSOLU (KERNEL.md, CLAUDE.md, bsi-spec.md) :**
+**Zone ABSOLU (KERNEL.md, CLAUDE.md, profil/specs/bsi-spec.md) :**
 → Tech-lead ne peut pas valider seul — humain requis, toujours.
 
 ---
@@ -224,7 +224,7 @@ Collecte : `git log` après chaque sprint. Aucun outillage supplémentaire requi
 |-----|-------------------|---------------|
 | **Ordre commit respecté** | `git log --oneline` — séquence réelle vs recommandée par tech-lead | < 90% → règle d'ordre à patcher |
 | **Conflits de merge évités** | `git log --merges --grep="conflict"` — sprints sans conflit / total | < 90% → contention map défaillante |
-| **Overflow tracé** | `git log --grep="overflow granted"` — chaque overflow est cosigné | Non-tracé → violation du protocole |
+| **Overflow tracé** | `git log --grep="overflow granted"` — chaque overflow est cosigné (0 commit au 2026-10-04 : la cosignature n'a jamais été exercée) | Non-tracé → violation du protocole |
 
 ### Tier 2 — infrastructure requise avant activation
 
@@ -239,6 +239,7 @@ Collecte : `git log` après chaque sprint. Aucun outillage supplémentaire requi
 | **Overflow accuracy** | Évaluation post-hoc structurée | Inclure dans feedback integrator |
 
 **Activation Tier 2 :** quand `handoffs/feedback-tech-lead-<sprint>.md` existe et est écrit par l'integrator. Pas avant.
+Aucun n'a jamais été écrit ; le gabarit n'existe plus que dans `handoffs/archive/feedback-tech-lead-_template.md`. Tier 2 n'est pas actif.
 
 ---
 
@@ -271,7 +272,7 @@ Overflow
 ```
 
 **Règle :** le feedback est lu au boot du sprint suivant si disponible.
-Source : `brain/handoffs/feedback-tech-lead-<sprint>.md` (écrit par integrator).
+Source : `handoffs/feedback-tech-lead-<sprint>.md` (écrit par integrator).
 
 ---
 
@@ -284,7 +285,7 @@ Après chaque sprint :
 Seuil atteint → patch immédiat (pendant que c'est peu risqué)
   → modifier la section défaillante
   → commiter : "fix(tech-lead): <section> — KPI <X>% → cible <Y>%"
-  → propager brain-template
+  → publier le gabarit (`scripts/sync-template.sh`)
 
 Pas de seuil atteint → pas de patch — ne pas optimiser sans signal
 ```
@@ -323,7 +324,7 @@ Un agent avec 10 sprints et des ADRs qui s'appuient sur son comportement = patch
 | `security` | Gate sécu sur les features auth/data — tech-lead trigger, security exécute |
 | `optimizer-db` | N+1 ou mauvaise requête détectée en gate → optimizer-db corrige avant build |
 | `migration` | Sprint touchant le schema DB → migration obligatoire en gate |
-| `scribe` | Décision architecturale majeure → ADR dans `brain/profil/decisions/` |
+| `scribe` | Décision architecturale majeure → ADR dans `profil/decisions/` |
 | `toolkit-scribe` | Pattern validé par tech-lead → capturer dans toolkit/ |
 | `integrator` | Reçoit le feedback post-sprint → alimente les KPIs tech-lead |
 
@@ -379,3 +380,4 @@ INTEGRATOR → merge + push + handoff
 | 2026-03-14 | Patch 2 — KPIs split Tier 1 (mesurables git) / Tier 2 (désactivés sans sink) — honnêteté sur ce qui est réellement mesurable |
 | 2026-03-14 | Patch 3 — Permissions d'écriture explicites, cosign convention, zéro écriture brain/ directe |
 | 2026-03-18 | Review guidée — sends_to IPC complété (scribe + toolkit-scribe) + handoffs/feedback-tech-lead-_template.md créé (Tier 2 KPIs débloqués) |
+| 2026-10-04 | Tier 2 dit inactif (aucun feedback écrit, gabarit archivé dans `handoffs/archive/`), la cosignature notée jamais exercée (0 commit), `bsi-spec.md` à son chemin, la publication du gabarit par `sync-template.sh`. |

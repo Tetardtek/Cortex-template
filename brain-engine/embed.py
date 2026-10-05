@@ -78,7 +78,8 @@ PRIVATE_PATHS = [
     # n'avait plus de raison d'être invisible au brain qui l'applique.
     'profil/identity/',       # BRAIN-056 — couche cognitive interprétation personnelle, owner-only absolu
     'profil/gaming/',         # BRAIN chill/gaming — profils gaming personnels, owner-only
-    'vie/',                   # BRAIN-080 — satellite de la vie de l'owner (admin, terrain, concepts perso), owner-only absolu
+    'vie/',                   # BRAIN-080 — le satellite privé de l'owner, owner-only absolu
+    'workspace/scratch/',     # le carnet de travail — local, jamais versionné, jamais indexé
     'progression/',           # personal — journal + tout le répertoire
     'MYSECRETS',
 ]
@@ -94,16 +95,13 @@ PATH_SCOPES = [
     ('brain-constitution.md', 'kernel'),
     ('scripts/',              'kernel'),
     # INSTANCE — configuration machine + projets actifs
-    ('focus.md',              'instance'),
     ('projets/',              'instance'),
     ('PATHS.md',              'instance'),
-    ('now.md',                'instance'),
     # SATELLITE — vie libre, promotion possible
     ('toolkit/',              'satellite'),
     ('todo/',                 'satellite'),
     ('workspace/',            'satellite'),
     ('handoffs/',             'satellite'),
-    ('intentions/',           'satellite'),
     # `learning/` était le SEUL chemin réellement indexé à tomber sur le défaut :
     # 1 365 chunks servis en `public` — le scope du rôle le moins privilégié —
     # alors que `NIVEAUX.yml` le déclare `donnee`, « appartient à l'utilisateur,
@@ -294,7 +292,9 @@ CORPUS_PATHS = [
     ('profil/specs',     '*.md',    'h2'),
     # ── fichiers racine kernel ────────────────────────────────────────────────
     ('.',                'KERNEL.md',      'file'),
-    ('.',                'focus.md',       'file'),
+    # `focus.md` n'est plus indexé : c'est un repli figé, et la recherche servait
+    # une direction périmée comme si elle était actuelle. Le focus vivant se lit
+    # par `brain_focus` (l'API `/focus`, ou son instantané).
     ('.',                'BRAIN-INDEX.md', 'file'),
     ('.',                'NIVEAUX.yml',    'file'),   # la source des niveaux
     # Deux INVARIANTS qui n'étaient pas indexés — mesuré le 05/09.
@@ -332,9 +332,9 @@ EXCLUDE_PATTERNS = [
 def dans_un_brain_imbrique(filepath: Path) -> bool:
     """Vrai si le fichier vit dans une COPIE de brain posée dans celui-ci.
 
-    `workspace/**/*.md` est du corpus, `workspace/scratch/` compris : les notes
-    de travail s'y cherchent. Mais un worktree du brain ou du gabarit, un banc
-    d'essai de fork, se posent aussi là — une copie entière, fraîche, que le
+    `workspace/**/*.md` est du corpus — sauf `workspace/scratch/`, privé depuis le
+    4/10 (le carnet de travail ne se cherche plus). Un worktree du brain
+    ou du gabarit, un banc d'essai de fork, peuvent se poser ailleurs sous `workspace/` — une copie entière, fraîche, que le
     TTL laisse passer. Mesuré le 28/09 : 14 751 chunks sur 30 453, presque la
     moitié de l'index, étaient trois worktrees.
 

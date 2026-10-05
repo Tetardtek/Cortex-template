@@ -70,11 +70,14 @@ echo "[ 1/$ETAPES ] Satellites..."
 if [[ -f "$BRAIN_ROOT/satellites.yml" ]]; then
   info "satellites.yml présent — clonage à l'étape 3, par machine"
 else
-  for d in profil todo toolkit progression reviews learning; do
+  # La liste suit `gabarit/couches.yml` (part: readme, et profil/) ; le .gitignore
+  # du gabarit les tient tous hors du dépôt programme.
+  for d in profil projets handoffs infrastructure workspace learning todo toolkit \
+           progression reviews vie contenu instance/agents; do
     mkdir -p "$BRAIN_ROOT/$d"
   done
-  ok "satellites : les dossiers du gabarit (profil/ todo/ toolkit/ progression/ reviews/ learning/)"
-  info "à versionner à part quand tu veux — docs/satellites.md"
+  ok "satellites : tes données (projets/, handoffs/, workspace/, profil/…) et tes surcharges d'agents (instance/agents/)"
+  info "ton dépôt les ignore — versionne chacun à part, comme un satellite : docs/satellites.md"
 fi
 
 # ── Étape 2 — CLAUDE.md ──────────────────────────────────────────────────────

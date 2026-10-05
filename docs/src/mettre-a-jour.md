@@ -47,6 +47,27 @@ déclare la version. Il ne se lance jamais seul.
   calcul est refait chez toi, et tes agents et tes pistes y reviennent. La
   version d'avant de chacun est gardée dans
   `workspace/scratch/brain-maj-<version>/`, avec les commandes pour comparer.
+- **C'est le `brain maj` de la version reçue qui la reçoit** : le tien passe la
+  main au `scripts/maj.py` de la version, s'il diffère. Ce qu'elle apprend à la
+  mise à jour te sert dès cette fois, pas à la suivante. Il prend la main dès le
+  plan : `brain maj` tout court fait déjà tourner le code de la version que tu
+  suis — celui que `--appliquer` ferait tourner de toute façon. « Le plan ne
+  bouge rien » est donc la promesse de la version reçue.
+- **Ta surcouche d'agents se relit, elle ne s'écrase pas** : un complément
+  (`instance/agents/<nom>.complement.md`) suit le nouvel agent tout seul ; une
+  surcharge (`instance/agents/<nom>.md`) le remplace en entier, et ce que le
+  noyau y change ne t'arrive pas. Le plan nomme chaque surcharge concernée, et
+  la liste, avec le diff de chacune, est posée dans
+  `workspace/scratch/brain-maj-<version>/surcharges.md` — à relire avec ton
+  brain, qui te proposera de reprendre ou de réduire la surcharge en complément.
+- **Ce que la version range en satellites et que ton dépôt suit encore** (des
+  projets commités avant qu'ils soient des satellites) : le plan le dit. Git ne
+  les retire pas — rien ne se perd ; versionne-les à part quand tu veux
+  ([les satellites](satellites.md)).
+- **Un fichier à toi, là où la version en livre un, l'arrête aussi** : git
+  écraserait sans un mot un fichier qu'il ignore (ta donnée, dans un satellite)
+  si la fusion apporte un fichier suivi au même chemin. Le plan le nomme ;
+  déplace-le, puis relance.
 - **Un conflit sur un fichier écrit à la main l'arrête avant toute fusion** :
   il le nomme, et le choix est le tien. Fusionne à la main (étape 3), puis
   relance `brain maj --appliquer` pour la suite.

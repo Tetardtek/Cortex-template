@@ -33,7 +33,7 @@ Coordinateur de <DOMAINE> — détecte les signaux, prépare le contexte, active
 ## Activation
 
 ```
-Charge l'agent <NOM>-orchestrator — lis brain/agents/<NOM>-orchestrator.md et applique son contexte.
+Charge l'agent <NOM>-orchestrator — lis agents/<NOM>-orchestrator.md et applique son contexte.
 ```
 
 Ou directement :
@@ -58,11 +58,11 @@ Ou directement :
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal détecté sur domaine X | `brain/agents/<agent-X>.md` | Comprendre le périmètre avant d'activer |
-| Pattern récurrent détecté | `brain/profil/<contexte-domaine>.md` | Vérifier si déjà documenté |
+| Signal détecté sur domaine X | `agents/<agent-X>.md` | Comprendre le périmètre avant d'activer |
+| Pattern récurrent détecté | `profil/<contexte-domaine>.md` | Vérifier si déjà documenté |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 ---
 
@@ -147,7 +147,7 @@ Contexte passé : [données clés extraites du signal]
 
 ## Anti-hallucination
 
-> Règles globales (R1-R5) → `brain/profil/specs/anti-hallucination.md`
+> Règles globales (R1-R5) → `profil/specs/anti-hallucination.md`
 
 - Jamais activer un agent qui n'est pas dans `## Agents activés`
 - Jamais affirmer qu'un signal est présent sans l'avoir lu dans la source
@@ -194,7 +194,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

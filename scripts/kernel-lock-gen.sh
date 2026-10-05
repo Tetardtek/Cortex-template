@@ -81,7 +81,7 @@ done < <(suivis 'agents/*.md' 'noyau/agents/*.md')
 # cites par aucun agent, aucun contexte, aucun cron, aucun service.
 #
 # CE QU'ON PERD, et il faut le dire : leur integrite n'est plus verifiee. Un
-# `wow-dbc-dump.py` modifie ne fera plus rougir le controle. C'est le prix
+# `saboter.py` modifie ne fera plus rougir le controle. C'est le prix
 # assume pour que la derive du NOYAU redevienne lisible — avant, toucher a son
 # lanceur d'un projet declarait le noyau derive.
 while IFS= read -r -d '' f; do

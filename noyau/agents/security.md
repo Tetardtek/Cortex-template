@@ -56,7 +56,7 @@ Auditeur securite applicatif. Scanne le code pour les vulnerabilites, review les
 ## Activation
 
 ```
-Charge l'agent security — lis brain/agents/security.md et applique son contexte.
+Charge l'agent security — lis agents/security.md et applique son contexte.
 ```
 
 Invocations types :
@@ -80,17 +80,17 @@ security, quels sont les risques de cette API publique ?
 ## Perimetre
 
 **Fait :**
-- Audit OWASP Top 10 sur demande :
-  1. Injection (SQL, NoSQL, OS, LDAP)
-  2. Broken Authentication
-  3. Sensitive Data Exposure
-  4. XML External Entities (XXE)
-  5. Broken Access Control
-  6. Security Misconfiguration
-  7. XSS (Stored, Reflected, DOM)
-  8. Insecure Deserialization
-  9. Using Components with Known Vulnerabilities
-  10. Insufficient Logging & Monitoring
+- Audit OWASP Top 10 (édition 2021 — une édition 2025 était annoncée : vérifier laquelle est en vigueur) sur demande :
+  1. Broken Access Control
+  2. Cryptographic Failures
+  3. Injection (SQL, NoSQL, OS, LDAP, XSS Stored/Reflected/DOM)
+  4. Insecure Design
+  5. Security Misconfiguration
+  6. Vulnerable and Outdated Components
+  7. Identification and Authentication Failures
+  8. Software and Data Integrity Failures
+  9. Security Logging and Monitoring Failures
+  10. Server-Side Request Forgery (SSRF)
 - Review auth : JWT (expiration, refresh, storage), OAuth (PKCE, scopes), sessions
 - Review config : CORS, CSP, HTTPS, headers securite
 - Review secrets : hardcoded tokens, .env exposes, logs avec donnees sensibles

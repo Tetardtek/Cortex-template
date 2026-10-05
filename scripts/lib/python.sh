@@ -6,10 +6,10 @@
 #   source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"
 #
 # Principe : un script qui appelle `python3` nu prend le python du systeme, qui
-# n a ni `core` (myeline), ni numpy, ni pymysql. Sur le fixe Pop!_OS ça marchait
+# n a ni `core` (myeline), ni numpy, ni pymysql. Sur une ancienne machine ça marchait
 # par accident, grace a des paquets --user sous ~/.local/lib/python3.12 — un
 # chemin qui porte la version de Python, donc invisible des qu elle change.
-# C est tombe a la migration Omarchy (Python 3.14). [M09 § 2.8]
+# C est tombe au passage a Python 3.14. [M09 § 2.8]
 #
 # On met le venv en tete du PATH : tous les `python3` du script (et de ses
 # enfants) le trouvent. Sans venv (fork, machine neuve), rien ne change.

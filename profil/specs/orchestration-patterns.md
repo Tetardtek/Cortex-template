@@ -231,10 +231,9 @@ Fenêtre supervisor  →  claim BSI type supervisor
                         ferme en dernier (après les sessions de travail)
 ```
 
-**Ce que le sprint du 2026-03-14 a mesuré :**
+**Ce qu'un sprint a mesuré (14/03) :**
 - 3 interventions humaines sur ~4h de travail dual-agent
-- Bug super_admin trouvé par le back en lisant le code front (audit externe)
-- Ratio métabolisme 1.0 — équilibré build-brain / use-brain
+- Un bug trouvé par la session back en lisant le code front (un audit externe)
 
 **Règle : minimum viable human input**
 ```

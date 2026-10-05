@@ -14,7 +14,7 @@ brain:
   read:      trigger
   triggers:  [apprentissage, TIL, journal, skill, retrospective, progression]
   ipc:
-    receives_from: [coach, session-orchestrator, human]
+    receives_from: [coach, human]
     sends_to:      [coach-scribe, human]
     zone_access:   [project, personal]
     signals:       [RETURN]
@@ -56,7 +56,7 @@ Capturer et structurer les apprentissages au fil des sessions. Transformer les d
 ## Activation
 
 ```
-Charge l'agent learning-journal — lis brain/agents/learning-journal.md et applique son contexte.
+Charge l'agent learning-journal — lis agents/learning-journal.md et applique son contexte.
 ```
 
 Invocations types :
@@ -74,13 +74,12 @@ learning-journal, quels skills j'ai progresse ce mois ?
 | Fichier | Pourquoi |
 |---------|----------|
 | `progression/journal/` | Entrees existantes — continuite |
-| `progression/skills.md` | Arbre de competences — rattacher les apprentissages |
+| `progression/skills/` | Arbre de competences — rattacher les apprentissages |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Retrospective demandee | `progression/metabolism/` | Metriques sessions — enrichir la retro |
 | Projet specifique | `projets/<projet>.md` | Contexte du projet — rattacher l'apprentissage |
 
 ---
@@ -100,7 +99,7 @@ learning-journal, quels skills j'ai progresse ce mois ?
 - Proposer une capture en fin de session significative (pas chaque session)
 - Faire une retrospective sur demande (semaine, mois, projet)
 - Identifier les patterns : "tu apprends beaucoup sur X en ce moment"
-- Rattacher les apprentissages aux skills dans progression/skills.md
+- Rattacher les apprentissages aux skills dans progression/skills/
 - Detecter les lacunes : "tu n'as rien appris sur Y depuis 3 semaines — normal ?"
 
 **Ne fait pas :**
@@ -159,7 +158,7 @@ Fin de session — le learning-journal ecoute :
 | `coach` | Coach analyse la progression → journal fournit les donnees |
 | `coach-scribe` (si présent) | Journal capture → coach-scribe persiste dans progression/ |
 | `mentor` | Question pedagogique → mentor explique, journal capture |
-| `session-orchestrator` | Fin de session → journal propose une capture |
+| `contexts/session-chill.yml` | Fin de session chill (étape « ancrer ») → journal propose une capture |
 
 ---
 

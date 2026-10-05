@@ -41,7 +41,7 @@ Garantit qu'aucun visionnage ne tombe dans le drift — le rapport existe, il es
 ```
 Charge l'agent watch — on regarde <url>
 watch, analyse cette video : <url>
-brain exec watch/<url>
+runbook watch/<url>
 ```
 
 Trigger auto : mention d'une URL YouTube/Twitch/Vimeo + intention de visionnage, ou exécution du runbook `watch`.
@@ -60,7 +60,7 @@ Trigger auto : mention d'une URL YouTube/Twitch/Vimeo + intention de visionnage,
 |---------|---------|----------|
 | Signal reçu (toujours) | `runbooks/watch.md` | Process officiel extraction + analyse |
 | URL reçue | `observatory/watches/` | Vérifier si doublon (slug existant) |
-| Thème identifié | `brain/projets/<projet>.md` | Si la vidéo touche un projet actif, enrichir le croisement |
+| Thème identifié | `projets/<projet>.md` | Si la vidéo touche un projet actif, enrichir le croisement |
 | Si disponible | `learning/<track>/` | Si thème ingéré dans un track, connecter |
 
 ---
@@ -92,7 +92,7 @@ Trigger auto : mention d'une URL YouTube/Twitch/Vimeo + intention de visionnage,
 
 ## Discipline post-rapport — LOI NON NÉGOCIABLE
 
-> La cause du drift 16-19/04 : rapport généré, commit oublié. Plus jamais.
+> Un rapport généré mais non commité se perd. Plus jamais.
 
 **Séquence obligatoire après écriture du rapport :**
 
@@ -124,7 +124,7 @@ git push
 
 - Focus sur les idées, pas sur le buzz du créateur
 - Direct — résumé court, points clés nets, croisement brain explicite
-- Si la vidéo est de faible valeur : le dire (Melvynx-Core tier, surfeur de vibes) mais garder le rapport pour la traçabilité
+- Si la vidéo est de faible valeur : le dire, mais garder le rapport pour la traçabilité
 - Autonomie élevée — exécute le runbook sans demander, commit+push direct
 
 ---
@@ -159,8 +159,7 @@ Si l'utilisateur produit un rapport sous format non-standard (ex: `{date}-{slug}
 |------|-----------|
 | `runbook watch` | Process d'extraction + analyse — orchestration canonique |
 | `scribe` | Insight majeur croisé avec un projet → signaler mise à jour `projets/X.md` |
-| `learning-scribe` | Si la vidéo alimente un track actif → signal pour `learning/<track>/` |
-| `decision-scribe` | Si la vidéo déclenche une ADR (pattern identifié, décision archi) |
+| `architecture-scribe` (si présent) | Si la vidéo déclenche une ADR (pattern identifié, décision archi) |
 
 ---
 
@@ -168,12 +167,12 @@ Si l'utilisateur produit un rapport sous format non-standard (ex: `{date}-{slug}
 
 Invoquer cet agent quand :
 - Une URL vidéo apparaît avec intention de visionnage
-- `brain exec watch/<url>` est signalé
+- `runbook watch/<url>` est demandé (une phrase de chat — `brain` est réservé au terminal)
 - Un rapport watch doit être rattrapé (post-drift cleanup)
 
 Ne pas invoquer si :
 - On discute une vidéo déjà analysée (lecture directe de `watches/{slug}/watch-report.md`)
-- La source n'est pas un média audio/vidéo (article → `brain-scribe` + markdown classique)
+- La source n'est pas un média audio/vidéo (article → markdown classique)
 
 ---
 
@@ -192,3 +191,5 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-04-19 | Création — forge suite au drift 16-19/04 (4 watches générés mais jamais commités). Discipline post-rapport = LOI, commit+push immédiat non négociable |
+| 2026-10-04 | Retrait de `learning-scribe` et `brain-scribe`, deux agents qui n'existent pas |
+| 2026-10-04 | `brain exec watch/<url>` devient `runbook watch/<url>` : `brain` est réservé aux commandes du terminal (`scripts/brain`) — la phrase de chat ressemblait à une commande qui n'existe pas. |

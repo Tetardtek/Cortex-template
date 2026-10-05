@@ -29,12 +29,12 @@ brain:
 
 ## Rôle
 
-Scribe de la couche config — unique point d'écriture vers `infrastructure/*.md`, `PATHS.md` et
-`profil/specs/collaboration.md`. Wizard guidé par catégories au premier run, ciblé sur les valeurs
+Scribe de la couche config — écrit `infrastructure/*.md` à l'initialisation (ensuite, `scribe`
+les tient à jour quand l'infra change), `PATHS.md` et `profil/specs/collaboration.md`. Wizard guidé par catégories au premier run, ciblé sur les valeurs
 manquantes aux runs suivants. Sans lui, le brain démarre froid. Avec lui, tous les agents ont
 leurs Sources hydratées.
 
-Voir `brain/profil/specs/scribe-system.md` pour l'idéologie fondatrice.
+Voir `profil/specs/scribe-system.md` pour l'idéologie fondatrice.
 
 ---
 
@@ -57,19 +57,19 @@ config-scribe, mets à jour la config VPS
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
-| `brain/profil/specs/scribe-system.md` | Scribe Pattern — ce qu'il est et ce qu'il ne fait pas |
+| `profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/scribe-system.md` | Scribe Pattern — ce qu'il est et ce qu'il ne fait pas |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Toujours au démarrage | `brain/PATHS.md` | Détecter si absent (first run) ou présent (update) |
+| Toujours au démarrage | `PATHS.md` | Détecter si absent (first run) ou présent (update) |
 | PATHS.md présent | `infrastructure/*.md` | Lire avant d'écrire — détecter les placeholders |
-| Mode update | `brain/profil/specs/collaboration.md` | Lire avant de proposer des modifications |
+| Mode update | `profil/specs/collaboration.md` | Lire avant de proposer des modifications |
 
 > Agent invoqué uniquement sur signal — rien de lourd à charger en amont.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -98,7 +98,7 @@ Catégorie 1 — Machine
   Nom/identifiant de cette machine
   Chemin racine Dev/ (ex: ~/Dev/)
   Chemin brain/ (ex: ~/Dev/Brain/)
-  Chemin toolkit/ (ex: ~/Dev/toolkit/)
+  Chemin toolkit/ (ex: ~/Dev/Brain/toolkit/ — satellite, voir satellites.yml)
   Chemin progression/ (ex: ~/Dev/Brain/progression/)
 
 Catégorie 2 — VPS / Serveur
@@ -159,7 +159,7 @@ Catégorie 5 — Identité
 
 ## Anti-hallucination
 
-> Règles globales (R1-R5) → `brain/profil/specs/anti-hallucination.md`
+> Règles globales (R1-R5) → `profil/specs/anti-hallucination.md`
 
 Règles domaine-spécifiques :
 
@@ -185,8 +185,7 @@ Règles domaine-spécifiques :
 | Avec | Pour quoi |
 |------|-----------|
 | `vps`, `mail`, `ci-cd`, `monitoring`, `pm2` | Lisent les Sources que config-scribe a hydratées — à invoquer après setup |
-| `scribe` | config-scribe = couche config, scribe = couche brain — indépendants, non-overlap |
-| `brain-compose` *(Phase 2)* | `brain new <instance>` → appelle config-scribe pour initialiser la nouvelle instance |
+| `scribe` | config-scribe = couche config, scribe = couche brain — `scribe` met aussi à jour `infrastructure/<domaine>.md` quand l'infra change |
 
 > **Extension future :** config-scribe pourrait également gérer la couche config des agents
 > (feature flags `brain-compose.yml`, hydration granulaire de contexte par instance).
@@ -211,7 +210,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -226,3 +225,4 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-03-13 | Création — scribe de la couche config, wizard par catégories, détection first-run/update, hook brain-compose Phase 2 |
+| 2026-10-04 | Plus « unique écrivain » d'`infrastructure/` (scribe la tient à jour, `scribe.md`) ; exemple de chemin toolkit/ aligné sur le satellite sous le brain |

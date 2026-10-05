@@ -43,7 +43,7 @@ modules:
       - embedding_hits
 
   intentions:
-    pour: les objectifs qui durent plusieurs sessions
+    pour: "gelées le 4/10 — plus ni lecteur ni écrivain ; le travail se suit dans les fiches, l'historique Dolt garde les données"
     tables:
       - intentions
       - intention_edges

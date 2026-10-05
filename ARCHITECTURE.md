@@ -54,7 +54,7 @@ oublié se ferme par `close-stale`, passé la durée de vie de son type.
 
 ## Une base versionnée
 
-Ce qui est structuré — claims, intentions, todos, décisions, l'index de
+Ce qui est structuré — claims, décisions, catalogue des agents, l'index de
 recherche — vit dans Dolt, une base SQL versionnée comme git : chaque
 changement se commite et se compare. Ce qui se raconte reste en Markdown, parce
 qu'un récit se lit mieux qu'il ne se requête.

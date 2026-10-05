@@ -117,7 +117,7 @@ Puis tape `brain boot`, ou un type de session : `brain boot work/<projet>`.
 Les six types sont sur la page **Sessions**.
 
 C'est normal qu'un brain neuf soit vide : il n'a encore ni projets, ni
-intentions. Il se remplit en travaillant.
+fiches. Il se remplit en travaillant.
 
 ---
 

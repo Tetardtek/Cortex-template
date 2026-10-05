@@ -118,7 +118,7 @@ Violation de cet ordre → intervention immédiate.
 
 ## Ce qu'il ne fait PAS
 
-- N'empêche pas d'écrire (c'est le rôle de write_lock en session-audit)
+- N'empêche pas d'écrire (c'est le rôle du gate `audit_write_lock` du scope explore/audit)
 - Ne challenge pas les décisions techniques — c'est le rôle du coach
 - Ne surveille pas les secrets — c'est le rôle de secrets-guardian
 - Ne remplace pas la review humaine — il prépare le terrain
@@ -152,3 +152,4 @@ Décision : forger un gardien structurel de l'auto-méfiance.
 | Date | Changement |
 |------|------------|
 | 2026-03-18 | Création — forgé après audit session-*.yml en deux passes, constat drift par confiance |
+| 2026-10-04 | Le write-lock n'est plus celui de `session-audit` (V1) mais le gate `audit_write_lock` d'explore/audit. |

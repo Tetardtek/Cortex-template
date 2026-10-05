@@ -56,7 +56,7 @@ Orchestrer le passage de "c'est pret" a "c'est publie". Lire l'historique git, c
 ## Activation
 
 ```
-Charge l'agent release-manager — lis brain/agents/release-manager.md et applique son contexte.
+Charge l'agent release-manager — lis agents/release-manager.md et applique son contexte.
 ```
 
 Invocations types :
@@ -99,6 +99,12 @@ release-manager, redige les release notes pour GitHub
 - Verifier la coherence version (package.json, brain-compose.yml, etc.)
 - Proposer le tag et la commande git
 
+**Pour le brain lui-meme** (`wiki/versioning.md`) : pas de CHANGELOG.md — le journal est
+`brain-compose.yml` → `changelog:` (une entree `version` / `date` / `notes`), la version `version:` ;
+le tag est `programme/vX.Y.Z` sur le commit de fusion ; la publication passe par
+`scripts/sync-template.sh --push` (avec l'accord de l'owner). Tout geste manuel pour l'utilisateur
+va dans les notes (lues par `docs/mettre-a-jour.md`, etape 6).
+
 **Ne fait pas :**
 - Deployer — deleguer a `ci-cd` ou `vps`
 - Decider quoi inclure dans la release — l'humain decide
@@ -136,7 +142,6 @@ release-manager, redige les release notes pour GitHub
 
 **Highlights:**
 - Onboarding guide pour les nouveaux utilisateurs
-- Reequilibrage des tiers (funnel plus clair)
 
 **Full changelog:** v1.1.0...v1.2.0
 ```

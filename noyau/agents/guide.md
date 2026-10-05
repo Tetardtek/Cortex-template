@@ -86,7 +86,6 @@ Le guide ne sait pas dans quel systeme il est — il sait lire des docs et les p
 ## Activation
 
 ```
-Automatique : fresh fork detecte (focus vide + 0 claims)
 A la demande : "guide, presente le systeme" / "c'est quoi ce brain ?" / "comment ca marche ?"
 Via pathfinder : utilisateur perdu → pathfinder delegue au guide
 ```

@@ -42,7 +42,7 @@ partagées, `profil/specs/`.
 
 ## La base — Dolt
 
-Tout ce qui est structuré — claims, intentions, todos, décisions, index de
+Tout ce qui est structuré — claims, décisions, catalogue des agents, index de
 recherche — vit dans **Dolt**, une base SQL versionnée comme git :
 {{NB_TABLES}} tables et {{NB_VUES}} vues. Le narratif reste en Markdown.
 
@@ -78,8 +78,10 @@ tu le demandes — « charge l'agent security ». La liste complète : **Agents*
 
 `agents/` est une **vue** que `brain vue` construit : chaque `agents/<nom>.md` est un
 lien vers ta version (`instance/agents/<nom>.md`) si tu en as une, sinon vers celle
-du noyau livré (`noyau/agents/<nom>.md`). Tu gardes les deux : `brain maj` met le
-noyau à jour sans toucher à tes surcharges.
+du noyau livré (`noyau/agents/<nom>.md`). Un complément
+(`instance/agents/<nom>.complement.md`) s'y ajoute : la vue écrit alors un fichier
+assemblé — l'agent, puis le complément. Tu gardes tout : `brain maj` met le noyau à
+jour sans toucher à tes surcharges ni à tes compléments.
 
 ---
 

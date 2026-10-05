@@ -15,7 +15,7 @@ brain:
   triggers:  [session, boot, close]
   ipc:
     receives_from: [human, helloWorld]
-    sends_to:      [metabolism-scribe, todo-scribe, kanban-scribe, wiki-scribe, scribe, coach, human]
+    sends_to:      [todo-scribe, kanban-scribe, wiki-scribe, scribe, coach, human]
     zone_access:   [kernel, project]
     signals:       [SPAWN, CHECKPOINT, HANDOFF]
 ---
@@ -31,92 +31,22 @@ brain:
 
 Propriétaire du cycle de vie de chaque session. Décide ce qui est chargé au boot, route le travail, déclenche les scribes dans l'ordre correct à la fermeture. Ne produit rien — il orchestre.
 
-### Close — decision tree par session type
+### Close — la séquence (le détail fait foi : « Close — protocole »)
 
 ```
-close(session_type, sess_id):
-  # 0 — checkpoint [si le travail s'arrête en cours] : handoff dans handoffs/ + signal CHECKPOINT (scribe.md)
-
-  # 1 — metabolism-scribe (TOUJOURS — les 6 types, BRAIN-047 + BRAIN-049)
-  → metabolism-scribe(tokens, context, duration, agents, commits, todos)
-
-  # 2 — les fiches (BRAIN-079 : la liste et le mouvement)
-  IF fiches touchées livrées:
-    → kanban-scribe : clôture SUR PREUVE (mesuré · tenu par) ; sans preuve, la fiche reste ouverte
-  IF reste à faire (intention non réalisée, défaut trouvé, dette) — tous types:
-    → todo-scribe : propose une fiche (avec l'humain) ou la crée (mode kanban)
-  IF une fiche a changé:
-    → kanban-scribe : tenir le backlog (index, clôtures, issues — une commande)
-
-  # 3 — wiki-scribe (si présent)
-  IF new_pattern OR new_command OR new_agent OR new_term:
-    → vocabulary + page wiki/docs concernée
-
-  # 4 — scribe (brain update)
-  IF session_type IN [work, brain, pilote] AND session_significant:
-    → focus, projets/, AGENTS si nouvel agent
-
-  # 4.5 — intentions-update
-  → pour chaque intention touchée : updated + sessions[] + next_step
-  → status: done uniquement sur confirmation humaine
-
-  # 4.6/4.7/4.8 — data alignment (convention 4 couches — wiki/cognitive-layers.md)
-  IF session_type IN [work, brain, pilote] AND project_touched:
-    → 4.6 projet-update  : projets/X.md état courant + table intentions alignée
-    → 4.7 retiré (29/09) : les fiches closes passent par l'étape 2
-    → 4.8 vision-sync    : workspace/backlog/X/vision.md jalons livrés marqués done
-  # Silencieux si aucun projet touché
-
-  # 4b — rapport spécialisé (si applicable — détecté via tags BSI, BRAIN-047)
-  IF tags CONTAINS "audit":    → rapport audit
-  IF tags CONTAINS "urgence":  → post-mortem scribe
-  IF tags CONTAINS "capital":  → capital-scribe (si présent)
-  IF tags CONTAINS "coach":    → coach-scribe (si présent)
-
-  # 4.85 — profile-scribe, si présent (BRAIN-056 — couche cognitive interprétation personnelle)
-  → Invoquer profile-scribe (si présent) en mode session-scope
-  → Scan de la session courante (messages + claims meta) pour insights identitaires
-  → Dedup contre profil/identity/ existant
-  → Top 3-5 insights proposés max (éviter friction fin de session)
-  → Validation humaine fact par fact (v/e/r/s)
-  → Écriture validés dans profil/identity/<theme>.md
-  → Silencieux si rien détecté (pas de bruit)
-  # Owner-only Phase 1 (BRAIN-056) — skip si instance non-owner
-
-  # 4.9 — wrap check-in (Pattern 12 — métriques humaines)
-  → Proposer wrap : "On a livré <deliverables>. On wrap ?"
-  → Sur confirmation :
-    ── wrap check-in ──────────
-    ⚡ Energy   : [h]igh / [m]edium / [l]ow
-    🎯 Intention : <auto-suggest depuis scope> — ok ?
-    🏷️  Tags     : <auto-suggest depuis type + fichiers> — ok ?
-    📦 Done     : <pré-rempli par scribe — lecture seule>
-    ───────────────────────────
-  → Utilisateur répond 1 message (ex: "h, ok, ok")
-  → Injecter energy, intention, tags dans bsi-claim.sh close
-  → Si pas de réponse → NULL (jamais de valeur inventée)
-
-  # 5 — coach rapport (BLOCKING — après wrap check-in)
-  # Sessions V2 (BRAIN-047) — coach gate simplifié :
-  IF session_type IN [work, brain, pilote]:
-    → rapport de session → attend réponse utilisateur
-  # explore → coach silencieux sauf scope /coach (rapport complet)
-
-  # 6 — blocages : les BLOCKED_ON reçus → ack (vaut levée)
-  # live-states.md est généré (bsi-peer-poll.sh) : rien à écrire
-
-  # 7 — BSI close (NON NÉGOCIABLE — toujours, même /exit)
-  → rm session-role + pid
-  → bsi-claim.sh close <sess-id> --result "success" \
-      [--energy <wrap-checkin>] [--intention <wrap-checkin>] \
-      [--tags <wrap-checkin>] [--deliverables <scribe-summary>]
-  # duration_min calculé automatiquement par bsi-claim.sh (BRAIN-046)
-  # Si wrap check-in skippé → champs omis (NULL) — jamais inventé
+0. checkpoint, si le travail s'arrête en cours (handoff + signal CHECKPOINT)
+2. les fiches : kanban-scribe clôt SUR PREUVE ; todo-scribe propose ce qui reste ; le backlog tenu
+3. wiki-scribe (si présent), si un pattern, une commande, un agent ou un terme est né
+4. scribe, si la session est significative (work, brain, pilote) ; 4.6 projet, 4.8 vision
+4b. rapport spécialisé selon les tags ; 4.85 profile-scribe (si présent, owner)
+4.9. wrap check-in — seulement quand l'humain a demandé la fermeture
+5. rapport du coach (work, brain, pilote, explore/coach) — BLOQUANT
+6. les BLOCKED_ON reçus → ack (vaut levée)
+7. bsi-claim.sh close — NON NÉGOCIABLE, toujours, même sur /exit
 ```
 
 ### Règles close
 
-- metabolism-scribe = toujours premier, toujours exécuté
 - BSI close = toujours dernier, toujours exécuté
 - Coach rapport = BLOCKING sauf si gate silencieux
 - `session_significant` = au moins 1 commit OU 1 agent forgé OU spec changée
@@ -135,30 +65,19 @@ tait, et une panne ne fait jamais échouer la session) :
 
 Une liste courte, pas un bruit de fond : rien d'autre ne fait parler le têtard.
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `helloWorld` | Câblé — reçoit handoff après briefing |
-| `metabolism-scribe` | Close : métriques + agents_loaded |
-| `todo-scribe`, `kanban-scribe` | Close, étape 2 : ce qui reste devient une fiche, ce qui est livré se clôt sur preuve |
-| `scribe` | Close : brain à jour |
-| `profile-scribe` (si présent) | Close : couche cognitive interprétation personnelle — insights identitaires vers profil/identity/ (BRAIN-056, owner-only Phase 1) |
-| `coach` | Close : rapport de session (si gate non silencieux) |
-
 ---
 
 ## detail
 
 ## Activation
 
-**Câblé à helloWorld** — reçoit le handoff après le briefing :
+**Délégué par helloWorld à la fermeture** — le boot appartient à helloWorld, qui fait foi ;
+session-orchestrator reçoit la session quand l'humain demande de fermer :
 
 ```
-helloWorld → briefing présenté → passe à session-orchestrator :
+helloWorld → « fin » / « on wrappe » / « c'est bon » → session-orchestrator :
   type_session : work | brain | explore | pilote | chill | learning
-  sess_id      : sess-YYYYMMDD-HHMM-<slug>
-  intent       : premier message utilisateur
+  sess_id      : le claim de CETTE session (bsi-claim.sh le retrouve)
 ```
 
 Peut être invoqué explicitement pour fermer :
@@ -170,26 +89,13 @@ fin
 
 ---
 
-## Sources à charger au démarrage
-
-> Agent d'orchestration — charge le minimum, délègue le reste.
+## Sources — à la fermeture
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `contexts/session-<type>.yml` | Ce qui se charge en L0/L1/L2 pour ce type — source de vérité depuis les Sessions V2 |
-| `brain/profil/specs/handoff-matrix.md` | Matrice session_type × scope → handoff_level |
-| `bash scripts/bsi-query.sh open` | Sessions parallèles actives — détection HANDOFF. **Une requête, pas un fichier** : `brain.db` est la source unique depuis BRAIN-042 |
-| `wiki/session-matrix.md` | Matrice des six types V2 — zones, close, coach, escalades. Remise à niveau le 03/09 |
-
-> **Ce qui a été retiré, et pourquoi.** `manifest.yml` figurait ici comme
-> « routing table, source de vérité du chargement » : c'est la table V1, elle
-> déclare `kernel_version_required: "0.5.0"` quand le kernel est en 2.1.0, et
-> `contexts/session-*.yml` fait son travail depuis les Sessions V2.
-> `BRAIN-INDEX.md ## Claims` n'est pas une source à lire mais une page qui <!-- bsi-v1 -->
-> documente les commandes — les claims vivent dans `brain.db` depuis le 19/03, et
-> `claims/` a été vidé le jour même. `wiki/session-matrix.md` avait été retiré
-> quelques heures — il annonçait 5 types en en-tête, 4 dans son titre de section,
-> pour 6 réels — puis remis à niveau et réintégré le même jour.
+| `contexts/session-<type>.yml` | Le type de la session — le gate du coach, ce que la fermeture déclenche |
+| `wiki/session-matrix.md` | Les six types V2 — zones, fermeture, coach, escalades |
+| `bash scripts/bsi-signal.sh inbox` | Les BLOCKED_ON à lever (étape 6) — une requête, pas un fichier |
 
 ---
 
@@ -198,8 +104,8 @@ fin
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
 | Intent détecté | Selon `wiki/session-matrix.md` — couches 0→3 | Contexte exact, pas plus |
-| HANDOFF détecté | `brain/handoffs/<fichier>.md` | Reprendre depuis un point précis |
-| Session `coach` | `brain/profil/objectifs.md` + `brain/progression/README.md` | Contexte progression |
+| HANDOFF détecté | `handoffs/<fichier>.md` | Reprendre depuis un point précis |
+| Session `explore/coach` | `profil/objectifs.md` + `progression/README.md` | Contexte progression |
 
 ---
 
@@ -208,11 +114,9 @@ fin
 **Fait :**
 - Résoudre l'intent au boot (1 question max si ambigu)
 - Charger le contexte par couches selon `contexts/session-<type>.yml`
-  (`session-types.md` a été supprimé avec la V1)
+  (`profil/session-types.md` est déprécié depuis la V1 — ne plus le lire)
 - Déclencher la séquence close dans le bon ordre
 - Présenter le rapport coach avant la fermeture BSI
-- Écrire le session-role (`~/.claude/session-role`) et le PID
-  — le session-role est un AFFICHAGE, jamais relu pour savoir qui l'on est (BRAIN-077)
 
 **Ne fait pas :**
 - Modifier des fichiers projet
@@ -222,56 +126,10 @@ fin
 
 ---
 
-## Boot — protocole
+## Boot — rien
 
-```
-1. Lire le premier message / intent déclaré
-   → Détecter flag `+coach` : message contient "+coach" → activer mode co-pilote
-   → Auto-trigger +coach si : ratio ≤ 0.40 OU health_score < 0.80
-   → Détecter flag mode : message contient "+navigate" | "+kernel" | "+deploy" | "+debug"
-     → Charger `modes/brain-<mode>.md` si fichier existe (silencieux si absent)
-     → Annoncer : "🧭 Mode brain-<mode> activé — <périmètre 1 ligne>"
-
-2. Résoudre session_type + scope depuis le message
-   → session_type : work | brain | explore | pilote | chill | learning
-     (V1 : deploy, debug, urgence, coach, brainstorm, navigate — absorbés, voir contexts/archive-v1/)
-   → scope        : nom projet, domaine, ou "any" si absent
-   → Si ambigu : 1 question max — jamais un formulaire
-   → Si HANDOFF relevé par `bsi-signal.sh inbox` → charger handoff file, mode HANDOFF
-
-3. Déterminer handoff_level via contexts/session-<type>.yml + handoff-matrix.md
-   a. Lire le manifeste du type → couches et défauts de chargement
-   b. Croiser avec handoff-matrix.md → niveau spécifique session_type × scope
-   c. [Gap 4] Timing check continuation :
-      → `bash scripts/bsi-query.sh` — scope identique fermé depuis < 4h
-        (les claims sont en base — BRAIN-042 ; il n'y a plus de `claims/`)
-      → OU message contient "je reprends" / "continuation"
-      → Si oui : élever au niveau FULL (silencieux)
-
-4. Charger les couches du manifeste contexts/session-<type>.yml — L0, L1
-   intégralement, L2 si un projet est déclaré. helloWorld (étapes 3 à 7 du BHP)
-   fait foi ; session-orchestrator ne recharge rien par-dessus.
-   → Les « positions » (promote / suppress, layer1_semi_plus) qu'annonçait
-     cette étape ne sont déclarées dans aucun manifeste : mécanisme retiré.
-   → handoff_level n'aiguille plus le chargement : c'est une colonne du claim,
-     dérivée à l'ouverture par bsi-claim.sh.
-
-5. Continuation (étape 3c) → charger en plus le handoff du scope
-   (handoffs/, ou celui relevé par `bsi-signal.sh inbox`).
-
-6. MYSECRETS — règle non négociable :
-   → Confirmer présence : [[ -f "$BRAIN_ROOT/MYSECRETS" ]] → ✓ disponible
-   → NE PAS charger les valeurs — secrets-guardian en écoute passive
-   → Chargement réel sur trigger (.env / mysql / deploy / JWT / token / API key)
-
-   ⚠️ session-role + PID + claim BSI : propriété de helloWorld
-   → session-orchestrator reçoit le handoff APRÈS que helloWorld a ouvert le claim (en base, sans commit ni push)
-
-6.5. live-states.md : RIEN à écrire.
-   → Le fichier est GÉNÉRÉ par bsi-peer-poll.sh (cron */5) depuis les claims,
-     et son en-tête dit « ne pas éditer ». Le claim ouvert par helloWorld suffit
-     à y faire apparaître la session.
-```
+Le boot appartient à `helloWorld`, qui fait foi (types, scope, manifeste, claim, briefing) ;
+session-orchestrator ne charge ni ne vérifie rien au boot. Il est délégué à la fermeture.
 
 ---
 
@@ -285,13 +143,8 @@ fin
    → Signal CHECKPOINT : bsi-signal.sh send <sess-id> --type CHECKPOINT --payload "→ handoffs/<fichier>.md"
    → Warm restart garanti à la prochaine session (voir scribe.md, « Checkpoint »)
 
-1. metabolism-scribe
-   → tokens_used, context_peak, context_at_close, duration
-   → agents_loaded (liste de tous les agents invoqués/chargés)
-   → prix_par_agent (tokens estimés par agent — voir metabolism-spec.md)
-   → commits, todos_closed, health_score
-   → handoff_level : NO | SEMI | SEMI+ | FULL  ← obligatoire depuis Phase 1
-   → cold_start_kpi_pass : true | false | N/A  ← obligatoire si handoff_level = NO
+1. (retiré le 4/10 — les métriques de session : la couche ne tournait plus ; ses champs, dont
+   `handoff_level` et `cold_start_kpi_pass`, n'étaient presque jamais écrits)
 
 2. Les fiches — `workspace/backlog/<projet>/` (BRAIN-079)
    → kanban-scribe : chaque fiche livrée pendant la session est close SUR PREUVE
@@ -310,16 +163,13 @@ fin
    → Commit : "wiki: vocabulary +N terms — <domaine>"
 
 4. scribe  [si session significative : commits posés, agents forgés, spec changée]
-   → mettre à jour brain/ (focus, projets/, AGENTS si nouvel agent)
+   → mettre à jour brain/ (projets/, AGENTS si nouvel agent, brain/cap.md si le cap change)
 
-4.5. intentions-update  [pour chaque intention touchée en session]
-   → updated: <date> + sessions[] += <sess-id> + next_step si changé
-   → status: done uniquement sur confirmation explicite humaine
-   → status: stasis si blocked_by renseigné
-   → NE PAS fermer une intention non terminée — elle persiste entre sessions
+4.5. (retiré le 4/10 — les intentions : la table n'avait que des consignes pour écrivain, et le
+   travail se suivait dans les fiches. Ce qui est en cours se calcule des PR fusionnées)
 
-4.6. projet-update  [si projet touché — convention 4 couches]
-   → projets/X.md : état courant + table intentions alignée
+4.6. projet-update  [si projet touché — convention 3 couches]
+   → projets/X.md : état courant
    → Silencieux si aucun projet touché
 
 4.7. (retiré le 29/09 — `todo/` ne porte plus de tâches ; les fiches closes
@@ -338,16 +188,14 @@ fin
    → écrits dans profil/identity/<theme>.md ; silencieux si rien
 
 4.9. wrap check-in  [Pattern 12 — métriques humaines]
-   → Proposer : "On a livré <deliverables résumé>. On wrap ?"
-   → Sur "oui" / "on wrap" → afficher micro-formulaire :
+   → L'humain a demandé la fermeture — jamais proposée de soi-même — : afficher le micro-formulaire :
      ⚡ Energy : [h]/[m]/[l]  |  🎯 Intention : <suggest>  |  🏷️ Tags : <suggest>
    → Réponse 1 message → parse → injecter dans bsi-claim.sh close
-   → "non" / "attends" → session continue
    → Pas de réponse à un champ → NULL
 
 5. coach → rapport de session  [si coach_gate NON silencieux — voir coach.md ## Gate par session type]
-   → Gate silencieux (navigate, deploy, infra, urgence, audit) : PAS de rapport
-   → Gate standard+ (work, debug, brain, brainstorm, coach, capital, edit-brain, pilote) : rapport
+   → Gate silencieux (explore hors /coach, chill, learning) : PAS de rapport
+   → Gate rapport (work, brain, pilote, explore/coach) : rapport — Sessions V2, comme coach.md
    → Format :
      ⚡ Rapport de session — <sess-id>
         Ce qui a été produit : <liste concrète>
@@ -367,12 +215,12 @@ fin
      au passage suivant du poll.
 
 7. BSI close claim
-   [ "$(cat ~/.claude/session-role 2>/dev/null)" = "<sess-id>" ] && rm -f ~/.claude/session-role
-   → <sess-id> vient du contexte de CETTE session, jamais de session-role (BRAIN-077)
+   → <sess-id> vient du contexte de CETTE session ; sans identifiant, le script ferme
+     le claim de CETTE session, retrouvé par CLAUDE_CODE_SESSION_ID (BRAIN-077)
    bash $BRAIN_ROOT/scripts/bsi-claim.sh close <sess-id> --result "success" \
      [--energy <val>] [--intention <val>] [--tags <val>] [--deliverables <val>]
    → brain.db est la source unique (BRAIN-042) : pas de fichier de claim, pas
-     de commit, pas de push. Même commande que helloWorld étape 7.
+     de commit, pas de push.
    → Mandatory — même si l'utilisateur fait /exit sans lire le rapport
    ⚠️ Corrigé le 26/09 : cette étape faisait encore modifier
       `claims/<sess-id>.yml` et régénérer BRAIN-INDEX — le dossier `claims/` <!-- bsi-v1 -->
@@ -383,40 +231,16 @@ fin
 
 ---
 
-## Prix par agent — tracking mandatory
-
-À chaque session, `metabolism-scribe` reçoit la liste des agents chargés.
-
-```
-Estimation token cost par agent :
-  → Lire taille fichier agents/<agent>.md
-  → tokens_estimés = file_size_bytes / 4  (approximation)
-  → Enregistrer dans le metabolism log
-
-Format :
-  agents_loaded:
-    - helloWorld     : ~2400 tokens
-    - session-orchestrator : ~1800 tokens
-    - secrets-guardian : ~2200 tokens
-    - debug          : ~1100 tokens
-  total_context_agents : ~7500 tokens
-```
-
-L'objectif n'est pas la précision au token — c'est la tendance sur 10 sessions. Quels agents sont toujours chargés ? Lesquels coûtent cher pour peu de valeur ?
-
----
-
 ## Composition
 
 | Avec | Pour quoi |
 |------|-----------|
 | `helloWorld` | **Câblé** — helloWorld présente le briefing puis passe le type_session à session-orchestrator |
-| `context-orchestrator` | Futur — déléguera la résolution des couches (quand data métabolisme disponible) |
 | `secrets-guardian` | Boot : confirme présence MYSECRETS, passive listening permanent |
-| `metabolism-scribe` | Close : métriques + agents_loaded + prix_par_agent |
 | `todo-scribe`, `kanban-scribe` | Close, étape 2 : fiches créées ou proposées, closes sur preuve, backlog tenu |
 | `scribe` | Close (si significatif) : brain à jour |
 | `coach` | Close : rapport de session avant fermeture |
+| `profile-scribe` (si présent) | Close : couche cognitive interprétation personnelle — insights identitaires vers profil/identity/ (BRAIN-056, owner-only Phase 1) |
 
 ---
 
@@ -439,7 +263,7 @@ L'objectif n'est pas la précision au token — c'est la tendance sur 10 session
 
 ## Déclencheur
 
-Présent en permanence — pas besoin d'invoquer.
+Chargé à la fermeture, par délégation de helloWorld — il n'est pas présent en permanence.
 
 Invoquer explicitement pour fermer la session quand les déclencheurs naturels ne sont pas détectés.
 
@@ -471,3 +295,8 @@ Invoquer explicitement pour fermer la session quand les déclencheurs naturels n
 | 2026-09-27 | Étapes 6 et 6.5 sur le BSI réel : `live-states.md` est généré (rien à écrire), un `BLOCKED_ON` se lève par `ack` — `UNBLOCK` n'a jamais existé. <!-- bsi-v1 --> |
 | 2026-03-28 | Data alignment — step 4.5 (decision tree) + step 5.5 (close protocol) : projet-update, todo-promotion, vision-sync. Convention 4 couches ancrée. |
 | 2026-10-02 | Le têtard : `dire.py` (si présent) quand une session attend l'humain, qu'une PR est prête ou qu'une passe autonome est finie. |
+| 2026-10-04 | Étape 1 (les métriques de session) et le « prix par agent » retirés : la couche ne tournait plus — aucune métrique écrite depuis le printemps. |
+| 2026-10-04 | Étape 4.5 (intentions-update) retirée : un seul système, les fiches ; « en cours » se calcule. |
+| 2026-10-04 | `~/.claude/session-role` et le PID retirés (plus aucun lecteur) ; le coffre à son vrai chemin ; `session-types.md` dit déprécié, pas supprimé. |
+| 2026-10-04 | Le gate du coach en types V2 (il listait les types V1) ; « présent en permanence » et « câblé au boot » faux — il est délégué à la fermeture ; `focus.md` n'est plus une cible. |
+| 2026-10-04 | Le prix : la fermeture n'est plus écrite deux fois (le résumé renvoie au protocole) ; la section « Boot », qui recopiait helloWorld, devient un renvoi ; les sources sont celles de la fermeture. |

@@ -9,13 +9,14 @@ brain:
   lifecycle: permanent
   read:      full
   triggers:  []
-  export:    false
+  export:    true    # distribuée au gabarit (sync-template, PROFIL_DISTRIBUES) — ce qui est propre à l'instance vit dans profil/forge-locale.md
 ---
 
 # Collaboration avec Claude
 
-> **Type :** Personnel
-> Ce fichier définit comment travailler efficacement avec moi.
+> **Type :** Spec — distribuée au gabarit
+> Ce fichier définit comment travailler efficacement avec l'owner. Ce qui est propre à une
+> instance — ses machines, sa forge — vit dans `profil/forge-locale.md`, chargé juste après.
 > Dernière mise à jour : 2026-03-28
 
 ---
@@ -35,11 +36,13 @@ Format : `brain_name@machine`
 
 | Instance | Posture | Désigne |
 |----------|---------|---------|
-| `prod@desktop` | `master` | Brain principal — Pop!_OS local, `brain/` |
-| `prod-laptop@laptop` | `replica-nomad` | Station nomade — projets uniquement, brain build bloqué par défaut (BRAIN-069) |
+| `<nom>@<machine-principale>` | `master` | Brain principal — `brain/` |
+| `<nom>@<machine-nomade>` | `replica-nomad` | Station nomade — projets uniquement, brain build bloqué par défaut (BRAIN-069) |
+
+> Les instances réelles de cette installation : `profil/forge-locale.md`.
 
 > Utiliser ce format dès qu'on parle de plusieurs instances en même temps.
-> Exemple : "ouvre un claim sur `agents/` dans `prod@desktop`"
+> Exemple : "ouvre un claim sur `agents/` dans `<nom>@<machine-principale>`"
 
 ### Règle scope-disjoint (multi-instance, 1 humain)
 
@@ -172,26 +175,26 @@ son schéma        scripts/dolt-schema-gen.sh --branche essai-<chantier>
 
 ---
 
-## Convention données — 4 couches
+## Convention données — 3 couches
 
-Le brain structure l'information projet en **4 couches complémentaires**. Chaque couche a un rôle unique — pas de duplication entre elles.
+Le brain structure l'information projet en **3 couches complémentaires**. Chaque couche a un rôle unique — pas de duplication entre elles.
 
 ```
 vision   (workspace/backlog/X/vision.md)  → POURQUOI + OÙ   — north star, jalons sans deadline
-intention (Dolt table `intentions`)       → QUOI             — objectif mesurable, status, dépendances
-fiche    (workspace/backlog/X/<PFX>-n.md) → COMMENT          — une tâche par fichier, critères de fin, ouverte · ⏸️ · ✅
-projet   (projets/X.md)                   → ÉTAT             — snapshot live, table intentions, blockers
+fiche    (workspace/backlog/X/<PFX>-n.md) → QUOI + COMMENT  — un objectif par fichier, son pourquoi, ses critères de fin ; ouverte · ⏸️ · ✅
+projet   (projets/X.md)                   → ÉTAT             — snapshot live, blockers
 ```
 
+**« En cours » ne se déclare pas, il se calcule** : une fiche ouverte qu'une PR fusionnée depuis moins de 7 jours porte (`brain_focus()`, section « En cours »). La couche `intentions` (table Dolt) est retirée le 4/10 : seules des consignes la tenaient à jour, et le travail se suivait déjà dans les fiches.
+
 **Règles non négociables :**
-- Pas de checkboxes dans une intention — c'est le rôle de la fiche
-- Pas de design détaillé dans une intention — c'est le rôle de la vision
+- Pas de design détaillé dans une fiche — c'est le rôle de la vision
 - Le projet reflète l'état réel — jamais un objectif ou un souhait
 - Chaque couche pointe vers les autres, jamais ne les duplique
 
 **Convention dashboard :** si c'est faux dans le dashboard, c'est faux dans le brain. Le dashboard est le miroir de vérité — tout écart visible dans l'UI signale un drift à corriger à la source.
 
-**Au close de session :** les 4 couches sont mises à jour atomiquement (voir close sequence session-orchestrator). Jamais laisser une couche en drift.
+**Au close de session :** les fiches et le projet touchés sont tenus à jour (voir close sequence session-orchestrator). Jamais laisser une couche en drift.
 
 > Détail complet et exemples : `wiki/cognitive-layers.md`
 
@@ -212,11 +215,11 @@ projet   (projets/X.md)                   → ÉTAT             — snapshot liv
 `/btw <question>` → parenthèse courte, jamais de dérive.
 
 - Réponse : **2-3 lignes max**
-- Si actionnable → `todo-scribe` propose une fiche ⬜
+- Si actionnable → `todo-scribe` propose une fiche
 - Clôture explicite : `→ on reprend.`
 - Si la question est trop large → "nécessite une session dédiée" + une fiche proposée
 
-Agent : `brain/agents/aside.md` — déclenché automatiquement sur le préfixe `/btw`.
+Agent : `agents/aside.md` — déclenché automatiquement sur le préfixe `/btw`.
 
 ---
 

@@ -50,16 +50,6 @@ Changement config Apache   →  + apache2ctl configtest && systemctl reload apac
 - Secrets manquants ou mal configurés → **signaler**
 - Nouveau pattern créé → proposer ajout toolkit
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `scribe` | Nouveau pipeline → mise à jour infrastructure/cicd.md |
-| `toolkit-scribe` | Pattern pipeline validé → toolkit/github-actions/ |
-| `vps` | Nouveau déploiement : pipeline + config Apache/SSL |
-| `code-review` | Review du pipeline YAML avant mise en prod |
-| `monitoring` | Après deploy → suggérer une sonde Gatus |
-
 ---
 
 ## detail
@@ -67,7 +57,7 @@ Changement config Apache   →  + apache2ctl configtest && systemctl reload apac
 ## Activation
 
 ```
-Charge l'agent ci-cd — lis brain/agents/ci-cd.md et applique son contexte.
+Charge l'agent ci-cd — lis agents/ci-cd.md et applique son contexte.
 ```
 
 Ou en combinaison :
@@ -81,7 +71,7 @@ Charge les agents ci-cd et vps pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 | `infrastructure/cicd.md` | Pipelines existants par projet, secrets, patterns validés |
 | `infrastructure/vps.md` | Infra réelle : IP, paths, stack, projets déployés |
 | `toolkit/github-actions/` | Templates validés en prod (deploy-node.yml, deploy-static.yml) |
@@ -90,7 +80,7 @@ Charge les agents ci-cd et vps pour cette session.
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Déploiement d'un projet spécifique | `brain/projets/<projet>.md` | Chemins, stack, variables non-secrètes du projet |
+| Déploiement d'un projet spécifique | `projets/<projet>.md` | Chemins, stack, variables non-secrètes du projet |
 
 ---
 
@@ -117,10 +107,9 @@ Charge les agents ci-cd et vps pour cette session.
 ```
 Projet vitrine / public   →  GitHub Actions
 Projet privé / infra      →  Gitea CI (URL dans infrastructure/vps.md)
-Migration à terme          →  Gitea CI en priorité, GH Actions en parallèle
 ```
 
-**Gitea CI :** pas encore configuré sur les projets existants. L'agent sait comment le setup quand demandé.
+**Gitea CI :** son état (runner, projets branchés) se lit dans `infrastructure/cicd.md` (si présent). L'agent sait le mettre en place quand demandé.
 
 ---
 
@@ -211,7 +200,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

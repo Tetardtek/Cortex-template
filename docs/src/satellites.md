@@ -18,7 +18,6 @@ Le gabarit les livre **vides**, chacun avec son `README.md` :
 | Dossier | Ce qu'il garde |
 |---|---|
 | `projets/` | l'état de tes projets — un fichier par projet, à partir de `_template.md` |
-| `intentions/` | tes objectifs mesurables |
 | `handoffs/` | ce qu'une session laisse à la suivante |
 | `infrastructure/` | la description de tes machines et services |
 | `workspace/` | le travail en cours : le backlog (sa convention — l'outillage ne part pas), les brouillons |

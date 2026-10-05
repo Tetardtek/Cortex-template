@@ -12,7 +12,7 @@ brain:
   owner:     human
   lifecycle: stable
   read:      trigger
-  triggers:  [session-audit, brain-health-check]
+  triggers:  [explore/audit, brain-health-check]
   ipc:
     receives_from: [human]
     sends_to:      [human]
@@ -37,10 +37,10 @@ Diagnostic du brain lui-même : cohérence inter-couches, fichiers cassés, ADRs
 ## Activation
 
 ```
-Charge l'agent audit — lis brain/agents/audit.md et applique son contexte.
+Charge l'agent audit — lis agents/audit.md et applique son contexte.
 ```
 
-Typiquement en session-audit :
+Typiquement en session explore/audit — le scope charge `security` et `code-review`, pas cet agent : l'invoquer à la main.
 
 ```
 brain boot explore/audit
@@ -65,7 +65,7 @@ brain boot explore/audit
 | Audit agents | `agents/AGENTS.md` + glob `agents/*.md` | Détecter agents sans frontmatter, doublons |
 | Audit sessions | `contexts/session-*.yml` | Vérifier fichiers L1 présents |
 | Audit ADRs | `profil/decisions/*.md` | Identifier ADRs sans implémentation |
-| Audit claims | `claims/` | Claims ouverts depuis > 24h = stale |
+| Audit claims | `bash scripts/bsi-query.sh open` (la base) | Claims ouverts depuis > 24h = stale |
 
 ---
 
@@ -111,7 +111,7 @@ brain boot explore/audit
 | ...     |    |           |       |        |
 
 > Seuil alerte : Total > 30 000 tokens estimés → signaler ⚠️ dans colonne Alerte
-> Cause fréquente : fichier volumineux chargé en L1 direct (ex: todo/brain.md)
+> Cause fréquente : fichier volumineux chargé en L1 direct
 > Action suggérée : passer le fichier en "on demand" dans le manifest
 ```
 
@@ -119,7 +119,7 @@ brain boot explore/audit
 
 ## Anti-hallucination
 
-> Règles globales → `brain/profil/specs/anti-hallucination.md`
+> Règles globales → `profil/specs/anti-hallucination.md`
 
 - Ne jamais inférer qu'un fichier existe sans le vérifier (glob ou read)
 - Si un fichier est absent : "absent — référence cassée" — pas "probablement renommé"
@@ -141,8 +141,8 @@ brain boot explore/audit
 
 | Avec | Pour quoi |
 |------|-----------|
-| `security` | Audit + audit sécurité — session-audit complète |
-| `code-review` | Audit brain + review code en session-audit |
+| `security` | Audit + audit sécurité — chargé par explore/audit |
+| `code-review` | Audit brain + review code — chargé par explore/audit |
 | `agent-review` | Audit système agents — gaps + patches |
 | `architecture-scribe` | Audit → décision → ADR |
 
@@ -151,7 +151,7 @@ brain boot explore/audit
 ## Déclencheur
 
 Invoquer cet agent quand :
-- Boot `session-audit`
+- Boot `explore/audit` (à la main : le scope ne le charge pas)
 - Le brain n'a pas été audité depuis > 2 semaines
 - Avant de forger de nouveaux agents (évite les doublons)
 - Avant de préparer brain-template pour distribution
@@ -168,3 +168,4 @@ Ne pas invoquer si :
 |------|------------|
 | 2026-03-17 | Création — comble le gap identifié à l'audit de session |
 | 2026-03-18 | Seuil alerte empreinte — > 30k tokens → ⚠️ dans rapport (validé run guidé) |
+| 2026-10-04 | `session-audit` (V1) → `explore/audit`, qui ne charge pas cet agent ; les claims se lisent en base (`bsi-query.sh open`), plus dans `claims/` ; l'exemple `todo/brain.md` (absent) retiré. |

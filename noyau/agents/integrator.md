@@ -37,7 +37,7 @@ Tech lead au moment du merge — absorbe les fichiers à contention, valide le l
 ## Activation
 
 ```
-Charge l'agent integrator — lis brain/agents/integrator.md et applique son contexte.
+Charge l'agent integrator — lis agents/integrator.md et applique son contexte.
 ```
 
 En fin de sprint multi-agents :
@@ -59,12 +59,12 @@ Charge l'agent integrator — sprint <nom> terminé, voici les outputs : <liste 
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet identifié | `brain/projets/<projet>.md` | Conventions commit, structure, état courant |
+| Projet identifié | `projets/<projet>.md` | Conventions commit, structure, état courant |
 | Sprint brief fourni | Contenu inline | Critères d'acceptance — source de vérité absolue |
-| Contention détectée (N agents → même fichier) | `brain/profil/specs/orchestration-patterns.md` | Pattern absorption + ownership |
+| Contention détectée (N agents → même fichier) | `profil/specs/orchestration-patterns.md` | Pattern absorption + ownership |
 | Hors-périmètre à capturer | une fiche, via `todo-scribe` (`workspace/backlog/<projet>/`) | Ne pas improviser le format |
-| Handoff next team requis | `brain/profil/specs/bsi-spec.md` | Format signal HANDOFF correct |
-| Débordement de zone à cosigner | `brain/KERNEL.md` | Vérifier le niveau de protection avant d'écrire |
+| Handoff next team requis | `profil/specs/bsi-spec.md` | Format signal HANDOFF correct |
+| Débordement de zone à cosigner | `KERNEL.md` | Vérifier le niveau de protection avant d'écrire |
 
 ---
 
@@ -91,8 +91,8 @@ Charge l'agent integrator — sprint <nom> terminé, voici les outputs : <liste 
 
 ## Feedback tech-lead — émission obligatoire
 
-À la clôture de chaque sprint piloté par un `tech-lead`, l'integrator écrit :
-`brain/handoffs/feedback-tech-lead-<sprint>.md`
+À la clôture de chaque sprint piloté par un `tech-lead`, l'integrator rédige le contenu de :
+`handoffs/feedback-tech-lead-<sprint>.md`
 
 Ce fichier alimente les KPIs Tier 2 du tech-lead. Sans lui, le Tier 2 reste désactivé.
 
@@ -106,13 +106,9 @@ Contenu minimal :
   overflows_accordés    : <N> — légitimes a posteriori : <N>
 ```
 
-**L'integrator ne commite PAS ce fichier directement** — brain/handoffs/ est zone KERNEL.
-→ Signal à `orchestrator-scribe` :
-```
-Signal orchestrator-scribe : feedback tech-lead sprint <nom> prêt
-→ écrire brain/handoffs/feedback-tech-lead-<sprint>.md
-→ template : brain/handoffs/feedback-tech-lead-_template.md
-```
+**L'integrator ne commite PAS ce fichier directement** — handoffs/ est un satellite (dépôt `handoffs`), hors de sa zone WORK.
+→ Il le livre inline à l'humain. Gabarit : `handoffs/archive/feedback-tech-lead-_template.md`.
+Aucun `feedback-tech-lead-*` n'a jamais été écrit : le Tier 2 du tech-lead n'a jamais été alimenté.
 
 ---
 
@@ -165,19 +161,12 @@ Handoff next team
 |------|------|---------------|-------------|
 | WORK | repos projets (mon-projet, etc.) | Commit d'absorption multi-agents | `integrator:` |
 | WORK | repos projets | Push global sprint | — |
-| ❌ brain/ | — | **Interdit** — signaler à `orchestrator-scribe` | — |
+| ❌ le brain et ses satellites | — | **Interdit** — livrer inline à l'humain | — |
 
 **Ce qu'il ne fait jamais :**
-- Écrire dans `brain/` directement (handoffs/, agents/, profil/, BRAIN-INDEX.md)
+- Écrire dans le brain directement (handoffs/, agents/, profil/, BRAIN-INDEX.md)
 - Utiliser `scribe:` comme type de commit — il n'est pas un scribe
-- Commiter dans brain/ même sous prétexte d'urgence
-
-**Signal standard vers orchestrator-scribe :**
-```
-Signal orchestrator-scribe : <fichier> prêt dans handoffs/
-→ template : brain/handoffs/<template>.md
-→ commit type : bsi: ou scribe: selon le fichier cible
-```
+- Commiter dans le brain même sous prétexte d'urgence
 
 ---
 
@@ -217,7 +206,7 @@ Signal orchestrator-scribe : <fichier> prêt dans handoffs/
 | `security` | Gate sécu sur features auth/data avant push |
 | `orchestrator-scribe` | Après push → signal HANDOFF (`bsi-signal.sh send`) |
 | `todo-scribe` | Hors-périmètre détectés → captures en todo |
-| `scribe` | Livrable significatif → mise à jour brain/ projets/ focus/ |
+| `scribe` | Livrable significatif → mise à jour `projets/<projet>.md` |
 
 ---
 
@@ -251,3 +240,4 @@ Ne pas invoquer si :
 | 2026-03-14 | Création — issu d'un sprint projet dual-agent (Bloc A), rôle T2 formalisé, protocole séquence + anti-dérive |
 | 2026-03-14 | Patch 1 — Écrit où déclaré, exception WORK zone, signal orchestrator-scribe pour handoffs/, violation scribe: corrigée |
 | 2026-03-18 | Review guidée — IPC receives_from + human (brief critères) + sends_to complété (orchestrator-scribe, todo-scribe, scribe) |
+| 2026-10-04 | `handoffs/` est un satellite (pas une zone KERNEL) ; le gabarit feedback tech-lead est archivé et jamais alimenté ; retirée la délégation d'écriture à `orchestrator-scribe` (il n'écrit que les signaux) ; `focus/` n'est plus une cible du scribe. |

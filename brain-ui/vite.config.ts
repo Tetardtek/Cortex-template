@@ -11,10 +11,10 @@ export default defineConfig({
   server: {
     port: 5173,
     // En dev (`npm run dev`, port 5173), les vues appellent le moteur à la
-    // racine — /docs, /agents, /intentions, /bsi… : sans ces relais, elles
+    // racine — /docs, /agents, /focus, /bsi… : sans ces relais, elles
     // tombaient sur Vite et disaient « le moteur ne répond pas ».
     proxy: {
-      ...Object.fromEntries(['/docs', '/agents', '/intentions', '/bsi', '/visualize']
+      ...Object.fromEntries(['/docs', '/agents', '/focus', '/bsi', '/visualize']
         .map((p) => [p, { target: 'http://localhost:7700', changeOrigin: true }])),
       '/api': {
         target: 'http://localhost:7700',

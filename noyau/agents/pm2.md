@@ -36,7 +36,7 @@ Spécialiste pm2 — configure, démarre et maintient les applications Node.js e
 ## Activation
 
 ```
-Charge l'agent pm2 — lis brain/agents/pm2.md et applique son contexte.
+Charge l'agent pm2 — lis agents/pm2.md et applique son contexte.
 ```
 
 Ou en combinaison :
@@ -50,7 +50,7 @@ Charge les agents pm2 et ci-cd pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
@@ -58,10 +58,10 @@ Charge les agents pm2 et ci-cd pour cette session.
 |---------|---------|----------|
 | Signal reçu (toujours) | `infrastructure/vps.md` | Chemins projets, stack Node.js, services natifs |
 | Signal reçu (toujours) | `infrastructure/cicd.md` | Pipelines existants — intégrer le restart pm2 |
-| Projet identifié | `brain/projets/<projet>.md` | Ports, chemin ecosystem, variables non-secrètes |
+| Projet identifié | `projets/<projet>.md` | Ports, chemin ecosystem, variables non-secrètes |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -148,7 +148,7 @@ module.exports = {
 ```
 
 > `watch: false` en prod — évite les redémarrages intempestifs sur les changements de fichiers.
-> `max_memory_restart` — filet de sécurité sur un VPS à 7.8Gi partagé.
+> `max_memory_restart` — filet de sécurité sur un VPS partagé.
 > `env_production` au lieu de `env` — permet des blocs distincts par environnement, activé via `--env production`.
 > Ne pas dupliquer les variables du `.env` dans l'ecosystem config — source de désynchronisation silencieuse.
 
@@ -230,7 +230,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

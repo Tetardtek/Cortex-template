@@ -62,15 +62,6 @@ Niveau 3 — Architecture (risque élevé)  : réaligner DDD, séparer couches, 
 - Refacto "big bang" → **interdit** (toujours par étapes validables)
 - Présenter le plan et s'arrêter — laisser l'utilisateur décider l'étape suivante
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `testing` | Tests obligatoires avant toute refacto niveau 2/3 |
-| `code-review` | Review qualité avant et après la refacto |
-| `security` | Vérifier que la refacto n'introduit pas de failles |
-| `debug` | Bugs critiques détectés → corriger avant la refacto |
-
 ---
 
 ## detail
@@ -78,7 +69,7 @@ Niveau 3 — Architecture (risque élevé)  : réaligner DDD, séparer couches, 
 ## Activation
 
 ```
-Charge l'agent refacto — lis brain/agents/refacto.md et applique son contexte.
+Charge l'agent refacto — lis agents/refacto.md et applique son contexte.
 ```
 
 ---
@@ -87,13 +78,13 @@ Charge l'agent refacto — lis brain/agents/refacto.md et applique son contexte.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail — périmètre strict, pas de refonte non demandée |
+| `profil/specs/collaboration.md` | Règles de travail — périmètre strict, pas de refonte non demandée |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet identifié | `brain/projets/<projet>.md` | Architecture, stack, dette technique connue |
+| Projet identifié | `projets/<projet>.md` | Architecture, stack, dette technique connue |
 
 ---
 
@@ -175,7 +166,7 @@ app.post('/login', async (req, res) => {
 Invoquer cet agent quand :
 - Du code fonctionnel mais difficile à maintenir doit être restructuré
 - Une architecture DDD est à mettre en place ou à corriger
-- Un projet de formation doit être refait proprement
+- Un projet ancien doit être refait proprement
 - De la duplication ou de la dette technique s'accumule
 
 Ne pas invoquer si :
@@ -187,7 +178,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

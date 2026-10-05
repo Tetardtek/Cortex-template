@@ -38,6 +38,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _config_instance import config_du_doctor  # noqa: E402 — instance/doctor/, l'ancien emplacement en repli
+
 TEMOIN = ".liens-morts-seuil"
 ZONES = ("agents", "contexts", "scripts", "brain-engine")
 
@@ -81,8 +84,11 @@ def est_une_archive(parties: tuple[str, ...]) -> bool:
     return any(x == "archive" or x.startswith("archive-") for x in parties[:-1])
 SUFFIXES = (".md", ".py", ".sh", ".yml", ".sql")
 
+#: Un chemin qui COMMENCE ici : pas la suite d'un autre. `\b` laissait lire
+#: `instance/agents/coach.complement.md` comme `agents/coach.complement.md`, cherché
+#: à la racine — un lien vivant compté mort (4/10, le complément de l'instance).
 CHEMIN = re.compile(
-    r"\b((?:profil|agents|contexts|scripts|workspace|handoffs|wiki|toolkit|todo)"
+    r"(?<![\w./-])((?:profil|agents|contexts|scripts|workspace|handoffs|wiki|toolkit|todo)"
     r"/[A-Za-z0-9_./-]+\.(?:md|py|sh|yml|sql))")
 
 
@@ -158,6 +164,14 @@ def auto_epreuve() -> int:
         _verifie("un lien qui MENE quelque part n est pas un lien mort",
                  "scripts/vrai.sh" in morts, False)
 
+        # 2 bis. Un chemin au milieu d'un autre n'est pas un chemin de la racine.
+        (r / "instance" / "agents").mkdir(parents=True)
+        (r / "instance" / "agents" / "x.complement.md").write_text("x\n", encoding="utf-8")
+        (r / "agents" / "b.md").write_text("voir instance/agents/x.complement.md\n", encoding="utf-8")
+        morts = cibles_mortes(r)
+        _verifie("instance/agents/… n est pas agents/… : un lien vivant",
+                 "agents/x.complement.md" in morts, False)
+
         # 3. Les autres arbres de la liste.
         for nom in ("node_modules", "__pycache__", "vendor", "dist"):
             piege = r / "agents" / nom
@@ -213,7 +227,7 @@ def main() -> int:
     morts = cibles_mortes(racine)
     n = len(morts)
 
-    temoin = racine / "workspace" / TEMOIN
+    temoin = config_du_doctor(racine, TEMOIN.lstrip("."))
     if args.poser or not temoin.is_file():
         temoin.parent.mkdir(parents=True, exist_ok=True)
         temoin.write_text(f"{n}\n", encoding="utf-8")

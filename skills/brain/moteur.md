@@ -32,12 +32,12 @@ changer un port, `.env.local` ; jamais une ligne `Environment=` dans une unité.
 (le PID suivi est le sien) ; `brain serve` seul tient les deux au premier plan.
 MYSECRETS est lu comme un `EnvironmentFile`, jamais exécuté.
 
-## Les 25 routes de l'API
+## Les 23 routes de l'API
 
 | Méthode | Route | Ce qu'elle fait |
 |---|---|---|
 | GET | `/agents` | Liste les agents, avec leur classification dérivée depuis agents/CATALOG.yml. |
-| POST | `/ambient/notify` | Reçoit un event du daemon Ambient Brain et le broadcast aux clients WebSocket. |
+| POST | `/ambient/notify` | Diffuse un évènement aux clients WebSocket — un compagnon de bureau qui écoute `/ws`, par exemple. |
 | GET | `/boot` | — |
 | GET | `/brain/{path:path}` | Lit un fichier brain. Localhost = owner, sinon auth requise. |
 | PUT | `/brain/{path:path}` | Écrit ou met à jour un document brain. |
@@ -52,20 +52,18 @@ MYSECRETS est lu comme un `EnvironmentFile`, jamais exécuté.
 | GET | `/bsi/network` | Vue réseau BSI — état de chaque peer + claims open agrégés. |
 | GET | `/docs` | Les pages de docs/*.md, avec leur libellé, groupe et ordre déclarés. |
 | GET | `/docs/{filename}` | Retourne le contenu brut d'un fichier docs/*.md. |
-| GET | `/focus` | Focus généré depuis Dolt — remplace focus.md statique. Zéro drift. |
+| GET | `/focus` | Le focus : le cap (à la main), les fiches en cours (calculées), la dernière session. |
 | GET | `/health` | Sanity check — vérifie que le moteur répond. |
-| GET | `/intentions` | Liste les intentions depuis Dolt. Filtres optionnels par status, project, front. |
-| GET | `/intentions/{intention_id}` | Détail d'une intention spécifique avec toutes les relations. |
 | GET | `/search` | — |
 | GET | `/state` | Environnement fondamental dérivé — Layer 2 uniquement. |
 | GET | `/visualize` | Retourne les coordonnées 3D UMAP des embeddings brain. Cache JSON regénéré si stale. |
 | GET | `/workflows` | Ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079). |
-| WS | `/ws` | WebSocket temps réel — les événements BSI (claims, verrous) et ambient. |
+| WS | `/ws` | WebSocket temps réel — les événements BSI (claims, verrous) et ceux de `/ambient/notify`. |
 
 *Lues dans `server.py` (arbre syntaxique, décorateurs `@app.<méthode>`). La
 description est la première ligne de la docstring de chaque route.*
 
-## Les 11 outils MCP
+## Les 10 outils MCP
 
 - **`brain_search`** — Recherche sémantique dans le brain.
 - **`brain_state`** — Environnement fondamental du brain — dérivé en temps réel, jamais stocké.
@@ -73,11 +71,10 @@ description est la première ligne de la docstring de chaque route.*
 - **`brain_workflows`** — Retourne ce qui avance EN AUTONOMIE — le résumé du palier b (BRAIN-079).
 - **`brain_agents`** — Retourne les agents disponibles dans le brain.
 - **`brain_decisions`** — Retourne les dernières décisions architecturales (ADRs).
-- **`brain_focus`** — Retourne le focus genere du brain depuis Dolt.
+- **`brain_focus`** — Retourne le focus du brain : ce vers quoi on va, et ce qui est en cours.
 - **`brain_write`** — Écrit un fichier dans le brain via PUT /brain/{path}.
 - **`brain_content`** — Pipeline contenu du brain — vue unifiée atelier + publié.
 - **`brain_content_promote`** — Promouvoir un contenu dans le pipeline.
-- **`brain_intentions`** — Retourne les intentions du brain depuis Dolt.
 
 Branchement de Claude Code, vers **cette** machine :
 `claude mcp add --transport http brain http://127.0.0.1:7701/mcp`

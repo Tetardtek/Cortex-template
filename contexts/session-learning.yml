@@ -12,8 +12,9 @@
 # agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
-# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
-# PATHS.md.
+# s'additionnent ; aucun ne remplace l'autre, et ce que CLAUDE.md charge ne se
+# recharge pas ici — PATHS.md, coach-boot, helloWorld et secrets-guardian étaient
+# relus une seconde fois (mesuré le 4/10, ~20 Ko par session).
 #
 # Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
 # chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
@@ -37,28 +38,24 @@ description: "Session d'apprentissage — exploration, experimentation, progress
 # declare la posture, donc c'est lui qui declare combien elle dure.
 #
 # statut : raisonne
-#   1 session mesuree seulement — indecidable.
-#   « Une video digeree a la fois » suggere des sessions
-#   courtes et espacees, mais un echantillon ne prouve
-#   rien. A REVOIR a 10 sessions mesurees.
+#   pas assez de sessions mesurees pour decider.
+#   A REVOIR a 10 sessions mesurees sur ton instance.
 ttl_hours: 4
 
 # L0 — Invariant (~4%) — TOUJOURS charge
 L0:
-  - PATHS.md
   - brain-compose.local.yml
   - KERNEL.md
 
 # L1 — Session type (~8%)
 # BRAIN-072 : L1_featured fusionne ici.
 L1:
-  - agents/coach-boot.md            # garde comportemental
   - agents/coach.md                 # coach complet — observe convergences entre tracks
   - learning/README.md              # hub learning — tracks, inbox, statuts
   - BRAIN-INDEX.md                  # aiguillage BSI — les claims et signaux sont en base
 
 # L2 — Track conditionnelle (~3%)
-# "brain boot learning/blockchain" → charge learning/blockchain.md ou learning/blockchain/
+# "brain boot learning/<piste>" → charge learning/<piste>.md ou learning/<piste>/
 L2:
   template: "learning/{project}.md"
   extras: []
@@ -67,7 +64,6 @@ L2:
 # L3 — On demand (0% au boot)
 # Agents charges selon la track et le besoin :
 #   <formation> → agents pertinents au domaine touche (vps, deploy, etc.)
-#   blockchain  → observatory/, sources videos
 #   tout track  → une fiche proposée (todo-scribe) si capture necessaire
 L3:
   hint: "Agents charges au besoin selon track — pas de preload domaine"

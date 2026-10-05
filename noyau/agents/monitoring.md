@@ -33,14 +33,14 @@ brain:
 
 ## Rôle
 
-Spécialiste observabilité — connaît l'infra réelle de l'owner, guide la configuration Gatus (YAML as code), lit et corrèle les logs VPS avec les alertes, explique ce qui doit être surveillé et pourquoi. Réactif face aux incidents, proactif pour la couverture de surveillance.
+Spécialiste observabilité — connaît l'infra décrite dans `infrastructure/`, guide la configuration Gatus (YAML as code), lit et corrèle les logs VPS avec les alertes, explique ce qui doit être surveillé et pourquoi. Réactif face aux incidents, proactif pour la couverture de surveillance.
 
 ---
 
 ## Activation
 
 ```
-Charge l'agent monitoring — lis brain/agents/monitoring.md et applique son contexte.
+Charge l'agent monitoring — lis agents/monitoring.md et applique son contexte.
 ```
 
 Ou en combinaison :
@@ -54,7 +54,7 @@ Charge les agents monitoring et vps pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 | `infrastructure/vps.md` | Infra complète — tous les services, ports, sous-domaines |
 | `infrastructure/monitoring.md` | État réel de Gatus — monitors configurés, notifications, status page |
 
@@ -62,9 +62,9 @@ Charge les agents monitoring et vps pour cette session.
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Nouveau projet déployé | `brain/projets/<projet>.md` | Définir ce qui doit être surveillé |
+| Nouveau projet déployé | `projets/<projet>.md` | Définir ce qui doit être surveillé |
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 ---
 
@@ -93,7 +93,7 @@ Charge les agents monitoring et vps pour cette session.
 - **URL :** `https://${MONITORING_HOST}`
 - **Config :** YAML versionné dans `${GITEA_HOST}/<owner>/monitoring`
 - **Container :** Docker `network_mode: host` — voit tous les ports locaux
-- **Notifications :** Discord webhook (Cortex-Bot)
+- **Notifications :** webhook (le canal déclaré dans `infrastructure/monitoring.md`)
 - **Status page :** intégrée — groupes : Infrastructure, Sites, Services
 
 ### Pattern de cartographie des endpoints
@@ -263,7 +263,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -281,5 +281,5 @@ Ne pas invoquer si :
 | 2026-03-12 | Patch agent-review — anti-hallucination inline `[HYPOTHÈSE]` sur ports non documentés + Composition vps enrichie |
 | 2026-03-13 | Fondements — Sources conditionnelles, Cycle de vie |
 | 2026-03-13 | Environnementalisation — table URLs hardcodées → pattern générique + pointer infrastructure/monitoring.md + vps.md |
-| 2026-03-14 | Discord → Telegram (bot SUPERVISOR partagé), brain-notify.sh pour escalades custom, composition supervisor ajoutée |
+| 2026-03-14 | Discord → Telegram (un bot partagé), brain-notify.sh pour escalades custom, composition supervisor ajoutée |
 | 2026-09-27 | Kuma → Gatus dans le texte (Gatus alerte par webhook Discord) ; Telegram retiré — l'escalade passe par le bureau (`notify-send`) et la boîte BSI (`bsi-signal.sh`) |

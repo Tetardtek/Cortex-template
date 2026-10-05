@@ -137,7 +137,11 @@ def mecanismes_reels(moteur: Path) -> dict[str, list[str]]:
 JEUX_HTTP = {
     "disque":   {"read_text", "write_text", "iterdir", "rglob", "glob", "is_file",
                  "exists", "open", "mkdir", "unlink"},
-    "base":     {"query", "execute", "fetchall", "fetchone", "connect"},
+    # `query_one` et `count` : deux lectures de `db.py` que le jeu ignorait. Tant
+    # que `/focus` appelait aussi `query`, le trou ne se voyait pas ; sa dernière
+    # session seule (`query_one`) le rendait « disque » (4/10).
+    "base":     {"query", "query_one", "count", "execute", "fetchall", "fetchone",
+                 "connect"},
     "modele":   {"run_single_query", "run_boot_queries", "requete_faible",
                  "encode", "embed"},
     "sousproc": {"run", "check_output", "Popen", "call"},

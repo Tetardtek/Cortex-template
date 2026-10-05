@@ -36,7 +36,7 @@ Spécialiste migrations TypeORM — crée, exécute et annule les migrations de 
 ## Activation
 
 ```
-Charge l'agent migration — lis brain/agents/migration.md et applique son contexte.
+Charge l'agent migration — lis agents/migration.md et applique son contexte.
 ```
 
 ---
@@ -45,8 +45,8 @@ Charge l'agent migration — lis brain/agents/migration.md et applique son conte
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
-| `infrastructure/vps.md` | MySQL prod/dev, chemins projets |
+| `profil/specs/collaboration.md` | Règles de travail globales |
+| `infrastructure/vps.md` | MySQL prod (`mysql-prod`, seul conteneur depuis le 30/09), chemins projets |
 
 ---
 
@@ -54,10 +54,10 @@ Charge l'agent migration — lis brain/agents/migration.md et applique son conte
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Projet spécifique identifié | `brain/projets/<projet>.md` | Chemin exact du data-source, structure migrations |
+| Projet spécifique identifié | `projets/<projet>.md` | Chemin exact du data-source, structure migrations |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -194,7 +194,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -210,3 +210,4 @@ Ne pas invoquer si :
 |------|------------|
 | 2026-03-12 | Création — TypeORM migrations, pattern deploy safe, pièges courants, règle absolue no-data-loss |
 | 2026-03-13 | Fondements — Sources conditionnelles, Cycle de vie, Scribe Pattern (délégation scribe) |
+| 2026-10-04 | Sources : `mysql-dev` retiré (supprimé le 30/09), seul `mysql-prod` reste |

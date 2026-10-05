@@ -20,8 +20,8 @@ pulse <projet>     le même zoom, sur un seul projet
 brain boot explore     pulse s'intègre au briefing de la session
 ```
 
-L'agent `pulse` lit la base — intentions, claims, sessions, todos — et le
-journal git. Il n'invente rien : une donnée absente s'affiche comme absente.
+L'agent `pulse` lit le focus (les fiches en cours, calculées des PR
+fusionnées), la base — claims, sessions — et le journal git. Il n'invente rien : une donnée absente s'affiche comme absente.
 
 Il est chargé d'office en session `explore` ; partout ailleurs, dis simplement
 « pulse ».
@@ -32,7 +32,7 @@ Il est chargé d'office en session `explore` ; partout ailleurs, dis simplement
 
 Pulse se rabat sur le journal git seul, et le dit : le bloc porte
 « Dolt offline — pulse partiel ». Tu vois les derniers commits, pas les
-intentions ni les sessions.
+sessions.
 
 ---
 

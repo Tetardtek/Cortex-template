@@ -12,8 +12,9 @@
 # agents/helloWorld.md — six fichiers.
 #
 # L0 est ce que le TYPE de session ajoute avant tout le reste. Les deux
-# s'additionnent ; aucun ne remplace l'autre, et leur intersection se réduit à
-# PATHS.md.
+# s'additionnent ; aucun ne remplace l'autre, et ce que CLAUDE.md charge ne se
+# recharge pas ici — PATHS.md, coach-boot, helloWorld et secrets-guardian étaient
+# relus une seconde fois (mesuré le 4/10, ~20 Ko par session).
 #
 # Écrit le 04/09 après mesure : trois endroits déclaraient le « toujours
 # chargé » — CLAUDE.md, les L0, et manifest.yml (retiré depuis). Ils ne disaient
@@ -53,14 +54,13 @@ ttl_hours: 12
 # --- Ce qui est OFF ---
 wrap_detection: false          # JAMAIS de proposition de fermeture automatique
 close_proposal: false          # close uniquement sur "bonne nuit" / "je file" / demande explicite
-metabolism_capture: minimal    # duree + sujets abordes, pas de health_score
 deliverable_tracking: false    # rien a livrer = rien a tracker
 
 # --- Transition work → chill ---
 # L'utilisateur peut basculer d'une session work/brain/pilote vers chill :
 #   "on wrap le work, je reste en chill" / "switch chill" / "on chill"
 # Protocole :
-#   1. session-orchestrator execute la close sequence work (todos, metabolism, coach bilan)
+#   1. session-orchestrator execute la close sequence work (todos, coach bilan)
 #   2. BSI : close claim work (result: "transitioned-to-chill")
 #   3. BSI : open claim chill (meme conversation, contexte chaud)
 #   4. Posture bascule : wrap detection OFF, coach → mode present, ton detendu
@@ -75,7 +75,6 @@ deliverable_tracking: false    # rien a livrer = rien a tracker
 
 # L0 — Invariant (~4%) — TOUJOURS charge
 L0:
-  - PATHS.md
   - brain-compose.local.yml
   - KERNEL.md
 
@@ -83,7 +82,6 @@ L0:
 L1:
   # cap servi par brain_focus() MCP — plus de lecture fichier directe
   # focus.md genere depuis Dolt via API /focus — plus de fichier statique
-  - agents/coach-boot.md            # coach en mode PRESENT — reagit naturellement, pas en service
   - agents/learning-journal.md      # capture passive — propose en fin de session SI moment significatif
 
 # L2 — RIEN au boot
@@ -109,7 +107,7 @@ coach_mode: present
 #   - Reagit naturellement aux sujets techniques (pas un cours, une reaction)
 #   - Rebondit sur les apprentissages sans forcer la capture
 #   - Donne son avis honnete quand sollicite
-#   - Ne propose PAS de bilan, pas de +coach trigger, pas de ratio check
+#   - Ne propose PAS de bilan, pas de +coach
 #   - Risque critique → intervient (meme regle que partout)
 
 # --- Comportement conversation ---
@@ -141,32 +139,25 @@ learning_flow:
 # → NE PAS poser des questions sur ce qui est dans les sources
 # → Repondre avec le contexte mis a jour
 
-# --- Sous-scopes documentes (BRAIN-051 §6) ---
+# --- Sous-scopes documentes ---
 # Le chill peut avoir un sous-scope optionnel pour le rendre legerement productif
 # sans perdre la posture detendue.
 #
 #   brain boot chill                   → chill pur (lifestyle, debrief, oreille contextuelle)
-#                                        → AUCUN signal scratch (pas de pression)
+#                                        → aucun signal (pas de pression)
 #
 #   brain boot chill/gaming            → chill productif — la loop "produire en jouant"
-#                                        → scratch/gaming.md surface au boot si items ouverts
 #                                        → capter mecaniques observees, idees game design
-#                                        → nourrit projets jeux (tes projets de jeu)
-#
-# Convention : seul /gaming surface ses items au boot. Tout autre sous-scope chill
-# (chill/lecture, chill/musique, etc) reste silencieux par defaut. Pour ajouter un
-# sous-scope productif, mettre a jour la table dans helloWorld §"Scratch pad — mapping".
+#                                        → une idee qui nourrit un projet de jeu devient une fiche
+#                                          de son backlog — pas un carnet, ils sont retires
 
 sub_scopes:
   pure:
-    description: "chill par defaut — aucun signal scratch"
-    scratch_signal: false
+    description: "chill par defaut — aucun signal"
   gaming:
     description: "chill productif — la loop produire en jouant"
-    scratch_file: workspace/scratch/gaming.md
-    scratch_signal: true
     # Variante 3-level : chill/gaming/<game-slug>
-    # Exemples : brain boot chill/gaming/dofus, chill/gaming/graveyard-keeper
+    # Exemple : brain boot chill/gaming/<jeu>
     # Au boot avec 3-level scope, charger en plus :
     #   - profil/gaming/<game-slug>.md     (contexte perso du jeu)
     #   - agents/games/<game-slug>.md      (companion specifique, si existe)

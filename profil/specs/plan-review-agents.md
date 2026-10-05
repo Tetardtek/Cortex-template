@@ -284,7 +284,7 @@ Demande-t-il validation avant de passer à l'exécution ?
 | 10 | `optimizer-db` | mon-api | ✅ 2026-03-12 |
 | 11 | `refacto` | mon-api | ✅ 2026-03-12 |
 | 12 | `optimizer-backend` | mon-api | ✅ 2026-03-12 |
-| 13 | `optimizer-frontend` | Portfolio | ✅ 2026-03-12 |
+| 13 | `optimizer-frontend` | mon-site | ✅ 2026-03-12 |
 
 ---
 
@@ -331,7 +331,7 @@ Quand les 4 critères sont remplis → déclarer `swarm_ready: true` dans le wor
 | 10 | `optimizer-db` | mon-api | ✅ 2026-03-12 |
 | 11 | `refacto` | mon-api | ✅ 2026-03-12 |
 | 12 | `optimizer-backend` | mon-api | ✅ 2026-03-12 |
-| 13 | `optimizer-frontend` | Portfolio | ✅ 2026-03-12 |
+| 13 | `optimizer-frontend` | mon-site | ✅ 2026-03-12 |
 | 14 | `supervisor` | Brain multi-session | 🗄️ archivé le 30/09 |
 | 15 | `brain-hypervisor` | Brain workflow | 🗄️ archivé le 30/09 |
 | 16 | `kernel-orchestrator` | Brain workflow | 🗄️ archivé le 30/09 |

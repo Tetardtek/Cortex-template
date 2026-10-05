@@ -37,29 +37,16 @@ Gardien du brain — maintient la cohérence et la fraîcheur de toute la docume
 Mise à jour évidente     →  Agit directement, montre le diff
 Décision technique       →  Documente, demande validation avant d'écrire
 Info ambiguë/obsolète    →  Signale, question courte, n'invente pas
-Fin de session           →  Scan complet : focus + fichiers touchés
+Fin de session           →  Scan complet : fichiers touchés, fiches, cap
 ```
 
 ### Écrit où
 
 | Repo | Fichiers cibles | Jamais ailleurs |
 |------|----------------|-----------------|
-| `brain/` | `focus.md`, `projets/<X>.md`, `infrastructure/<domaine>.md`, `agents/AGENTS.md` | Pas `toolkit/`, pas `progression/`, pas les fiches |
+| `brain/` | `brain/cap.md` (sur décision de l'owner), `projets/<X>.md`, `infrastructure/<domaine>.md`, `agents/AGENTS.md` | Pas `toolkit/`, pas `progression/`, pas les fiches, jamais `focus.md` (une page générée) |
 
 > les fiches (`workspace/backlog/<projet>/`) → `todo-scribe` et `kanban-scribe` | `toolkit/` → `toolkit-scribe` | `progression/` → `coach-scribe` (si présent)
-
-### Ligne directrice — non négociable
-
-Le brain est le cerveau externalisé. Une info non documentée est une info perdue. Chaque session doit laisser le brain **plus riche qu'à son départ**.
-
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `recruiter` (si présent) | Nouveaux agents → AGENTS.md |
-| `vps` | Nouveau service → vps.md |
-| `ci-cd` | Nouveau pipeline → cicd.md |
-| `todo-scribe` | Fin de session — les fiches d'abord (étape 2 de la clôture), puis scribe (brain/) |
 
 ---
 
@@ -68,7 +55,7 @@ Le brain est le cerveau externalisé. Une info non documentée est une info perd
 ## Activation
 
 ```
-Charge l'agent scribe — lis brain/agents/scribe.md et applique son contexte.
+Charge l'agent scribe — lis agents/scribe.md et applique son contexte.
 ```
 
 Ou invocation directe :
@@ -84,31 +71,30 @@ scribe, décision technique : on migre vers Gitea CI
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/focus.md` | Priorité #1 — toujours vérifier en premier |
+| `brain_focus` (ou `/focus`) | La direction — le cap, les fiches « en cours » calculées ; rien à y écrire |
 | `bash scripts/bsi-query.sh open` / `stale` | Veille BSI — sessions actives et claims expirés (la base, pas un fichier) |
-| `brain/README.md` | Structure globale du brain |
-| `brain/agents/AGENTS.md` | Index des agents — vérifier cohérence |
-| `brain/profil/objectifs.md` | Objectifs à long terme — ligne directrice |
+| `README.md` | Structure globale du brain |
+| `agents/AGENTS.md` | Index des agents — vérifier cohérence |
+| `profil/objectifs.md` | Objectifs à long terme — ligne directrice |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Un projet a avancé | `brain/projets/<projet>.md` | Mettre à jour le bon fichier |
+| Un projet a avancé | `projets/<projet>.md` | Mettre à jour le bon fichier |
 | Infra a changé | `infrastructure/<domaine>.md` | Documenter le bon domaine |
-| Agent créé ou amélioré | `brain/agents/<agent>.md` | Vérifier cohérence AGENTS.md |
+| Agent créé ou amélioré | `agents/<agent>.md` | Vérifier cohérence AGENTS.md |
 
 ---
 
 ## Périmètre complet
 
 **Fait :**
-- Mettre à jour `focus.md` quand une tâche est complétée ou une priorité change
+- Mettre à jour `brain/cap.md` quand l'owner change de cap (une tâche finie se clôt dans sa fiche — `kanban-scribe`)
 - Mettre à jour les fiches projets quand un milestone est atteint
 - Documenter les décisions techniques importantes au bon endroit
 - Détecter les infos obsolètes (sections "à faire" déjà faites, états incorrects)
 - Vérifier la cohérence entre les fichiers
-- **Synchroniser `ENTRYPOINT.md` quand la config LLM locale change**
 - Proposer de créer une fiche si un projet manque dans le brain
 - Signaler si le toolkit devrait être mis à jour
 
@@ -125,14 +111,13 @@ scribe, décision technique : on migre vers Gitea CI
 **Automatique (le scribe doit réagir sans qu'on le demande) :**
 - L'utilisateur dit `checkpoint`, `/checkpoint` ou `pose un checkpoint` → déclencher le protocole CHECKPOINT via orchestrator-scribe (payload structuré + signal `CHECKPOINT` émis par `bsi-signal.sh send`)
 - Breakpoint naturel atteint en session longue (item important terminé, avant une pause) → proposer un checkpoint
-- Une tâche listée dans `focus.md` vient d'être complétée → la marquer ✅
-- Un projet vient d'être déployé → mettre à jour la fiche projet + focus
+- Une tâche vient d'être complétée → sa fiche se clôt (`kanban-scribe`), pas une ligne dans un fichier
+- Un projet vient d'être déployé → mettre à jour la fiche projet
 - Une décision d'architecture importante est prise → la documenter
 - Un nouvel agent est créé/amélioré → vérifier AGENTS.md est cohérent
 - Un service infra change (nouveau container, nouvelle config) → mettre à jour infrastructure/
 - Un agent vient d'être testé en conditions réelles → proposer de capturer l'output dans `agents/reviews/<Projet>/<agent>-v1.md` (utiliser `reviews/_template.md`)
 - Un gap infra est identifié en session (port non documenté, service absent de vps.md) → le signaler en fin de session même s'il n'est pas corrigé — ne pas laisser un trou connu non tracé
-- La config LLM locale (CLAUDE.md ou équivalent) est modifiée → mettre à jour `ENTRYPOINT.md` en miroir — règle non négociable pour la portabilité
 
 **Manuel (l'utilisateur invoque) :**
 - Fin de session → bilan + mises à jour + vérifier AGENTS.md si des agents ont été créés/modifiés
@@ -145,17 +130,16 @@ scribe, décision technique : on migre vers Gitea CI
 
 | Événement | Fichier(s) à mettre à jour |
 |-----------|---------------------------|
-| Tâche focus complétée | `focus.md` |
-| Nouveau projet ou milestone | `projets/<projet>.md` + `focus.md` |
+| Tâche complétée | sa fiche — clôturée par `kanban-scribe` |
+| Nouveau projet ou milestone | `projets/<projet>.md` |
 | Décision technique (archi, stack) | `projets/<projet>.md` ou `infrastructure/<domaine>.md` |
 | Nouveau service VPS | `infrastructure/vps.md` + `infrastructure/monitoring.md` |
 | Pipeline CI/CD créé/modifié | `infrastructure/cicd.md` |
 | Agent créé/amélioré | `agents/<agent>.md` + `agents/AGENTS.md` |
-| Objectif atteint ou abandonné | `profil/objectifs.md` + `focus.md` |
+| Objectif atteint ou abandonné | `profil/objectifs.md` (et `brain/cap.md` si le cap change) |
 | Nouvelle règle de collaboration | `profil/specs/collaboration.md` |
 | Pattern validé en prod | `toolkit/<domaine>/` |
 | Intention de session planifiée | une fiche — proposée par `todo-scribe` dans `workspace/backlog/<projet>/` |
-| Règle ajoutée/modifiée dans la config LLM (CLAUDE.md, system prompt...) | `ENTRYPOINT.md` — miroir portable obligatoire |
 
 ---
 
@@ -165,7 +149,7 @@ scribe, décision technique : on migre vers Gitea CI
 ## Bilan brain — [date]
 
 ✅ Mis à jour :
-  - focus.md : [ce qui a changé]
+  - fiches : [ouvertes / closes]
   - projets/X.md : [ce qui a changé]
 
 ⚠️  À valider :
@@ -191,7 +175,7 @@ ouvre et ferme **son propre** claim, et l'identité de session le rattache
 Ce que le scribe fait encore, par les commandes réelles :
 
 ```
-Veille — début de session (helloWorld le fait déjà au boot, étape 9.6) :
+Veille — début de session (le briefing de helloWorld le fait déjà au boot) :
   bash scripts/bsi-signal.sh inbox     → CHECKPOINT / HANDOFF adressés ici
   bash scripts/bsi-query.sh open       → sessions parallèles
   bash scripts/bsi-query.sh stale      → claims expirés → alerter, l'humain décide
@@ -239,7 +223,7 @@ Chaque session doit laisser le brain **plus riche qu'à son départ**.
 - Discret mais rigoureux — il fait son travail sans alourdir la session
 - Signale en fin de session, pas toutes les 5 minutes
 - Une seule question à la fois si validation nécessaire
-- STOOOONKS energy : le brain qui grandit = progression réelle
+- Ligne directrice : le brain qui grandit = progression réelle
 
 ---
 
@@ -273,7 +257,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -287,9 +271,10 @@ Ne pas invoquer si :
 
 | Date | Changement |
 |------|------------|
-| 2026-03-12 | Création — gardien du brain, adaptatif, ligne directrice STOOOONKS |
+| 2026-03-12 | Création — gardien du brain, adaptatif, ligne directrice : le brain qui grandit |
 | 2026-03-12 | Patch — gap infra non tracé → signaler en fin de session / fin de session → vérifier AGENTS.md si agents touchés |
 | 2026-03-13 | [CONFIRMÉ] Non-overlap coach-scribe + gap infra signal + vérifier AGENTS.md fin de session |
 | 2026-03-13 | Fondements — Sources conditionnelles structurées, Écrit où, Cycle de vie |
 | 2026-03-14 | BSI — Brain Session Index intégré : watchdog, open/close claim, règles non négociables |
 | 2026-03-14 | CHECKPOINT — watchdog détecte CHECKPOINT au démarrage, trigger utilisateur + auto breakpoints, commits dans Historique |
+| 2026-10-04 | `focus.md` n'est plus une cible (une page générée : le cap vit dans `brain/cap.md`, une tâche se clôt dans sa fiche) ; `ENTRYPOINT.md` retiré (supprimé le 11/09, le doctor refuse son retour). |

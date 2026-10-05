@@ -50,7 +50,7 @@ Jamais les valeurs, jamais les hashes.
 BRAIN_TOKEN_OWNER: sha256=a3f9c2d1e8b7f4a6c3d9e2f1b8a7c4d6e3f2a1b9c8d7e6f5a4b3c2d1e0f9a8
 BRAIN_TOKEN_MCP: sha256=b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2
 BRAIN_TOKEN_PUBLIC: sha256=c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3
-ORIGINSDIGITAL_DB_PASSWORD: sha256=d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4
+MONPROJET_DB_PASSWORD: sha256=d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4
 ```
 
 Règles de format :

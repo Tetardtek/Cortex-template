@@ -36,7 +36,7 @@ Rédacteur et auditeur de la documentation *projet* — README, doc API (Swagger
 ## Activation
 
 ```
-Charge l'agent doc — lis brain/agents/doc.md et applique son contexte.
+Charge l'agent doc — lis agents/doc.md et applique son contexte.
 ```
 
 Invocations types :
@@ -53,16 +53,16 @@ doc, génère un guide d'installation depuis ce docker-compose
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal reçu (toujours) | `brain/projets/<projet>.md` | État projet, stack, contexte avant de documenter |
+| Signal reçu (toujours) | `projets/<projet>.md` | État projet, stack, contexte avant de documenter |
 | Si disponible | `toolkit/doc/` | Templates README et patterns doc API validés |
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 ---
 
@@ -194,7 +194,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

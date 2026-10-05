@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# brain-distribuable: oui
+# agents-satellite — la vue des agents suit les satellites qu'elle lit : `instance/agents/`
+# (les compléments et surcharges) et `progression/` (la carte qu'un complément calcule)
+#
+# Lancé par les lanceurs qu'install-brain-hooks.sh pose dans `instance/agents/.git/hooks`
+# (post-commit, post-merge, post-rewrite), le nom du hook en premier argument.
+#
+# Dans le brain, ses propres hooks reconstruisent la vue. Satellite, plus aucun commit du
+# brain ne voit un complément, une surcharge ou une carte changer : sans ces lanceurs,
+# `agents/X.md` resterait l'assemblage d'avant — en silence jusqu'au doctor. Les mêmes règles que
+# handoffs-satellite : un worktree n'est pas la vue du brain.
+
+hook="${1:-}"
+shift || true
+
+SAT_WT="$(git rev-parse --show-toplevel)"
+SAT_MAIN="$(cd "$SAT_WT" && cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+[[ "$SAT_WT" != "$SAT_MAIN" ]] && exit 0
+
+BRAIN_MAIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+case "$hook" in
+    post-commit)  avant="HEAD~1" ;;
+    post-merge)   avant="ORIG_HEAD" ;;
+    post-rewrite) [[ "${1:-}" == "rebase" ]] || exit 0; avant="ORIG_HEAD" ;;
+    *)            exit 0 ;;
+esac
+
+# Un premier commit n'a pas de HEAD~1 : tout est nouveau.
+if ! git rev-parse -q --verify "$avant" >/dev/null 2>&1 \
+        || git diff --name-only "$avant" HEAD 2>/dev/null | grep -q '\.md$'; then
+    BRAIN_ROOT="$BRAIN_MAIN" python3 "$BRAIN_MAIN/scripts/vue.py" --construire >/dev/null 2>&1 \
+        || echo "⚠️  la vue des agents ne s'est pas reconstruite — bash scripts/brain vue --construire" >&2
+fi

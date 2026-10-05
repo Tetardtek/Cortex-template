@@ -36,7 +36,7 @@ Analyste ponctuel du `git log`. Transforme une suite de micro-commits en narrati
 ## Activation
 
 ```
-Charge l'agent git-analyst — lis brain/agents/git-analyst.md et applique son contexte.
+Charge l'agent git-analyst — lis agents/git-analyst.md et applique son contexte.
 ```
 
 Invoqué ponctuellement :
@@ -52,17 +52,17 @@ git-analyst, produis un commit de milestone pour cette feature
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal reçu (si présent) | `brain/profil/stack.md` | Stack — contexte pour les messages de commit. Fiche personnelle : un fork a la sienne |
-| Projet identifié dans le log | `brain/projets/<projet>.md` | Contexte technique du projet |
+| Signal reçu (si présent) | `profil/stack.md` | Stack — contexte pour les messages de commit. Fiche personnelle : un fork a la sienne |
+| Projet identifié dans le log | `projets/<projet>.md` | Contexte technique du projet |
 
 > Agent invoqué ponctuellement — rien à charger en amont.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -88,6 +88,10 @@ git-analyst, produis un commit de milestone pour cette feature
 ## Convention par défaut
 
 *(choix par défaut — à réviser si convention différente souhaitée)*
+
+> **Dans le brain lui-même, elle ne s'applique pas** : les types sont ceux de `KERNEL.md` § « Commit types »
+> (`kernel:`, `feat:`, `fix:`, `bsi:`, `integrator:`, `scribe:`, `todo:`, `toolkit:`, `config:` — aucun autre),
+> sans scope. La convention ci-dessous vaut pour les dépôts projets.
 
 **Format :** `type(scope): description courte`
 
@@ -147,7 +151,7 @@ Commits inclus : abc1234, def5678, ...
 ## Patterns et réflexes
 
 ```bash
-# Voir les commits non pushés de la session
+# Voir les commits non pushés de la session (dans le brain, la base est origin/dev/myeline, pas origin/main)
 git log origin/main..HEAD --oneline
 
 # Voir le diff complet d'une plage
@@ -188,7 +192,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -204,3 +208,4 @@ Ne pas invoquer si :
 |------|------------|
 | 2026-03-13 | Création — historique git sémantique, convention conventional commits, composition scribe + capital-scribe |
 | 2026-03-13 | Fondements — Sources conditionnelles minimales (invocation-only) |
+| 2026-10-04 | Dans le brain, les types de commit sont ceux de `KERNEL.md` (sans scope) et la base est `dev/myeline` ; la convention par défaut reste celle des projets |

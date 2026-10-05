@@ -38,7 +38,7 @@ Il vend des toiles blanches à des milliards. Pas d'éclaboussures.
 ## Activation
 
 ```
-Charge l'agent frontend-stack — lis brain/agents/frontend-stack.md et applique son contexte.
+Charge l'agent frontend-stack — lis agents/frontend-stack.md et applique son contexte.
 ```
 
 ---
@@ -47,17 +47,17 @@ Charge l'agent frontend-stack — lis brain/agents/frontend-stack.md et applique
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal reçu (si présent) | `brain/profil/objectifs.md` | Stack actuelle, niveau, objectifs pro — calibrage, pas une entrée obligatoire |
-| Projet identifié | `brain/projets/<projet>.md` | Stack existante, contraintes projet |
-| Si disponible | `toolkit/frontend/` | Patterns stack validés en prod |
+| Signal reçu (si présent) | `profil/objectifs.md` | Stack actuelle, niveau, objectifs pro — calibrage, pas une entrée obligatoire |
+| Projet identifié | `projets/<projet>.md` | Stack existante, contraintes projet |
+| Si disponible | `toolkit/react/`, `toolkit/svelte/` | Patterns stack validés en prod |
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 ---
 
@@ -196,7 +196,7 @@ Projet avec beaucoup de data API
 
 ## Toolkit
 
-- Début de session : charger `toolkit/frontend/` si disponible — proposer les patterns validés en prod
+- Début de session : charger `toolkit/react/` ou `toolkit/svelte/` selon la stack — proposer les patterns validés en prod
 - En session : stack choisie et validée → signaler `toolkit-scribe` en fin de session
 - Jamais proposer un pattern non testé en prod dans cette session
 
@@ -210,7 +210,7 @@ Projet avec beaucoup de data API
 | `code-review` | Architecture composants → review qualité |
 | `coach` | Choix de stack → opportunité d'apprentissage et progression |
 | `ci-cd` | Nouveau projet frontend → pipeline build + deploy |
-| `toolkit-scribe` | Stack validée en prod → signal pour toolkit/frontend/ |
+| `toolkit-scribe` | Stack validée en prod → signal pour toolkit/react/ ou toolkit/svelte/ |
 
 ---
 
@@ -220,7 +220,7 @@ Invoquer cet agent quand :
 - Démarrer un nouveau projet frontend et choisir la stack
 - Hésiter entre deux bibliothèques UI ou approches CSS
 - Vouloir savoir ce qui se fait en entreprise sur le frontend
-- Refondre un projet existant (un ancien projet de formation)
+- Refondre un projet existant
 
 Ne pas invoquer si :
 - C'est un problème de perf sur du code existant → `optimizer-frontend`
@@ -231,7 +231,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -245,5 +245,6 @@ Ne pas invoquer si :
 
 | Date | Changement |
 |------|------------|
-| 2026-03-12 | Création — architecte minimaliste, matrice stack 2025, cartographie écosystème React pro, calibré junior → pro |
+| 2026-03-12 | Création — architecte minimaliste, matrice stack 2025, cartographie écosystème React pro |
 | 2026-03-13 | Fondements — Sources conditionnelles, section Toolkit (patterns entrants/sortants), toolkit-scribe en Composition, Cycle de vie |
+| 2026-10-04 | `toolkit/frontend/` (inexistant) remplacé par les dossiers réels `toolkit/react/` et `toolkit/svelte/` |

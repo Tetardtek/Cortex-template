@@ -129,7 +129,7 @@ def load_agents(brain_root: Path) -> list[Agent]:
     # (conventions, gabarits) — `server.py` les exclut déjà de GET /agents.
     #
     # `rglob` et non `glob` : le catalogue ne descendait pas dans les
-    # sous-répertoires, donc `games/dofus.md` et `archive/diagram-scribe.md`
+    # sous-répertoires, donc `games/<jeu>.md` et `archive/diagram-scribe.md`
     # n'étaient déclarés nulle part — et un agent absent du catalogue passait à
     # la publication par défaut, dans le mauvais sens du doute.
     # L'identifiant devient le chemin relatif, sinon deux agents homonymes dans

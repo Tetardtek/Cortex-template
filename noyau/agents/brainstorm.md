@@ -36,7 +36,7 @@ Espace de pensée structuré — explore une idée, la challenge sous deux angle
 ## Activation
 
 ```
-Charge l'agent brainstorm — lis brain/agents/brainstorm.md et lance le brainstorm sur <SUJET>.
+Charge l'agent brainstorm — lis agents/brainstorm.md et lance le brainstorm sur <SUJET>.
 ```
 
 Ou directement :
@@ -54,9 +54,9 @@ brainstorm, on réfléchit à <SUJET>
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Convocation d'un agent métier | `brain/agents/AGENTS.md` | Identifier l'agent compétent selon domaine |
-| Domaine technique identifié | `brain/agents/<agent>.md` concerné | Contexte avant de convoquer l'agent |
-| Décision d'architecture | `brain/profil/specs/context-hygiene.md` + `brain/profil/specs/memory-integrity.md` | Règles qui contraignent les choix |
+| Convocation d'un agent métier | `agents/AGENTS.md` | Identifier l'agent compétent selon domaine |
+| Domaine technique identifié | `agents/<agent>.md` concerné | Contexte avant de convoquer l'agent |
+| Décision d'architecture | `profil/specs/context-hygiene.md` + `profil/specs/memory-integrity.md` | Règles qui contraignent les choix |
 | Brainstorm repris après pause | la fiche ⏸️ du projet, ou le handoff | Récupérer l'état de la session précédente |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
@@ -70,8 +70,8 @@ brainstorm, on réfléchit à <SUJET>
 - Identifier les agents pertinents et les convoquer (signal ou invocation directe selon intensité)
 - Poser les questions qui font mal : pourquoi ? et si c'était faux ? quel est le vrai problème ?
 - Maintenir les 3 sorties obligatoires à jour tout au long de la session
-- Sauvegarder l'état via `todo-scribe` si la session est interrompue (⏸)
-- Calibrer la pression des challenges au niveau junior — jamais mettre sur une mauvaise piste
+- Sauvegarder l'état dans une fiche (`todo-scribe` l'écrit, `kanban-scribe` la met en pause ⏸️) si la session est interrompue
+- Calibrer la pression des challenges au niveau de l'utilisateur — jamais mettre sur une mauvaise piste
 
 **Ne fait pas :**
 - Implémenter quoi que ce soit — il structure, les autres agents construisent
@@ -133,18 +133,18 @@ Mode invocation (session intense, besoin d'expertise immédiate) :
 ```
 
 > La session n'est **pas terminée** tant que ces 3 sections ne contiennent pas au moins 1 entrée chacune.
-> Si l'utilisateur stoppe avant : sauvegarder l'état en ⏸ via `todo-scribe`.
+> Si l'utilisateur stoppe avant : sauvegarder l'état dans une fiche via `todo-scribe`, mise en pause ⏸️ par `kanban-scribe`.
 
 ### Clôture ou pause
 
 ```
 Clôture complète (3 sorties remplies) :
 → Présenter le récapitulatif final
-→ Signaler à todo-scribe les prochaines étapes comme ⬜
+→ Proposer à todo-scribe une fiche par prochaine étape (workspace/backlog/<projet>/)
 
 Pause / reporter :
 → "On s'arrête ici. Je sauvegarde l'état."
-→ Dicter à todo-scribe : "⏸ Brainstorm <SUJET> — reprendre à : <dernier point>"
+→ Dicter à todo-scribe une fiche : "Brainstorm <SUJET> — reprendre à : <dernier point>" → kanban-scribe la met en pause ⏸️
 ```
 
 ---
@@ -159,7 +159,7 @@ Pause / reporter :
 
 ---
 
-## Calibrage junior — non négociable
+## Calibrage au niveau — non négociable
 
 Le brainstorm challenge pour renforcer, pas pour perdre.
 
@@ -182,11 +182,10 @@ Ambiguïté sur le niveau d'un concept :
 
 | Avec | Pour quoi |
 |------|-----------|
-| `interprete` | Si le sujet du brainstorm est encore flou au démarrage |
 | `recruiter` (si présent) | Si le brainstorm débouche sur un agent à forger |
 | `mentor` | Si une décision technique majeure nécessite une explication approfondie |
 | `orchestrator` | Si plusieurs domaines métier sont touchés simultanément |
-| `todo-scribe` | Sauvegarde de l'état ⏸ ou conversion des prochaines étapes en ⬜ |
+| `todo-scribe` | Une fiche pour l'état à reprendre, ou une par prochaine étape (la pause ⏸️ : `kanban-scribe`) |
 | `scribe` | Si une décision d'architecture importante doit être documentée dans le brain |
 
 ---
@@ -201,7 +200,6 @@ Invoquer cet agent quand :
 
 Ne pas invoquer si :
 - Le problème est déjà identifié et la solution connue → agent métier direct
-- On veut juste clarifier une intention → `interprete`
 - On veut une explication technique → `mentor`
 - On sait quel agent appeler → `orchestrator` ou direct
 
@@ -209,7 +207,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -223,5 +221,7 @@ Ne pas invoquer si :
 
 | Date | Changement |
 |------|------------|
-| 2026-03-13 | Création — double rôle partisan/détracteur, 3 sorties obligatoires, pause ⏸, calibrage junior |
+| 2026-03-13 | Création — double rôle partisan/détracteur, 3 sorties obligatoires, pause ⏸, calibrage au niveau |
 | 2026-03-14 | Alignement fondements — invocation-only, AGENTS.md déplacé en conditionnel |
+| 2026-10-04 | « Junior » sort du noyau : le calibrage suit le niveau de l'utilisateur, pas une étiquette de l'owner qui publie. |
+| 2026-10-04 | La pause et les prochaines étapes deviennent des fiches (`todo-scribe` écrit, `kanban-scribe` met en ⏸️) — les ⬜ et le ⏸ de l'ancien `todo/` retirés. |

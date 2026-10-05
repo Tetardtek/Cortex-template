@@ -1,7 +1,7 @@
-# Gel de brain-engine/.venv tel qu il tournait sur le fixe Pop!_OS (Python 3.12).
-# Releve le 26/09 depuis .venv.popos a la migration Omarchy : requirements.txt seul
-# (bornes >=) avait tire mcp 2.x, qui a renomme FastMCP -> mcp_server.py ne chargeait plus.
-# Le CORE (myeline) s installe a part : .venv/bin/pip install -e ~/Dev/Gitea/myeline
+# Gel de brain-engine/.venv tel qu il tournait sur l instance d origine (Python 3.12).
+# Releve le 26/09 a un changement de machine : requirements.txt seul (bornes >=)
+# avait tire mcp 2.x, qui a renomme FastMCP -> mcp_server.py ne chargeait plus.
+# Le CORE (myeline) s installe a part : .venv/bin/pip install -e <chemin du depot myeline>
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1

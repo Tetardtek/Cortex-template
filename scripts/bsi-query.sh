@@ -75,7 +75,7 @@ for name, info in peers.items():
         fi
         echo ""
         echo "💻 $name ($host)"
-        # 🔴 `bash -lc` est obligatoire — eprouve le 23/09 contre le laptop Omarchy.
+        # 🔴 `bash -lc` est obligatoire — eprouve le 23/09 contre un peer distant.
         # `ssh hote "commande"` lance un shell NON interactif et NON-login : il ne
         # lit ni `.bashrc` ni `.bash_profile`, donc le peer travaille sans son
         # environnement. Le laptop y perdait son `PYTHONPATH` vers le CORE de

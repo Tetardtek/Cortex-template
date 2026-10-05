@@ -24,12 +24,30 @@ pas. Ce qui suit en est le résumé opérationnel.
 
 `agents/` est une **vue** : des liens, ignorés par git, construits par `brain vue`.
 `agents/<nom>.md` pointe vers `instance/agents/<nom>.md` s'il existe (la surcharge de
-l'instance), sinon vers `noyau/agents/<nom>.md` (le noyau livré). On lit toujours
-`agents/<nom>.md` ; on écrit dans la couche voulue, puis `brain vue --construire`.
+l'instance), sinon vers `noyau/agents/<nom>.md` (le noyau livré).
+`instance/agents/<nom>.complement.md` s'AJOUTE à l'agent : `agents/<nom>.md` devient
+un fichier assemblé (l'agent, puis le complément, puis une marque d'empreinte) — c'est
+là que va ce qui est propre à l'instance (l'owner, son niveau), jamais dans le noyau
+distribué. Une ligne `<!-- carte: <dossier> [resume] -->` du complément y est remplacée
+par la carte calculée depuis les tableaux de niveaux du dossier — de la donnée (nom et
+niveau, jamais la preuve), qui calibre les réponses. On lit toujours `agents/<nom>.md` ; on écrit dans la couche voulue — jamais
+dans un fichier assemblé —, puis `brain vue --construire`.
 Un fichier réel dans `agents/` est une écriture que git ne voit pas : `brain vue`
 le signale, ne le touche jamais. Un fork ne modifie pas `noyau/` — il surcharge
 dans `instance/agents/`, et `brain maj` met le noyau à jour sans toucher à la
 surcharge.
+
+**Après un `brain maj`, la surcouche se relit.** Un complément suit tout seul : la
+vue l'assemble avec le nouvel agent. Une **surcharge** remplace l'agent entier — ce
+que le noyau y améliore ne lui arrive pas. Le plan nomme chaque surcharge que la
+version change, et `--appliquer` en pose la liste, avec la commande de diff de
+chacune, dans `workspace/scratch/brain-maj-<version>/surcharges.md`. Pour chacune :
+lire le diff du noyau, puis **proposer** — reprendre dans la surcharge ce qui sert,
+ou la réduire à un complément si ce qui est propre à l'instance tient en un ajout.
+Jamais écraser la surcharge par le noyau, jamais décider seul : c'est la couche de
+l'owner. Le plan dit aussi les fichiers que le dépôt suit encore et que la version
+range en satellites (`projets/`, `handoffs/`…) : git ne les retire pas, l'owner les
+versionne à part quand il veut (`docs/satellites.md`).
 
 Un agent est `agents/<nom>.md` : un frontmatter (`description`, `brain.scope`,
 `brain.type`, `brain.triggers`, `brain.ipc`), puis son texte — souvent un

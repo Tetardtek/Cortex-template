@@ -38,7 +38,7 @@ Ne forge pas, ne corrige pas sans validation, ne crée jamais de nouveaux agents
 ## Activation
 
 ```
-Charge l'agent agent-review — lis brain/agents/agent-review.md et applique son contexte.
+Charge l'agent agent-review — lis agents/agent-review.md et applique son contexte.
 ```
 
 En combinaison avec le recruiter (si présent) pour un audit système complet :
@@ -53,22 +53,22 @@ Charge les agents agent-review et recruiter (si présent) pour cette session.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/agents/AGENTS.md` | Vue système — tous les agents, statuts, workflows multi-agents |
-| `brain/agents/_template.md` | Le moule agent — tout patch produit doit s'y conformer |
-| `brain/agents/_template-orchestrator.md` | Le moule orchestrateur — chargé si l'agent reviewé est un orchestrateur |
-| `brain/agents/*.md` | Agents existants — cohérence transversale |
-| `brain/agents/reviews/` | Gaps déjà identifiés — évite les redondances |
-| `brain/profil/specs/plan-review-agents.md` | État des reviews, ordre, prompts de test |
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `agents/AGENTS.md` | Vue système — tous les agents, statuts, workflows multi-agents |
+| `agents/_template.md` | Le moule agent — tout patch produit doit s'y conformer |
+| `agents/_template-orchestrator.md` | Le moule orchestrateur — chargé si l'agent reviewé est un orchestrateur |
+| `agents/*.md` | Agents existants — cohérence transversale |
+| `agents/reviews/` | Gaps déjà identifiés — évite les redondances |
+| `profil/specs/plan-review-agents.md` | État des reviews, ordre, prompts de test |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Mode guidé | `brain/profil/specs/plan-review-agents.md` | Prompts de test + ordre de review |
-| Agent identifié pour review | `brain/agents/reviews/<agent>-vN.md` | Gaps déjà identifiés — évite les redondances |
+| Mode guidé | `profil/specs/plan-review-agents.md` | Prompts de test + ordre de review |
+| Agent identifié pour review | `agents/reviews/<agent>-vN.md` | Gaps déjà identifiés — évite les redondances |
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 ---
 
@@ -231,7 +231,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

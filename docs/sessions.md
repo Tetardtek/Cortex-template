@@ -17,12 +17,12 @@ ordre: 2
 
 | Type | Posture | Se lance par | Claim | Contexte au boot | Agents chargés d'office |
 |---|---|---|---|---|---|
-| **brain** | je construis le système | `brain boot brain[/<scope>]` | 4 h | ~22% | `coach-boot` · `coach` · `brain-guardian` · `scribe` |
-| **chill** | je suis là | `brain boot chill` | 12 h | ~12% | `coach-boot` · `learning-journal` |
-| **explore** | je réfléchis / je navigue | `brain boot explore[/<scope>]` | 8 h | ~18% | `coach-boot` · `coach` · `pulse` |
-| **learning** | je découvre / j'expérimente | `brain boot learning[/<track>]` | 4 h | ~15% | `coach-boot` · `coach` |
-| **pilote** (owner) | j'orchestre (long, multi-scope) | `brain boot pilote[/<project>]` | 12 h | ~35% | `coach` · `helloWorld` · `secrets-guardian` |
-| **work** | je produis | `brain boot work[/<project>]` | 4 h | ~25% | `coach-boot` · `coach` · `debug` · `code-review` · `security` |
+| **brain** | je construis le système | `brain boot brain[/<scope>]` | 4 h | ~22% | `coach` · `brain-guardian` · `scribe` |
+| **chill** | je suis là | `brain boot chill` | 12 h | ~12% | `learning-journal` |
+| **explore** | je réfléchis / je navigue | `brain boot explore[/<scope>]` | 8 h | ~18% | `coach` · `pulse` |
+| **learning** | je découvre / j'expérimente | `brain boot learning[/<track>]` | 4 h | ~15% | `coach` |
+| **pilote** (owner) | j'orchestre (long, multi-scope) | `brain boot pilote[/<project>]` | 12 h | ~35% | `coach` |
+| **work** | je produis | `brain boot work[/<project>]` | 4 h | ~25% | `coach` · `debug` · `code-review` · `security` |
 
 *Généré depuis `contexts/session-*.yml` : chaque type y a son manifest. « Claim »
 est la durée de vie déclarée d'une session : au-delà, `close-stale` peut la

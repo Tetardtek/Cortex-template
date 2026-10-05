@@ -33,14 +33,14 @@ brain:
 en prod, les formate selon les conventions, et les commit dans le bon sous-dossier.
 Il ne connaît pas les domaines techniques — il connaît la structure du toolkit.
 
-Voir `brain/profil/specs/scribe-system.md` pour l'idéologie fondatrice.
+Voir `profil/specs/scribe-system.md` pour l'idéologie fondatrice.
 
 ---
 
 ## Activation
 
 ```
-Charge l'agent toolkit-scribe — lis brain/agents/toolkit-scribe.md et applique son contexte.
+Charge l'agent toolkit-scribe — lis agents/toolkit-scribe.md et applique son contexte.
 ```
 
 Ou en fin de session avec signal :
@@ -54,8 +54,8 @@ toolkit-scribe, voici les patterns candidats de cette session : [liste]
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
-| `brain/profil/specs/scribe-system.md` | L'idéologie — ce qu'il est et ce qu'il ne fait pas |
+| `profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/scribe-system.md` | L'idéologie — ce qu'il est et ce qu'il ne fait pas |
 
 ## Sources conditionnelles
 
@@ -65,7 +65,7 @@ toolkit-scribe, voici les patterns candidats de cette session : [liste]
 | Domaine identifié dans le signal | `toolkit/<domaine>/` | Vérifier patterns existants avant d'écrire |
 
 > Agent invoqué uniquement sur signal pattern candidat — rien à charger en amont.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -121,14 +121,28 @@ Chemin réel : `toolkit/` — repo Gitea `<GITEA_URL>/<USERNAME>/toolkit` (voir 
 
 ```
 toolkit/
+├── README.md · STACK-INDEX.md · _template.md
 ├── apache/                → vhosts, reverse proxy, SSL
+├── auth/                  → flux d'auth, CORS, invitations
+├── bact/                  → cache, conventions agents
+├── brain/                 → patterns du brain (ADR, BHP, secrets, checkpoint)
+├── debug/                 → outils de débogage
 ├── docker/                → containers, réseaux, volumes
-├── mysql/                 → requêtes, migrations, users
+├── game/                  → patterns de jeu (inventaire, quêtes, succès)
 ├── github-actions/        → pipelines CI/CD
+├── infra/                 → DNS, infrastructure
+├── linux/                 → dotfiles, palette, provisioning
+├── mysql/                 → requêtes, migrations, users
+├── pm2/                   → process manager Node.js (VPS)
+├── postiz/                → contournements et référence Postiz
+├── react/                 → patterns React
+├── security/              → patterns sécu validés — VALIDATION OBLIGATOIRE avant commit
+├── sprint/                → patterns de sprint
+├── svelte/                → patterns Svelte
 ├── systemd/               → services système
-├── pm2/                   → process manager Node.js (à créer)
-├── node/                  → patterns Node.js/Express/TypeORM (à créer)
-└── security/              → patterns sécu validés — VALIDATION OBLIGATOIRE avant commit (à créer)
+├── tauri/                 → patterns Tauri
+├── testing/               → patterns de test
+└── typescript/            → patterns TypeScript/Node/Express
 ```
 
 ---
@@ -166,7 +180,7 @@ Chaque agent métier couvrant un domaine présent dans `toolkit/` doit avoir une
 Agents à mettre à jour (par ordre de priorité) :
 - `vps.md` → `toolkit/apache/`, `toolkit/docker/`
 - `pm2.md` → `toolkit/pm2/`
-- `ci-cd.md` → `toolkit/ci-cd/`
+- `ci-cd.md` → `toolkit/github-actions/`
 - `migration.md` → `toolkit/mysql/`
 - `debug.md` → détection patterns transversaux
 
@@ -197,7 +211,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -213,3 +227,4 @@ Ne pas invoquer si :
 |------|------------|
 | 2026-03-13 | Création — émergé du Scribe Pattern, architecture 2 couches (agents métier + scribes) |
 | 2026-03-13 | Fondements — fix scribe-system.md, Sources conditionnelles minimales (invocation-only), Cycle de vie |
+| 2026-10-04 | Carte du toolkit alignée sur `ls toolkit/` (`node/` retiré, 14 dossiers ajoutés) et `toolkit/ci-cd/` corrigé en `toolkit/github-actions/` |

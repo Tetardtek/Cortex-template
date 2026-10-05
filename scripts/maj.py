@@ -57,6 +57,15 @@ Ces choix-là sont les tiens : `git merge <version>`, puis relance `brain maj`
 pour la suite. Sans amont déclaré (le brain d'origine, ou un fork qui ne l'a
 pas encore fait), il n'a rien à recevoir.
 
+── Le relais ───────────────────────────────────────────────────────────────
+
+Le `brain maj` qui tourne est celui que tu as — celui de ta version. Ce que la
+version reçue apprend à la mise à jour (relire une surcouche de plus, s'arrêter
+sur un nouveau risque) ne servirait qu'à la suivante. Il passe donc la main :
+si le `scripts/maj.py` de la version reçue diffère du sien, c'est LUI qui
+tourne, extrait de la version, avec les mêmes arguments, sur le même brain.
+Une seule fois (`BRAIN_MAJ_RELAIS`) : le relais ne se relaie pas.
+
 Sortie 0 : à jour, ou plan sans obstacle, ou version reçue. 1 : un obstacle,
 rien n'a bougé. 2 : rien à recevoir d'ici.
 """
@@ -161,6 +170,92 @@ def migration_vers_la_vue(brain: Path, base: str, cible: str) -> dict | None:
     return m
 
 
+def chemin_agent(brain: Path, rev: str, nom: str) -> str | None:
+    """Où vit l'agent `nom` dans `rev` : le noyau d'une vue, ou `agents/` d'un brain à plat."""
+    for c in (f"noyau/agents/{nom}.md", f"agents/{nom}.md"):
+        if git(brain, "cat-file", "-e", f"{rev}:{c}", ok=(0, 1, 128)).returncode == 0:
+            return c
+    return None
+
+
+def surcharges_a_relire(brain: Path, base: str, cible: str, migration: dict | None) -> list[dict]:
+    """Tes agents REMPLACÉS dont le noyau change dans la version reçue.
+
+    Un complément suit tout seul : la vue l'assemble avec le nouvel agent. Une
+    surcharge, non — elle remplace l'agent entier, et ce que le noyau améliore
+    ne t'arrive pas. Rien ne l'écrase ; le plan la nomme, avec de quoi comparer.
+    Le contenu se compare, pas le chemin : un brain à plat qui passe à la vue
+    voit chaque agent déménager sans changer."""
+    inst = brain / "instance" / "agents"
+    miens = {f.stem for f in inst.glob("*.md")
+             if f.name != "README.md" and not f.name.endswith(".complement.md")} if inst.is_dir() else set()
+    if migration is not None:
+        miens |= {Path(c).stem for c in migration["modifies"]}
+    sortie = []
+    for nom in sorted(miens):
+        avant, apres = chemin_agent(brain, base, nom), chemin_agent(brain, cible, nom)
+        if not avant or not apres:
+            continue
+        a = git(brain, "rev-parse", f"{base}:{avant}").stdout.strip()
+        b = git(brain, "rev-parse", f"{cible}:{apres}").stdout.strip()
+        if a != b:
+            sortie.append({"nom": nom, "diff": f"git diff {base[:12]}:{avant} {cible}:{apres}"})
+    return sortie
+
+
+def donnees_suivies(brain: Path, base: str, cible: str) -> list[str]:
+    """Ce que ton dépôt suit et que la version reçue range en satellites.
+
+    Un `.gitignore` ne retire rien de ce qui est déjà suivi : un fork qui a
+    commité ses projets les garde dans son dépôt programme. Rien ne se perd —
+    le plan le dit, pour qu'il les passe en satellite quand il veut."""
+    r = git(brain, "show", f"{cible}:.gitignore", ok=(0, 128))
+    if r.returncode != 0:
+        return []
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".gitignore", delete=False) as f:
+        f.write(r.stdout)
+    try:
+        ignores = git(brain, "ls-files", "--cached", "--ignored", f"--exclude-from={f.name}").stdout.split()
+    finally:
+        os.unlink(f.name)
+    # Ce que TU as ajouté, pas ce que le gabarit livrait : un fichier de l'amont
+    # que la version retire (une spec d'une couche abandonnée) n'est pas ta donnée —
+    # la fusion le retire, le plan le dit ailleurs (5/10, la preuve sur un fork 2.7.0).
+    a_toi = set(git(brain, "diff", "--name-only", "--diff-filter=A", base, "HEAD").stdout.split())
+    return [c for c in ignores if c in a_toi]
+
+
+def ecrasables(brain: Path, base: str, cible: str) -> list[str]:
+    """Ce que la version AJOUTE et qui existe déjà chez toi, hors de git.
+
+    Ce dont git ne te protège pas : un fichier IGNORÉ — ta donnée, dans un
+    satellite — est écrasé sans un mot quand une fusion apporte un fichier suivi
+    au même chemin (éprouvé le 5/10 : `handoffs/LATEST.md` du fork remplacé par
+    le modèle de l'amont). Un fichier non suivi, lui, fait échouer la fusion —
+    mais au milieu de l'application. Les deux se disent dans le plan, avant."""
+    ajoutes = git(brain, "diff", "--name-only", "--diff-filter=A", base, cible).stdout.split()
+    suivis = set(git(brain, "ls-files").stdout.split())
+    return [c for c in ajoutes if c not in suivis and (brain / c).exists()]
+
+
+def ecrire_les_surcharges(brain: Path, cible: str, surcharges: list[dict], dire) -> None:
+    """La liste à relire, posée avec l'avant des générés — c'est ton brain qui la lit."""
+    if not surcharges:
+        return
+    dossier = brain / "workspace" / "scratch" / f"brain-maj-{cible}"
+    dossier.mkdir(parents=True, exist_ok=True)
+    lignes = [f"# brain maj {cible} — tes surcharges, et ce que le noyau a changé dessous", "",
+              "Chacun de ces agents est REMPLACÉ par le tien (`instance/agents/<nom>.md`) : ce que le",
+              "noyau y améliore ne t'arrive pas. Rien n'a été écrasé. Pour chacun : lire le diff du",
+              "noyau, reprendre dans ta surcharge ce que tu veux, ou la réduire à un complément",
+              "(`<nom>.complement.md`), qui suit le noyau tout seul.", "", "```bash"]
+    lignes += [f"{s['diff']}   # {s['nom']}" for s in surcharges]
+    lignes += ["```", "", "Ce dossier est ignoré par git : efface-le quand tu as relu.", ""]
+    (dossier / "surcharges.md").write_text("\n".join(lignes), encoding="utf-8")
+    dire(f"  📄 {len(surcharges)} surcharge(s) à relire : workspace/scratch/brain-maj-{cible}/surcharges.md")
+
+
 def preparer_la_migration(brain: Path, base: str, m: dict, dire) -> None:
     """Tes agents passent dans `instance/agents/` — un commit, avant la fusion."""
     for chemin in m["modifies"] + m["ajoutes"]:
@@ -213,6 +308,11 @@ def plan(brain: Path, remote: str, demande: str | None, reseau: bool) -> dict:
     p["modifies"] = len(git(brain, "diff", "--name-only", "--diff-filter=M", base, "HEAD").stdout.split())
     p["retires"] = git(brain, "diff", "--name-only", "--diff-filter=D", base, cible).stdout.split()
     p["migration"] = migration_vers_la_vue(brain, base, cible)
+    p["surcharges"] = surcharges_a_relire(brain, base, cible, p["migration"])
+    p["donnees_suivies"] = donnees_suivies(brain, base, cible)
+    for c in ecrasables(brain, base, cible):
+        p["obstacles"].append(f"{c} — la version livre un fichier à ce chemin, où tu as le tien "
+                              "(hors de git) : il serait écrasé. Déplace-le, puis relance")
     r = git(brain, "merge-tree", "--write-tree", "--name-only", "--no-messages", "HEAD", cible, ok=(0, 1))
     conflits = r.stdout.split("\n")[1:] if r.returncode == 1 else []
     if p["migration"] is not None:
@@ -353,6 +453,7 @@ def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
     dire(f"  ✅ {cible} reçue" + (f" — {len(p['generes'])} conflit(s) sur des fichiers générés, résolus en "
                                "recalculant" if p["generes"] else ""))
     garder_l_avant(brain, avant, cible, dire)
+    ecrire_les_surcharges(brain, cible, p.get("surcharges") or [], dire)
     return la_suite(brain, cible, sans_unites, dire)
 
 
@@ -380,6 +481,25 @@ def la_suite(brain: Path, cible: str, sans_unites: bool, dire) -> int:
     return 0
 
 
+def relayer(brain: Path, cible: str, argv: list[str]) -> int | None:
+    """Le `maj` de la version reçue prend la main, s'il diffère de celui-ci.
+
+    None : pas de relais (déjà relayé, pas de `maj.py` dans la version, ou le même)."""
+    if os.environ.get("BRAIN_MAJ_RELAIS"):
+        return None
+    r = git(brain, "show", f"{cible}:scripts/maj.py", ok=(0, 128))
+    if r.returncode != 0 or r.stdout == Path(__file__).read_text(encoding="utf-8"):
+        return None
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="brain-maj-relais-") as tmp:
+        script = Path(tmp) / "maj.py"
+        script.write_text(r.stdout, encoding="utf-8")
+        print(f"↪ relais : le brain maj de {cible} prend la main — il sait ce que la version apporte")
+        env = {**os.environ, "BRAIN_MAJ_RELAIS": cible, "BRAIN_ROOT": str(brain)}
+        args = argv if "--sans-reseau" in argv else [*argv, "--sans-reseau"]   # les tags sont déjà lus
+        return subprocess.run([sys.executable, str(script), *args], env=env).returncode
+
+
 def main() -> int:
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     a.add_argument("version", nargs="?", help="le tag à recevoir (défaut : le plus récent)")
@@ -394,6 +514,10 @@ def main() -> int:
     except RuntimeError as e:
         print(f"❌ {e}")
         return 1
+    if p.get("cible") and p["etat"] not in ("à jour", "suite à faire"):
+        code = relayer(brain, p["cible"], sys.argv[1:])
+        if code is not None:
+            return code
     if p["etat"] == "sans amont":
         print(f"Pas d'amont « {remote} » : ce brain est la source, ou l'amont n'est pas déclaré "
               "(docs/mettre-a-jour.md, « Une seule fois »).")
@@ -437,6 +561,15 @@ def main() -> int:
                   " → instance/agents/ ; le noyau reçoit l'amont")
             if m["retires"]:
                 print(f"  ⓘ tu avais retiré          {', '.join(m['retires'])} — ils reviennent : le noyau ne se retire pas")
+        if p.get("surcharges"):
+            noms = ", ".join(s["nom"] for s in p["surcharges"])
+            print(f"  ⓘ surcharges à relire      {noms} — le noyau les change ; la tienne reste, "
+                  f"la liste et les diffs iront dans workspace/scratch/brain-maj-{p['cible']}/surcharges.md")
+        if p.get("donnees_suivies"):
+            d = p["donnees_suivies"]
+            print(f"  ⓘ données encore suivies   {len(d)} fichier(s) que la version range en satellites "
+                  f"({', '.join(sorted({c.split('/')[0] + '/' for c in d})[:5])}) — git ne les retire pas ; "
+                  "à versionner à part : docs/satellites.md")
         print(f"  l'avant des générés        gardé dans workspace/scratch/brain-maj-{p['cible']}/")
     for o_ in p.get("obstacles", []):
         print(f"  ❌ {o_}")

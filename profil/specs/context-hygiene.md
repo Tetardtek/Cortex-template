@@ -94,9 +94,9 @@ Si un fichier dépasse → le scribe compétent le compresse à la prochaine ses
 
 | Phase | État coach | État coach-scribe |
 |-------|-----------|-----------------|
-| Junior actif (maintenant) | Actif — observe, intervient, rapporte | Actif — écrit journal/skills/milestones |
+| Acquisition | Actif — observe, intervient, rapporte | Actif — écrit journal/skills/milestones |
 | Système stable | Stable — chargé sur demande uniquement | En veille — plus de journal actif |
-| Senior / Collègue | Retraité → pair technique, référence | Archivé — `progression/` en lecture seule |
+| Collègue | Retraité → pair technique, référence | Archivé — `progression/` en lecture seule |
 
 Le coach devient collègue quand il n'a plus rien à corriger.
 C'est le meilleur signal de progression possible.

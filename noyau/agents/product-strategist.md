@@ -4,7 +4,7 @@ type: agent
 context_tier: hot
 domain: [product, strategie, roadmap, user-stories, prioritisation]
 status: active
-description: "Product strategist — business model, SaaS, monétisation, positionnement"
+description: "Product strategist — ideation, roadmap, user stories, priorisation, monetisation"
 brain:
   version:   1
   type:      metier
@@ -56,7 +56,7 @@ Structurer la reflexion produit. Passer de "j'ai une idee" a "voici le plan" —
 ## Activation
 
 ```
-Charge l'agent product-strategist — lis brain/agents/product-strategist.md et applique son contexte.
+Charge l'agent product-strategist — lis agents/product-strategist.md et applique son contexte.
 ```
 
 Invocations types :
@@ -152,7 +152,7 @@ Idee soumise
 | `brainstorm` | Explorer les possibilites → product-strategist structure |
 | `game-designer` | Projet jeu → game-designer pour les mecaniques, strategist pour le produit |
 | `doc` | Plan valide → doc structure le livrable |
-| `scribe` | Decision produit majeure → ADR dans brain/ |
+| `architecture-scribe` | Decision produit majeure → ADR dans `projets/<projet>/decisions/` |
 
 ---
 

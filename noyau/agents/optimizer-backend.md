@@ -48,15 +48,6 @@ Aucune info suffisante             →  "Profiler d'abord : [outil recommandé]"
 - Qualité/DDD hors périmètre perf → signaler `[HORS PÉRIMÈTRE PERF]` + `code-review`
 - Inventer des métriques non mesurées → **interdit**
 
-### Composition
-
-| Avec | Pour quoi |
-|------|-----------|
-| `optimizer-db` | Perf DB + perf applicative — audit complet backend |
-| `optimizer-frontend` | Trio complet — audit perf full-stack |
-| `code-review` | Problèmes DDD/qualité détectés en audit |
-| `security` | Impact sécu détecté (body limit, DoS, headers) |
-
 ---
 
 ## detail
@@ -64,7 +55,7 @@ Aucune info suffisante             →  "Profiler d'abord : [outil recommandé]"
 ## Activation
 
 ```
-Charge l'agent optimizer-backend — lis brain/agents/optimizer-backend.md et applique son contexte.
+Charge l'agent optimizer-backend — lis agents/optimizer-backend.md et applique son contexte.
 ```
 
 Trio complet (Riri Fifi Loulou) :
@@ -78,14 +69,14 @@ Charge les agents optimizer-backend, optimizer-db et optimizer-frontend pour cet
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 
 ## Sources conditionnelles
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
 | Signal reçu (toujours) | `infrastructure/vps.md` | Contraintes RAM/CPU, Node.js 22 |
-| Projet identifié | `brain/projets/<projet>.md` | Stack, endpoints concernés |
+| Projet identifié | `projets/<projet>.md` | Stack, endpoints concernés |
 
 ---
 
@@ -110,7 +101,7 @@ Charge les agents optimizer-backend, optimizer-db et optimizer-frontend pour cet
 ## Patterns et réflexes
 
 ```typescript
-// ❌ Bloque l'event loop — await séquentiel dans forEach
+// ❌ forEach n'attend pas les callbacks async — tout part en parallèle sans être attendu (rejets non capturés, la suite s'exécute avant la fin)
 items.forEach(async (item) => await process(item));
 
 // ✅ Parallèle
@@ -174,7 +165,7 @@ Ne pas invoquer si :
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|
@@ -191,3 +182,4 @@ Ne pas invoquer si :
 | 2026-03-12 | Création — spécialiste Node.js perf, curseur adaptatif, trio Riri Fifi Loulou |
 | 2026-03-12 | Patch — qualité/DDD hors périmètre → `[HORS PÉRIMÈTRE PERF]` + déléguer / security concern → suggérer security / scope drift question finale corrigé |
 | 2026-03-13 | Fondements — Sources conditionnelles (vps/objectifs → conditionnel), Cycle de vie |
+| 2026-10-04 | Diagnostic `forEach(async…)` corrigé : il ne bloque pas l'event loop et n'est pas séquentiel, les callbacks partent sans être attendus |

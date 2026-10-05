@@ -36,7 +36,7 @@ Endpoints :
   GET  /workflows                    → ce qui avance en autonomie (palier b)
   GET  /visualize                    → coordonnées 3D UMAP
   PUT  /brain/{path}                 → écriture fichier brain + reindex
-  POST /ambient/notify               → broadcast event daemon Ambient
+  POST /ambient/notify               → diffuse un évènement aux clients /ws
   GET  /bsi/claims                    → liste claims BSI (liste plate)
   GET  /bsi/claims?include_peers=true  → {claims, peers_injoignables} — un OBJET
   POST /bsi/claims                    → créer un claim BSI dans la base
@@ -783,8 +783,8 @@ def state_get(request: Request = None):
 
 
 # ── Zones d'écriture ───────────────────────────────────────────────────────────
-# Synchronisé avec KERNEL.md (`scripts/archive/preflight-check.sh`, qui en
-# portait une copie, est archivé depuis le 30/09).
+# Synchronisé avec KERNEL.md (`preflight-check.sh`, qui en portait une copie,
+# est archivé depuis le 30/09 — lisible dans `brain-archive`).
 
 # Invariants : jamais écrits par l'API. CLAUDE.md exige une confirmation humaine
 # explicite pour ces fichiers — une requête HTTP ne peut pas la fournir.
@@ -1102,7 +1102,12 @@ async def ambient_notify(
     authorization: str | None = Header(None),
     request:       Request    = None,
 ):
-    """Reçoit un event du daemon Ambient Brain et le broadcast aux clients WebSocket."""
+    """Diffuse un évènement aux clients WebSocket — un compagnon de bureau qui écoute `/ws`, par exemple.
+
+    Le nom vient du daemon Ambient, qui l'appelait le premier. Le daemon est
+    archivé ; la route reste, c'est le canal par lequel le brain parle à ce qui
+    écoute `/ws`.
+    """
     _readonly_guard()
     if not _is_localhost(request):
         # La gate tier etait ici le seul controle pour le non-localhost : la
@@ -1126,7 +1131,7 @@ async def ambient_notify(
 
 @app.websocket('/ws')
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket temps réel — les événements BSI (claims, verrous) et ambient.
+    """WebSocket temps réel — les événements BSI (claims, verrous) et ceux de `/ambient/notify`.
 
     La boucle locale passe ; le réseau montre un jeton, comme sur les autres
     routes. Mesuré le 30/09 : la route acceptait n'importe qui et lui
@@ -1223,14 +1228,16 @@ def _fetch_peer_claims(peer_url: str, timeout: float = 2.0) -> list[dict] | None
 ## _bsi_conn() supprimé — remplacé par brain_db.query/execute (db.py)
 
 
-# ── Focus (généré depuis Dolt) ────────────────────────────────────────────────
+# ── Focus ─────────────────────────────────────────────────────────────────────
 
 @app.get('/focus')
 def focus_generated(
     request:       Request     = None,
     authorization: str | None  = Header(None),
 ):
-    """Focus généré depuis Dolt — remplace focus.md statique. Zéro drift."""
+    """Le focus : le cap (à la main), les fiches en cours (calculées), la dernière session.
+
+    Plus d'intentions depuis le 4/10 : un seul système, les fiches."""
     if not _is_localhost(request):
         scopes = check_auth(authorization)
         if 'work' not in scopes:
@@ -1239,13 +1246,8 @@ def focus_generated(
     result = {
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'cap': None,
-        'front': [],
-        'active': [],
-        'stasis_count': 0,
-        'stasis_summary': [],
-        'projects': [],
+        'en_cours': [],
         'last_session': None,
-        'archived_count': 0,
     }
 
     # Cap (human file)
@@ -1260,56 +1262,12 @@ def focus_generated(
         except Exception:
             pass
 
+    # Les fiches en cours — calculées des PR fusionnées, jamais déclarées
     try:
-        # Front rotatif
-        front = brain_db.query("""
-            SELECT id, title, status, project, priority, next_step,
-                   total_sessions, total_duration, last_touched
-            FROM intentions WHERE front = 1
-            ORDER BY front_order ASC
-        """)
-        result['front'] = front
-
-        # Active (non-front)
-        active = brain_db.query("""
-            SELECT id, title, project, priority, next_step, total_sessions
-            FROM intentions WHERE status = 'active' AND front = 0
-            -- `CASE` plutôt que `FIELD()` : cette dernière est propre à MySQL
-            -- et lève `no such function` en SQLite, où l'`except` alentour la
-            -- transforme en « aucune intention ». Un fork ne voyait pas une
-            -- erreur, il voyait du vide.
-            ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2
-                                   WHEN 'low' THEN 3 ELSE 4 END,
-                     updated_at DESC
-        """)
-        result['active'] = active
-
-        # Stasis
-        stasis = brain_db.query("""
-            SELECT id, project, stasis_reason FROM intentions WHERE status = 'stasis'
-            ORDER BY project, id
-        """)
-        result['stasis_count'] = len(stasis)
-        result['stasis_summary'] = stasis
-
-        # Archived count
-        result['archived_count'] = brain_db.count('intentions', "status = 'archived'")
-
-        # Projects with active intentions
-        projects_raw = brain_db.query("""
-            SELECT project, COUNT(*) as intention_count,
-                   SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count,
-                   SUM(CASE WHEN status = 'stasis' THEN 1 ELSE 0 END) as stasis_count
-            FROM intentions
-            WHERE status IN ('active', 'stasis', 'identified')
-            AND project IS NOT NULL AND project != ''
-            GROUP BY project
-            ORDER BY active_count DESC, project
-        """)
-        result['projects'] = projects_raw
-
+        import fiches_en_cours
+        result['en_cours'] = fiches_en_cours.en_cours(BRAIN_ROOT, limite=5)
     except Exception as exc:
-        log.warning('focus Dolt query failed: %s', exc)
+        log.warning('focus : les fiches en cours ne se calculent pas : %s', exc)
 
     # Last session from claims
     try:
@@ -1325,152 +1283,11 @@ def focus_generated(
     return result
 
 
-# ── Intentions (Dolt) ─────────────────────────────────────────────────────────
-
-@app.get('/intentions')
-def intentions_list(
-    status:        str | None  = Query(None),
-    project:       str | None  = Query(None),
-    front_only:    bool        = Query(False),
-    request:       Request     = None,
-    authorization: str | None  = Header(None),
-):
-    """Liste les intentions depuis Dolt. Filtres optionnels par status, project, front."""
-    if not _is_localhost(request):
-        scopes = check_auth(authorization)
-        if 'work' not in scopes:
-            raise HTTPException(status_code=403, detail='Zone work requise')
-
-    conditions = []
-    params = []
-
-    if status:
-        conditions.append("i.status = %s")
-        params.append(status)
-    if project:
-        conditions.append("i.project = %s")
-        params.append(project)
-    if front_only:
-        conditions.append("i.front = 1")
-
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-    try:
-        intentions = brain_db.query(f"""
-            SELECT i.id, i.title, i.status, i.project, i.domain, i.scope,
-                   i.priority, i.brief, i.next_step, i.stasis_reason,
-                   i.front, i.front_order, i.total_sessions, i.total_duration,
-                   i.last_touched, i.created_at, i.updated_at, i.agents, i.adrs
-            FROM intentions i
-            {where}
-            -- `CASE` plutôt que `FIELD()` — portable des deux côtés.
-            ORDER BY i.front DESC, i.front_order ASC,
-                     CASE i.status WHEN 'active' THEN 1 WHEN 'stasis' THEN 2
-                                   WHEN 'identified' THEN 3 WHEN 'done' THEN 4
-                                   WHEN 'archived' THEN 5 ELSE 9 END,
-                     CASE i.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2
-                                     WHEN 'low' THEN 3 ELSE 4 END,
-                     i.updated_at DESC
-        """, tuple(params))
-    except Exception:
-        # Fallback si table absente (template sans Dolt)
-        return []
-
-    # Enrichir avec tags et edges
-    for intent in intentions:
-        iid = intent['id']
-        try:
-            intent['tags'] = [r['tag'] for r in brain_db.query(
-                "SELECT tag FROM intention_tags WHERE intention_id = %s", (iid,)
-            )]
-        except Exception:
-            intent['tags'] = []
-        try:
-            intent['depends_on'] = [r['source_id'] for r in brain_db.query(
-                "SELECT source_id FROM intention_edges WHERE target_id = %s AND relation = 'blocks'", (iid,)
-            )]
-            intent['blocks'] = [r['target_id'] for r in brain_db.query(
-                "SELECT target_id FROM intention_edges WHERE source_id = %s AND relation = 'blocks'", (iid,)
-            )]
-        except Exception:
-            intent['depends_on'] = []
-            intent['blocks'] = []
-        try:
-            intent['sessions'] = [r['sess_id'] for r in brain_db.query(
-                "SELECT sess_id FROM intention_sessions WHERE intention_id = %s ORDER BY linked_at DESC", (iid,)
-            )]
-        except Exception:
-            intent['sessions'] = []
-
-        # Parse JSON fields
-        import json as _json
-        for field in ('agents', 'adrs'):
-            val = intent.get(field)
-            if isinstance(val, str):
-                try:
-                    intent[field] = _json.loads(val)
-                except Exception:
-                    intent[field] = []
-            elif val is None:
-                intent[field] = []
-
-    return intentions
-
-
-@app.get('/intentions/{intention_id}')
-def intention_detail(
-    intention_id:  str,
-    request:       Request     = None,
-    authorization: str | None  = Header(None),
-):
-    """Détail d'une intention spécifique avec toutes les relations."""
-    if not _is_localhost(request):
-        scopes = check_auth(authorization)
-        if 'work' not in scopes:
-            raise HTTPException(status_code=403, detail='Zone work requise')
-
-    try:
-        intent = brain_db.query_one(
-            "SELECT * FROM intentions WHERE id = %s", (intention_id,)
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail='Intention not found')
-
-    if not intent:
-        raise HTTPException(status_code=404, detail='Intention not found')
-
-    import json as _json
-    for field in ('agents', 'adrs'):
-        val = intent.get(field)
-        if isinstance(val, str):
-            try:
-                intent[field] = _json.loads(val)
-            except Exception:
-                intent[field] = []
-        elif val is None:
-            intent[field] = []
-
-    iid = intent['id']
-    try:
-        intent['tags'] = [r['tag'] for r in brain_db.query(
-            "SELECT tag FROM intention_tags WHERE intention_id = %s", (iid,)
-        )]
-        intent['depends_on'] = [r['source_id'] for r in brain_db.query(
-            "SELECT source_id FROM intention_edges WHERE target_id = %s AND relation = 'blocks'", (iid,)
-        )]
-        intent['blocks'] = [r['target_id'] for r in brain_db.query(
-            "SELECT target_id FROM intention_edges WHERE source_id = %s AND relation = 'blocks'", (iid,)
-        )]
-        intent['sessions'] = [r['sess_id'] for r in brain_db.query(
-            "SELECT sess_id FROM intention_sessions WHERE intention_id = %s ORDER BY linked_at DESC", (iid,)
-        )]
-    except Exception:
-        intent['tags'] = []
-        intent['depends_on'] = []
-        intent['blocks'] = []
-        intent['sessions'] = []
-
-    return intent
+# ── Intentions — retirées le 4/10 ─────────────────────────────────────
+# `/intentions` et `/intentions/{id}` servaient la table `intentions`, que seules
+# des consignes d'agents tenaient à jour. Le travail se suit dans les fiches, et
+# « en cours » se calcule (`fiches_en_cours.py`, dans `/focus`). La table reste,
+# gelée : son historique est dans Dolt.
 
 
 @app.get('/bsi/claims')
@@ -2083,7 +1900,7 @@ async def bsi_claims_update(
     # 599 claims des deux tables — `result` 598 remplis, `result_status` 109
     # dont AUCUN hors de l'archive, `result_json` 0 partout. Aucun écrivain de
     # `result_status` ne subsiste dans le code ; le seul lecteur,
-    # `scripts/archive/workflow-launch.sh`, est archivé depuis le 30/09.
+    # `workflow-launch.sh`, est archivé depuis le 30/09 (`brain-archive`).
     # Trancher laquelle survit est une décision de schéma, pas un effet de
     # bord de cette route : voir.
     for field in ('status', 'closed_at', 'health_score', 'context_at_close',
@@ -2245,6 +2062,14 @@ async def bsi_claims_touch(
 
     log.info('bsi_claims_touch sess_id=%s agent=%s touches=%d',
              sess_id or '-', (agent or '-')[:8], len(ouverts))
+
+    # L'échéance a bougé : le dire. Le têtard ne relit la liste que sur
+    # un `bsi:claim:*` — sans cet événement, il annonçait « EXPIRÉ » un claim
+    # que ce `touch` venait de prolonger (5/10).
+    for c in ouverts:
+        await _broadcast({'type': 'bsi:claim:touch',
+                          'payload': {'sess_id': c['sess_id'], 'status': 'open'}})
+
     return {'ok': True,
             'touches': [{'sess_id': c['sess_id'], 'ttl_hours': c['ttl_hours'] or 4}
                         for c in ouverts]}

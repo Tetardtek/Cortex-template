@@ -6,7 +6,7 @@ context_tier: always
 
 # KERNEL.md — Loi des zones
 
-> **Type :** Invariant absolu — chargé Couche 0 par helloWorld, avant tout agent.
+> **Type :** Invariant absolu — chargé en Couche 0 (le L0 de chaque manifeste), avant tout agent.
 > Dernière révision : 2026-10-03
 > Propriétaire : kernel (aucun agent ne modifie ce fichier seul — décision humaine requise)
 > Complété par : `brain-constitution.md` — identité + protocoles Layer 0 (ne pas répéter, ne pas surcharger)
@@ -41,7 +41,7 @@ Fichiers : KERNEL.md, CLAUDE.md, PATHS.md, brain-compose.yml, BRAIN-INDEX.md
 | **Versioning** | Chaque modification significative = tag semver |
 | **Export** | brain-template = kernel sans couche instance/personnelle |
 | **Commit type** | `kernel:` (contrat), `feat:` (nouvelle capacité), `bsi:` (claims/signals) |
-| **Scribe** | `scribe` (agents/, profil/ état), `orchestrator-scribe` (BRAIN-INDEX.md) |
+| **Scribe** | `scribe` (agents/, profil/ état, `BRAIN-INDEX.md` — une page d'aiguillage ; les claims vivent en base) |
 
 **Sous-zone PROFIL — l'âme**
 ```
@@ -78,8 +78,8 @@ Repos : toolkit/   progression/   todo/   reviews/
 | **Protection** | Chaque satellite a son scribe propriétaire — les autres ne touchent pas |
 | **Versioning** | Rythme propre à chaque satellite |
 | **Promotion** | Pattern validé dans toolkit/ → peut entrer dans profil/ ou agents/ via recruiter |
-| **Commit type** | `scribe:` `todo:` `metabolism:` `toolkit:` selon le satellite |
-| **Scribes** | toolkit-scribe, progression/metabolism-scribe, todo-scribe, coach-scribe |
+| **Commit type** | `scribe:` `todo:` `toolkit:` selon le satellite |
+| **Scribes** | toolkit-scribe, todo-scribe, coach-scribe |
 
 ---
 
@@ -118,11 +118,10 @@ Repos projets : GitHub, Gitea projets clients/perso
 | `kernel:` | KERNEL | Décision humaine | Modification contrat fondateur |
 | `feat:` | KERNEL agents/ | recruiter + humain | Nouvel agent forgé, capacité ajoutée |
 | `fix:` | KERNEL agents/ | debug / agent-review | Correction comportement |
-| `bsi:` | KERNEL BRAIN-INDEX | orchestrator-scribe | Open/close claim, signal |
+| `bsi:` | KERNEL — l'outillage BSI (`bsi-*.sh`, le CORE `bsi`) | scribe | Le protocole des claims et des signaux change — un claim, lui, s'ouvre et se ferme en base (`bsi-claim.sh`), sans commit |
 | `integrator:` | WORK (repos projets) | integrator | Commit d'absorption multi-agents, push sprint |
 | `scribe:` | INSTANCE + KERNEL profil/ | scribe | brain update (focus, projets, profil) |
-| `metabolism:` | SATELLITES progression/ | metabolism-scribe | Fin de session — métriques |
-| `todo:` | SATELLITES todo/ | todo-scribe | Intentions fermées/ouvertes |
+| `todo:` | SATELLITES `workspace/backlog/`, `projets/` | todo-scribe | Fiches ouvertes / closes — dans leur satellite depuis le 4/10 |
 | `toolkit:` | SATELLITES toolkit/ | toolkit-scribe | Pattern validé en prod |
 | `config:` | INSTANCE | config-scribe | PATHS, compose, machine config |
 
@@ -130,9 +129,9 @@ Repos projets : GitHub, Gitea projets clients/perso
 > Un agent métier ne commit jamais directement.
 > Il signal → le scribe compétent écrit → dans sa zone uniquement.
 
-**Exceptions explicites (comme `helloWorld` pour `bsi:`) :**
+**Exceptions explicites :**
 > `integrator` → commit direct en zone WORK uniquement (repos projets, hors brain/)
->                Pour brain/handoffs/ → signal à `orchestrator-scribe`
+>                Les handoffs : leur satellite `handoffs/`, en poussée directe
 > `tech-lead`  → aucune écriture directe — cosigne les messages de commit uniquement
 
 **Portée — tranché le 05/09 :**
@@ -306,11 +305,10 @@ kerneluser: false →  identityShow: off (défaut client — mode clean/pro)
 ## Chargement
 
 ```
-helloWorld Couche 0 — invariant [toujours, avant tout agent] :
-  KERNEL.md                ← loi des zones
-  brain-constitution.md    ← invariants identité + protocoles Layer 0
+Couche 0 — le L0 de chaque manifeste contexts/session-<type>.yml [toujours] :
   PATHS.md                 ← chemins machine
-  profil/specs/collaboration.md  ← règles de travail
+  brain-compose.local.yml  ← l'instance
+  KERNEL.md                ← loi des zones
 ```
 
 ---

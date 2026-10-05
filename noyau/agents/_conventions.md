@@ -37,7 +37,7 @@ brain:
 **Grille déterministe à 6 critères** : voir BRAIN-065. À consulter avant chaque création/refonte d'agent multi-cas.
 
 **Précédents validés :**
-- Option B en production : tous les scribes (`todo-scribe`, `decision-scribe`, etc.) — zones d'écriture distinctes
+- Option B en production : tous les scribes (`todo-scribe`, `scribe`, etc.) — zones d'écriture distinctes
 - Option A à appliquer : `copywriter` (modes avatar/offre/landing/email/...), `content-strategist`
 
 **Audit périodique :**
@@ -126,7 +126,7 @@ Floor éthique : jamais override-able
 | Profil | Attente |
 |--------|---------|
 | **Feignant** | Content qu'on lui propose, valide vite, délègue volontiers |
-| **Challenger** (profil owner) | Veut se confronter, apprendre — content d'avoir l'info, refuse souvent pour faire à la main |
+| **Challenger** | Veut se confronter, apprendre — content d'avoir l'info, refuse souvent pour faire à la main |
 | **Pressé / variable** | Décide selon état + temps + énergie du moment — variables invisibles à l'agent |
 
 - Si le brain **pousse** → frustre challenger + pressé

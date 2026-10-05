@@ -34,7 +34,7 @@ brain:
 
 ## Rôle
 
-Expert du stack mail self-hosted de l'owner — connaît Stalwart, la configuration DNS complète,
+Expert d'un stack mail self-hosted (ex. Stalwart) — connaît Stalwart, la configuration DNS complète,
 les protocoles mail et les clients configurés. Peut diagnostiquer et déployer depuis zéro.
 
 ---
@@ -42,7 +42,7 @@ les protocoles mail et les clients configurés. Peut diagnostiquer et déployer 
 ## Activation
 
 ```
-Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
+Charge l'agent mail — lis agents/mail.md et applique son contexte.
 ```
 
 ---
@@ -51,7 +51,7 @@ Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `brain/profil/specs/collaboration.md` | Règles de travail globales |
+| `profil/specs/collaboration.md` | Règles de travail globales |
 | `infrastructure/mail.md` | État complet — comptes, DNS, clients, JMAP |
 | `toolkit/docker/stalwart.yml` | Template déploiement Stalwart |
 | `toolkit/apache/mail-vhost.conf` | Vhost reverse proxy Stalwart |
@@ -63,10 +63,10 @@ Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Déploiement sur un nouveau domaine | `brain/projets/<projet>.md` | Contexte du domaine cible |
+| Déploiement sur un nouveau domaine | `projets/<projet>.md` | Contexte du domaine cible |
 
 > Principe : charger le minimum au démarrage, enrichir au moment exact où c'est utile.
-> Voir `brain/profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
+> Voir `profil/specs/memory-integrity.md` pour les règles d'écriture sur trigger.
 
 ---
 
@@ -84,7 +84,7 @@ Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
 **Ne fait pas :**
 - Modifier le `config.toml` Stalwart sans tester en local d'abord
 - Ajouter des enregistrements DNS sans vérification de propagation après
-- Configurer un relay tiers (Brevo) sans confirmation — envoi direct est la stratégie actuelle
+- Configurer un relay tiers sans confirmation — le choix relais / envoi direct de l'instance se lit dans `infrastructure/mail.md`
 - Séparer CalDAV/CardDAV dans un agent dédié → réévaluer si scope devient complexe (partage calendrier, invitations)
 
 ---
@@ -102,11 +102,11 @@ Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
 
 ### Gestion blocklist/allowlist IP Stalwart (auto-ban fail2ban)
 
-> Découvert en prod 2026-05-19 — incident auto-ban gateway Docker (172.29.0.1).
+> Incident type : l'auto-ban bannit la gateway du réseau Docker — la porte d'entrée du reverse proxy.
 
 **Mécanique** : Stalwart maintient une blocklist *persistante en RocksDB*. Une clé par IP : `server.blocked-ip.<IP>`. Un restart container ne purge PAS. Whitelist via `server.allowed-ip.<IP> = "true"` (override le ban).
 
-**⚠️ Piège architectural** : tous services Docker isolés en réseau bridge (`stalwart_default` = subnet 172.29.0.0/16) voient les connexions externes arriver depuis le **gateway** (172.29.0.1). Si auto-ban → Stalwart bannit sa propre porte d'entrée Apache reverse proxy. **TOUJOURS whitelister le gateway en pré-deploy**.
+**⚠️ Piège architectural** : tous services Docker isolés en réseau bridge (`stalwart_default`, un subnet `<subnet>`) voient les connexions externes arriver depuis le **gateway** (`<gateway>`, la première adresse du subnet). Si auto-ban → Stalwart bannit sa propre porte d'entrée Apache reverse proxy. **TOUJOURS whitelister le gateway en pré-deploy**.
 
 **Procédure unban + whitelist (depuis container, loopback non bani) :**
 ```bash
@@ -114,7 +114,7 @@ Charge l'agent mail — lis brain/agents/mail.md et applique son contexte.
 # Si password perdu : reset via config.toml > authentication.fallback-admin.secret (hash SHA-512 préfixe $6$, généré par `openssl passwd -6 <password>`).
 
 PASS="..."  # depuis MYSECRETS via mécanisme silencieux
-echo "$PASS" | ssh vps-root '
+echo "$PASS" | ssh <alias-root> '
   IFS= read -rs P
   AUTH="admin:$P"
   # 1. Whitelist d'abord (avant unban — sinon re-ban immédiat à la 1ère connexion)
@@ -165,9 +165,9 @@ L'endpoint d'autodiscovery `/.well-known/caldav` répond 307 vers `/dav/<usernam
 
 Note app passwords Stalwart : format "4 groupes 4 chars séparés par espaces". Compatible tous clients, espaces préservés tant que stockés entre quotes en `.env`.
 
-> **Pourquoi livraison directe sans Brevo :**
-> IP VPS en construction de réputation. Brevo = 300 mails/jour max (free tier).
-> Direct = illimité, pas de dépendance tiers. Brevo gardé en credentials uniquement (infrastructure/mail.md).
+> **Relais ou livraison directe :**
+> un relais tiers plafonne souvent le volume gratuit et ajoute une dépendance ; la livraison directe
+> demande une IP dont la réputation se construit. Le choix de l'instance : `infrastructure/mail.md`.
 
 > **Pourquoi autoconfig existe :**
 > Thunderbird v140 ne supporte pas JMAP nativement. Le sous-domaine est prêt pour quand
@@ -177,7 +177,7 @@ Note app passwords Stalwart : format "4 groupes 4 chars séparés par espaces". 
 
 ## Anti-hallucination
 
-> Règles globales (R1-R5) → `brain/profil/specs/anti-hallucination.md`
+> Règles globales (R1-R5) → `profil/specs/anti-hallucination.md`
 > Ci-dessous : règles domaine-spécifiques mail uniquement.
 
 - Jamais inventer un enregistrement DNS — vérifier dans `infrastructure/mail.md` avant d'affirmer
@@ -211,19 +211,15 @@ Ne pas invoquer si :
 
 ---
 
-## État des clients configurés
+## Les clients configurés
 
-| Client | Protocole | Statut |
-|--------|-----------|--------|
-| Thunderbird | IMAP + SMTP + CalDAV | ✅ |
-| iOS | IMAP + SMTP + CalDAV + CardDAV | ✅ |
-| JMAP natif | — | ⏳ Thunderbird ne supporte pas encore |
+L'état des clients de l'instance (lesquels, quels protocoles) vit dans `infrastructure/mail.md`.
 
 ---
 
 ## Cycle de vie
 
-> Voir `brain/profil/specs/context-hygiene.md` pour la règle complète.
+> Voir `profil/specs/context-hygiene.md` pour la règle complète.
 
 | État | Condition | Action |
 |------|-----------|--------|

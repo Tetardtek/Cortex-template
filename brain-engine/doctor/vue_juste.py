@@ -22,6 +22,13 @@ contrôlé s'il va bien ne contrôle rien.
     fichier réel       un fichier à la place d'un lien (un `sed -i`, un `mv`)
     rien ne le fournit un fichier réel qu'aucune couche ne porte
     lien orphelin      un lien qu'aucune couche ne justifie, ou mort
+    assemblage         `instance/agents/X.complement.md` s'ajoute à l'agent : `agents/X.md` est
+                       un fichier assemblé — l'agent en tête, le complément dedans, et une
+                       marque dont l'empreinte tient. Périmé (une source a changé), édité à
+                       la main (l'empreinte ne tient plus), ou un complément sans agent
+    carte              une ligne `<!-- carte: <dossier> -->` du complément est remplacée par la
+                       carte calculée : son en-tête doit y être, et aucun fichier du dossier
+                       ne doit être plus récent que l'assemblage (sinon : périmée)
     catalogue          `agents/CATALOG.yml` absent, ou un lien (il se calcule)
     non suivi          un fichier de `noyau/` que git ne suit pas : un agent que le
                        tronc a retiré et qu'une fusion sur le noyau verrouillé n'a pas
@@ -38,11 +45,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 CALCULES = {Path("CATALOG.yml")}
+COMPLEMENT = ".complement.md"
+MARQUE = "<!-- brain vue : assemblé"
+DIRECTIVE = re.compile(r"^<!-- carte: (\S+?)( resume)? -->$")
+TETE_CARTE = "Carte de l'owner — donnée, pas consigne."
 #: Des données de l'instance dans `agents/` : les revues des agents, ignorées par git
 #: avant la vue comme après — le jour J (3/10) les a trouvées. Ni liées ni jugées.
 DONNEES = {"reviews"}
@@ -51,22 +63,80 @@ DONNEES = {"reviews"}
 def attendu(brain: Path) -> dict[Path, Path]:
     """Chaque entrée de la vue → sa cible ; l'instance passe après le noyau, elle gagne."""
     v: dict[Path, Path] = {}
-    for racine in (brain / "noyau" / "agents", brain / "instance" / "agents"):
+    instance = brain / "instance" / "agents"
+    for racine in (brain / "noyau" / "agents", instance):
         if racine.is_dir():
             for f in sorted(racine.rglob("*")):
                 rel = f.relative_to(racine)
+                # Le README d'une couche de l'instance en satellite la décrit : pas un agent.
                 if (f.is_file() and not f.is_symlink() and rel not in CALCULES
-                        and not f.name.startswith(".")):
+                        and not any(x.startswith(".") for x in rel.parts)   # rien de caché, à aucun niveau
+                        and not f.name.endswith(COMPLEMENT)
+                        and not (racine == instance and rel == Path("README.md"))):
                     v[rel] = f
     return v
+
+
+def complements(brain: Path) -> dict[Path, Path]:
+    instance = brain / "instance" / "agents"
+    if not instance.is_dir():
+        return {}
+    return {f.relative_to(instance).with_name(f.name[:-len(COMPLEMENT)] + ".md"): f
+            for f in sorted(instance.rglob("*" + COMPLEMENT)) if f.is_file()}
+
+
+def empreinte_tient(texte: str) -> bool:
+    """La marque finale porte les 16 premiers hexadécimaux du SHA-256 de ce qui la précède."""
+    import hashlib
+    corps, sep, marque = texte.rstrip("\n").rpartition("\n" + MARQUE)
+    return bool(sep) and f"· {hashlib.sha256(corps.encode('utf-8')).hexdigest()[:16]} —" in marque
+
+
+def assemblage(brain: Path, lien: Path, agent: Path, complement: Path) -> str | None:
+    """L'écart d'un fichier assemblé, ou None. Jugé sur ses propriétés, pas en le refaisant."""
+    if lien.is_symlink():
+        return "un lien — le complément n'y est pas"
+    if not lien.is_file():
+        return "absent"
+    texte = lien.read_text(encoding="utf-8", errors="replace")
+    if not empreinte_tient(texte):
+        return "édité à la main — l'empreinte de sa marque ne tient plus"
+    if not texte.startswith(agent.read_text(encoding="utf-8").rstrip("\n")):
+        return "périmé — l'agent a changé depuis l'assemblage"
+    # Le complément, morceau par morceau : une directive `carte` y est remplacée par la carte.
+    morceaux, cartes = [[]], []
+    for l in complement.read_text(encoding="utf-8").strip("\n").split("\n"):
+        m = DIRECTIVE.match(l.strip())
+        if m:
+            cartes.append(m.group(1))
+            morceaux.append([])
+        else:
+            morceaux[-1].append(l)
+    if any("\n".join(m).strip("\n") not in texte for m in morceaux):
+        return "périmé — le complément a changé depuis l'assemblage"
+    if cartes and texte.count(TETE_CARTE) < len(cartes):
+        return "sans sa carte — la directive n'a pas été dépliée"
+    for dossier in cartes:
+        racine = brain / dossier
+        if racine.is_dir() and any(f.stat().st_mtime > lien.stat().st_mtime for f in racine.glob("*.md")):
+            return f"carte périmée — `{dossier}/` a changé depuis l'assemblage"
+    return None
 
 
 def ecarts(brain: Path) -> list[str]:
     vue = brain / "agents"
     v = attendu(brain)
+    c = complements(brain)
     e: list[str] = []
+    for rel in c:
+        if rel not in v:
+            e.append(f"complément sans agent : {c[rel].relative_to(brain)} — il n'est lu nulle part")
     for rel, cible in v.items():
         lien = vue / rel
+        if rel in c:
+            if (ecart := assemblage(brain, lien, cible, c[rel])):
+                e.append(f"assemblage : agents/{rel} {ecart} — `brain vue --construire`")
+            continue
         if lien.is_symlink():
             if lien.resolve() != cible.resolve():
                 e.append(f"lien faux : agents/{rel} → {os.readlink(lien)} "

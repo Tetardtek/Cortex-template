@@ -139,7 +139,7 @@ fusionnant.
 |---|---|---|
 | **a — tenir** | la commande ci-dessus, à chaque changement | rien |
 | **b — suivre** | dit au boot ce qui a avancé sans l'humain (🤖) — `kanban.py resume`, si présente | lit le résumé ; fusionne `dev/autonome`, puis `kanban.py repartir` |
-| **c — lancer** | écrit les clôtures sur verdict de l'`orchestrator` — à venir | valide l'entrée, relit `dev/autonome` |
+| **c — lancer** | écrit les clôtures sur verdict de l'`orchestrator` — en service (myeline, `palier: c`) | valide l'entrée, relit `dev/autonome` |
 
 Le palier d'un projet se déclare dans sa fiche `projets/<projet>.md`
 (`palier: a | b | c`) ; par défaut, **a**.
@@ -162,3 +162,4 @@ Le palier d'un projet se déclare dans sa fiche `projets/<projet>.md`
 |------|------------|
 | 2026-03-15 | Création — pipeline kanban, transitions d'état, détection autonomie |
 | 2026-09-29 | **Réécrit** (BRAIN-079) : son support `todo/` avait disparu ; il fait avancer les fiches, clôt sur preuve sans attendre l'humain, et tient le backlog d'une commande (palier a) |
+| 2026-10-04 | Palier c : « à venir » remplacé par « en service » — myeline le déclare depuis le 29/09 et l'orchestrator lui passe la main après fusion |

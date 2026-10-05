@@ -185,8 +185,8 @@ PYEOF
   #
   # 🔴, 27/09. `inbox` ne relevait QUE l'instance. Deux signaux
   # adresses a une session par son identifiant — un HANDOFF et un INFO de la
-  # session `learning/omarchy` — n'ont jamais ete montres : trouves parce que
-  # L'owner a dit « je pense que tu as des messages ».
+  # session `learning/<piste>` — n'ont jamais ete montres : trouves par hasard,
+  # a la main.
   #
   # On releve desormais l'instance ET des sessions :
   #   dans une session d'agent  → les claims ouverts de CETTE session, retrouves

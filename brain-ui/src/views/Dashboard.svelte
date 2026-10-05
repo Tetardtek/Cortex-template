@@ -20,24 +20,26 @@
     { label: 'Docs', value: nbDocs ?? '—', sub: 'pages humaines', color: 'var(--yellow)' },
   ])
 
-  // Les intentions actives et les dernières sessions viennent de la base. Elles
+  // Les fiches en cours et les dernières sessions viennent du moteur. Elles
   // venaient d'un instantané écrit à la main — les projets et l'activité de
   // mars de l'owner, montrés à chaque fork comme si c'était son brain.
-  type Intention = { id: string; title: string; project: string | null; status: string }
+  // Les fiches en cours remplacent les intentions (4/10) : calculées des PR
+  // fusionnées depuis moins de 7 jours, jamais déclarées.
+  type Fiche = { fiche: string; projet: string; titre: string; prs: number; derniere: string }
   type Claim = { sess_id: string; scope: string | null; status: string; result: string | null; opened_at: string }
-  let intentions = $state<Intention[] | null>(null)
+  let enCours = $state<Fiche[] | null>(null)
   let sessions = $state<Claim[] | null>(null)
   // Une panne n'est pas une base vide : un 401/403 (moteur derrière un jeton,
   // un proxy) ou un moteur arrêté affichaient « aucune intention » et « tape
   // brain boot » — deux affirmations fausses (relecture du 28/09).
-  let erreurIntentions = $state('')
+  let erreurEnCours = $state('')
   let erreurSessions = $state('')
   const lire = (url: string) =>
     fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
   $effect(() => {
-    lire(`${API}/intentions?status=active`)
-      .then((l) => { intentions = l.slice(0, 8) })
-      .catch((e) => { erreurIntentions = `Le moteur ne répond pas (${e.message ?? e})`; intentions = [] })
+    lire(`${API}/focus`)
+      .then((f) => { enCours = f.en_cours ?? [] })
+      .catch((e) => { erreurEnCours = `Le moteur ne répond pas (${e.message ?? e})`; enCours = [] })
     lire(`${API}/bsi/claims`)
       .then((l) => { sessions = l.slice(0, 6) })
       .catch((e) => { erreurSessions = `Le moteur ne répond pas (${e.message ?? e})`; sessions = [] })
@@ -65,23 +67,23 @@
   </div>
 
   <div class="grid grid-cols-2 gap-6">
-    <!-- Intentions actives -->
+    <!-- Fiches en cours -->
     <div class="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
       <div class="px-5 py-4 border-b border-[var(--border)]">
-        <h2 class="text-sm font-semibold">Intentions actives</h2>
+        <h2 class="text-sm font-semibold">En cours</h2>
       </div>
       <div class="divide-y divide-[var(--border)]">
-        {#if intentions === null}
+        {#if enCours === null}
           <div class="px-5 py-3 text-sm text-[var(--text-secondary)]">Chargement...</div>
-        {:else if erreurIntentions}
-          <div class="px-5 py-3 text-sm text-[var(--text-secondary)]">{erreurIntentions}</div>
-        {:else if intentions.length === 0}
-          <div class="px-5 py-3 text-sm text-[var(--text-secondary)]">Aucune intention active — elles naissent en travaillant.</div>
+        {:else if erreurEnCours}
+          <div class="px-5 py-3 text-sm text-[var(--text-secondary)]">{erreurEnCours}</div>
+        {:else if enCours.length === 0}
+          <div class="px-5 py-3 text-sm text-[var(--text-secondary)]">Aucune fiche en cours — une PR fusionnée qui porte une fiche l'y met.</div>
         {:else}
-          {#each intentions as i}
+          {#each enCours as f}
             <div class="px-5 py-3">
-              <div class="text-sm font-medium">{i.title}</div>
-              <div class="text-xs text-[var(--text-secondary)]">{i.project ?? '—'}</div>
+              <div class="text-sm font-medium">{f.fiche} — {f.titre}</div>
+              <div class="text-xs text-[var(--text-secondary)]">{f.projet} · {f.prs} PR · {jour(f.derniere)}</div>
             </div>
           {/each}
         {/if}

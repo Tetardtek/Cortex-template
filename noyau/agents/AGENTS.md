@@ -8,20 +8,18 @@ context_tier: cold
 
 > Index des agents disponibles.
 > Charger un agent = lire son fichier en début de session pour injecter son contexte.
-> Stratification Chaud/Froid — voir `brain/profil/memory-architecture.md` Pillier 3.
+> Stratification Chaud/Froid — voir `profil/memory-architecture.md` Pillier 3.
 
 ---
 
 ## 🔴 Agents chauds — auto-détectés sur trigger domaine
 
-> Chargés automatiquement quand le domaine est détecté. Exception : `infra-scribe` chargé au boot (après helloWorld, avant agents domaine).
+> Chargés automatiquement quand le domaine est détecté.
 
 | Agent | Domaine | Statut |
 |-------|---------|--------|
 | `coach` | Progression — tutorat, suivi, coaching code + agents | 🔄 permanent |
 | `secrets-guardian` | Cycle de vie des secrets — MYSECRETS → .env, jamais dans le chat | 🧪 forgé 2026-03-14 |
-| `secrets-injector` | Injection credentials dans prompts subagents — coach only, jamais affiché | 🧪 forgé 2026-03-17 |
-| `infra-scribe` | Registre infra — DB, deploy paths, runtime — chargé au boot après helloWorld | 🧪 forgé 2026-03-17 |
 | `vps` | Infra, Apache, Docker, SSL | 🔄 |
 | `mail` | Stalwart, DNS, protocoles | 🔄 |
 | `code-review` | Qualité, sécurité, dette technique | ✅ 2026-03-12 |
@@ -43,16 +41,8 @@ context_tier: cold
 | `tech-lead` | Leadership technique — gate d'entrée sprint, contention map, overflow zones | 🧪 forgé 2026-03-14 |
 | `game-designer` | Game design — mécanique, équilibrage, progression, systèmes de jeu | 🧪 forgé 2026-03-15 |
 | `brain-ui-scribe` | Contexte brain-ui — stack, composants, Sprint 2, règles agents — chargé avant tout agent touchant brain-ui | 🧪 forgé 2026-03-17 |
-| `ux-architect` | Architecture UX brain-ui — hiérarchie info L0/L1/L2, WorkflowBuilder, AgentBrowser, vision propre non influencée | 🧪 forgé 2026-03-17 |
 | `audit` | Diagnostic brain — cohérence inter-couches, gaps sessions/agents/ADRs, références cassées | 🧪 forgé 2026-03-17 |
-| `pattern-scribe` | Détection patterns récurrents inter-sessions — registre drift contextualisation | 🧪 forgé 2026-03-17 |
 | `brain-guardian` | Auto-méfiance structurelle — assertions prouvées uniquement quand brain opère sur lui-même | 🧪 forgé 2026-03-18 |
-| `pre-flight` | Gate boot — vérifie kerneluser + write_lock + posture avant chargement L1 (step 4.5 BHP) | 🧪 forgé 2026-03-18 |
-| `api-designer` | Design API — REST, GraphQL, OpenAPI, contracts, conventions | ✅ active |
-| `chrome-pilot` | Navigation web pilotée — veille, scraping, debug frontend, snap doc | ✅ active |
-| `database-architect` | Architecture base de données — schéma, modélisation, indexes, normalisation | ✅ active |
-| `onboarding-guide` | Onboarding — premier boot, découverte, orientation | ✅ active |
-| `optimizer` | Performance — backend, frontend, DB, profiling (généraliste) | ✅ active |
 
 ---
 
@@ -66,27 +56,24 @@ context_tier: cold
 | `scribe` | Maintenance du brain | ✅ 2026-03-12 |
 | `mentor` | Pédagogie — explication, garde-fou | ✅ 2026-03-12 |
 | `agent-review` | Audit du système d'agents — gaps, patches, vue système | ✅ 2026-03-13 |
-| `interprete` | Clarification d'intention — demandes ambiguës, scope drift | 🧪 forgé 2026-03-13 |
 | `brainstorm` | Exploration et structuration de décisions — avocat du diable | 🧪 forgé 2026-03-13 |
 | `toolkit-scribe` | Persistance patterns — gardien du toolkit/ | 🧪 forgé 2026-03-13 |
 | `todo-scribe` | La liste — une fiche par tâche, proposée à l'humain, créée seule en mode kanban (BRAIN-079) | 🧪 forgé 2026-03-13 |
 | `kanban-scribe` | Le mouvement — fait avancer les fiches, clôt sur preuve, tient le backlog (BRAIN-079) | 🧪 forgé 2026-03-15 |
 | `helloWorld` | Bootstrap intelligent — briefing + chargement sélectif | 🧪 forgé 2026-03-13 |
-| `decision-scribe` | Registre connaissance structurelle — stack, capacités, politiques constantes — gate:human.DEFINE | 🧪 forgé 2026-03-17 |
 | `content-strategist` | Stratégie contenu YouTube — angle, audience, arc narratif, titres A/B | 🧪 forgé 2026-03-17 |
 | `scriptwriter` | Scripts vidéo tournables — short 60s + long 12min, timing par ligne | 🧪 forgé 2026-03-17 |
 | `seo-youtube` | SEO YouTube + thumbnail brief — copy-pasteable dans YouTube Studio | 🧪 forgé 2026-03-17 |
 | `git-analyst` | Historique git sémantique — conventions, synthèse commits | 🧪 forgé 2026-03-13 |
 | `config-scribe` | Configuration brain — wizard first run, hydration Sources | 🧪 forgé 2026-03-13 |
-| `brain-compose` | Multi-instances brain — symlinks kernel, registre machine | 🧪 forgé 2026-03-13 |
 | `orchestrator-scribe` | Bus inter-sessions — Signals BSI, cycles coworking, HANDOFF | 🧪 forgé 2026-03-14 |
 | `session-orchestrator` | Lifecycle de session — boot 4 couches, close séquencé, rapport coach | 🧪 forgé 2026-03-14 |
-| `metabolism-scribe` | Métriques session — health_score, agents_loaded, prix par agent | 🧪 forgé 2026-03-14 |
-| `content-scribe` | Persistance content layer — drafts, captures, content-logs | 🧪 forgé 2026-03-14 |
 | `architecture-scribe` | Mémoire architecturale — git-analyst → ADR → profil/decisions/ | 🧪 forgé 2026-03-15 |
 | `integrator` | Intégration multi-agents — absorption, validation critères, handoff next team | 🧪 forgé 2026-03-14 |
 | `product-strategist` | Stratégie produit — business model, SaaS, monétisation, positionnement | 🧪 forgé 2026-03-15 |
 | `conciergerie` | Chirurgie donnée cognitive — archivage par tier, nettoyage, audit embeddings | ✅ 2026-03-25 |
+| `api-designer` | Design API — REST, GraphQL, OpenAPI, contracts, conventions | ✅ à la demande (4/10) |
+| `database-architect` | Architecture base de données — schéma, modélisation, indexes, normalisation | ✅ à la demande (4/10) |
 | `content-writer` | Création de contenu — blog, social media, copywriting, communication | ✅ active |
 | `french-teacher` | Langue française — orthographe, grammaire, syntaxe, style | ✅ active |
 | `guide` | Présentation système — onboarding, tour guide, "comment je fais X ?" | ✅ active |
@@ -158,14 +145,12 @@ context_tier: cold
 | Exploration / décision archi | `brainstorm` → `recruiter` (si présent) ou agent métier | Explorer + challenger → construire |
 | Question hors-scope en session | `aside` (si présent) | /btw → 2-3 lignes → retour session |
 | Coordination multi-instances | `orchestrator-scribe` | Signals BSI + cycles coworking inter-brains |
-| Fin de session complète | `session-orchestrator` → `metabolism-scribe` + `scribe` + `coach` | Séquence close : métriques → brain → rapport coach → BSI |
+| Fin de session complète | `session-orchestrator` → `scribe` + `coach` | Séquence close : fiches → brain → rapport coach → BSI |
 | Feature livrée en prod | `git-analyst` + `capital-scribe` (si présent) | Commits synthétisés + capital CV mis à jour |
 | Projet multi-langue | `i18n` + `frontend-stack` | Audit traductions + intégration lib |
 | Release / PR importante | `doc` + `code-review` | Doc à jour + code validé |
-| Fin de session content-worthy | `content-orchestrator` (si présent) → `storyteller` + `content-scribe` | Signal détecté → draft produit → persisté |
 | Passe du palier c (BRAIN-079) | `orchestrator` (composer) → worker → `orchestrator` (juger) → `kanban-scribe` | Fiche prête → worker dans son worktree → PR vers `dev/autonome` → verdict, preuves rejouées, mutant → clôture 🤖 à la fusion humaine |
 | Débordement de zone requis | agent demandeur → `tech-lead` | Overflow request validé par use case concret avant écriture hors zone |
-| Activation content-logs | `content-orchestrator` (si présent) → `content-scribe` | Session capturée exhaustivement |
 | Audit complet avant prod | `security` + `code-review` + `testing` | Validation complète feature sensible |
 | Bug prod complexe | `debug` + `vps` | Isolation + infra |
 | Refacto sécurisée | `refacto` + `testing` + `code-review` | Tests avant, refacto, review après |

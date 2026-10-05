@@ -25,8 +25,8 @@ Deux serveurs, deux rôles :
 | **MCP** | `BRAIN_MCP_PORT` (7701) | un agent Claude Code |
 
 Deux processus distincts, mais pas indépendants : plusieurs outils MCP
-(`brain_state`, `brain_workflows`, `brain_agents`, `brain_focus`, `brain_write`,
-`brain_intentions`) appellent l'API sur `BRAIN_PORT`. Le MCP sans l'API ne sait
+(`brain_state`, `brain_workflows`, `brain_agents`, `brain_focus`, `brain_write`)
+appellent l'API sur `BRAIN_PORT`. Le MCP sans l'API ne sait
 faire que la recherche — et rendre le dernier focus : à chaque passage de
 l'indexeur (toutes les 2 h), `focus_instantane.py` l'écrit dans
 `focus.instantane.md`, et `brain_focus` le rend, daté et annoncé comme un repli,
@@ -156,13 +156,12 @@ demande aujourd'hui de le modifier.
 
 ```
 brain_boot              charge le contexte d'ouverture de session
-brain_focus             direction active, projets, blocages
+brain_focus             le cap, les fiches en cours, la dernière session
 brain_search            recherche sémantique
 brain_state             état dérivé du système
 brain_workflows         sessions en cours
 brain_agents            charge un agent en contexte
 brain_decisions         les décisions récentes
-brain_intentions        les intentions ouvertes
 brain_content           lit un contenu
 brain_content_promote   promeut un contenu
 brain_write             écrit un fichier — soumis à l'autorisation par zone

@@ -54,7 +54,7 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 |---------|----------|
 | `bash scripts/bsi-signal.sh inbox` | Signaux en attente — la base, chez soi ET chez les peers |
 | `bash scripts/bsi-query.sh open` | Claims actifs — sessions parallèles |
-| `brain/brain-compose.local.yml` | Identifier l'instance active (`brain_name@machine`) |
+| `brain-compose.local.yml` | Identifier l'instance active (`brain_name@machine`) |
 
 ---
 
@@ -62,9 +62,9 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 
 | Trigger | Fichier | Pourquoi |
 |---------|---------|----------|
-| Signal REVIEWED reçu | `brain/audits/<fichier>.md` | Lire les résultats de la review |
+| Signal REVIEWED reçu | `agents/reviews/<fichier>.md` | Lire les résultats de la review |
 | Signal HANDOFF reçu | Fichier concerné dans le signal | Reprendre depuis le point précis |
-| Pattern récurrent détecté | `brain/profil/specs/orchestration-patterns.md` | Vérifier si déjà documenté |
+| Pattern récurrent détecté | `profil/specs/orchestration-patterns.md` | Vérifier si déjà documenté |
 
 ---
 
@@ -91,7 +91,7 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 | Fichier | Section | Jamais ailleurs |
 |---------|---------|-----------------|
 | la base, table `signals` | par `bsi-signal.sh send` / `ack` seulement | Jamais un fichier — `BRAIN-INDEX.md ## Signals` n'est plus alimenté depuis le 07/05 <!-- bsi-v1 --> |
-| `brain/profil/specs/orchestration-patterns.md` | Patterns récurrents | — |
+| `profil/specs/orchestration-patterns.md` | Patterns récurrents | — |
 
 > Claims → chaque session (`bsi-claim.sh`) | Signals → `bsi-signal.sh`. Frontière nette.
 
@@ -136,7 +136,7 @@ archived  → la conciergerie le range dans signals_archive : relu, et émis il 
 | Type | Sens | Action attendue de la cible |
 |------|------|---------------------------|
 | `READY_FOR_REVIEW` | A → B | B ouvre un claim review sur le fichier concerné |
-| `REVIEWED` | B → A | A lit `reviews/<fichier>.md`, continue son travail |
+| `REVIEWED` | B → A | A lit `agents/reviews/<fichier>.md`, continue son travail |
 | `BLOCKED_ON` | A → B | B libère le scope, puis `ack` — **l'ack vaut levée**, il n'y a pas de type `UNBLOCK` <!-- bsi-v1 --> |
 | `HANDOFF` | A → B | B charge le contexte et reprend depuis le point précis |
 | `CHECKPOINT` | A → A | Même session — snapshot mid-session, reprise après compactage ou coupure |
@@ -155,12 +155,12 @@ prod@desktop  →  travaille sur <fichier>
 
 review@laptop →  reçoit signal au démarrage
                →  ouvre claim sur <fichier>
-               →  audite → écrit dans reviews/
+               →  audite → écrit dans agents/reviews/
                →  ferme claim
                →  signal REVIEWED → prod@desktop
 
 prod@desktop  →  reçoit REVIEWED
-               →  lit reviews/
+               →  lit agents/reviews/
                →  intègre ou ignore → continue
 ```
 
@@ -243,10 +243,9 @@ Signal ciblé (message direct, pas broadcast) :
 
 | Avec | Pour quoi |
 |------|-----------|
-| `scribe` | scribe gère Claims, orchestrator-scribe gère Signals — même fichier, sections distinctes |
+| `scribe` | scribe déclenche le CHECKPOINT, orchestrator-scribe émet le signal — claims (`bsi-claim.sh`) et signaux (`bsi-signal.sh`) vivent en base, aucun fichier partagé |
 | `orchestrator` | orchestrator route les agents dans une session, orchestrator-scribe route les sessions entre elles |
 | `agent-review` | cycle coworking : prod produit → orchestrator-scribe signal → review@laptop audite |
-| `brain-compose` | lire l'instance active et les instances connues |
 
 ---
 
@@ -282,3 +281,4 @@ Ne pas invoquer si :
 | 2026-03-14 | `Pour` accepte `sess-id@machine` — sessions parallèles sans fork de brain, pattern N sessions / 1 brain |
 | 2026-09-27 | Protocoles réécrits sur `bsi-signal.sh` : la table `## Signals` n'est plus alimentée depuis le 07/05 ; `BLOCKED_ON` se lève par `ack`. <!-- bsi-v1 --> |
 | 2026-03-14 | Signal `CHECKPOINT` — snapshot mid-session A→A, payload structuré, watchdog reprise |
+| 2026-10-04 | « Claims et signaux, même fichier » retiré (tout est en base) ; les résultats de review à un seul endroit, `agents/reviews/` (`audits/` et `reviews/` mélangés). |

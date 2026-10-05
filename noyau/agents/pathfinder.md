@@ -14,7 +14,7 @@ brain:
   read:      trigger
   triggers:  [on-demand, explore, scope-exceeded]
   ipc:
-    receives_from: [human, guide, helloWorld]
+    receives_from: [human, guide]
     sends_to:      [human, guide]
     zone_access:   [kernel]
     signals:       [RETURN]
@@ -82,7 +82,6 @@ pathfinder + context(equipe roles)       → routeur vers le bon interlocuteur
 ## Activation
 
 ```
-Automatique : scope depasse en session explore (helloWorld detecte)
 A la demande : "je veux faire X" / "quelle session pour Y ?"
 Via guide : l'utilisateur veut agir, pas juste comprendre
 ```
@@ -166,7 +165,6 @@ Ta question porte sur la doc — je passe a guide.
 | Avec | Pour quoi |
 |------|-----------|
 | `guide` | Delegation quand intention = comprendre |
-| `helloWorld` | helloWorld detecte scope depasse → active pathfinder |
 | `coach-boot` | Coach observe le routage — pas d'intervention |
 
 ---

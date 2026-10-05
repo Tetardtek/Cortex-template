@@ -20,7 +20,7 @@ ensemble. Ce qui pourrirait en silence sans lui :
 
 **Les dossiers sans fiche d'aujourd'hui ne se devinent pas** : ils se rattachent
 un par un, avec l'humain. D'ici là, chacun est NOMMÉ, avec sa raison, dans
-`workspace/.zone-projet-orphelins` (`<slug> <raison>`). Un dossier non nommé
+`instance/doctor/zone-projet-orphelins` (`<slug> <raison>`). Un dossier non nommé
 rougit ; une ligne qui ne sert plus rougit aussi — une exemption périmée
 couvrirait le prochain.
 
@@ -40,8 +40,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _fiches  # noqa: E402 — la déclaration d'un projet s'y lit
+from _config_instance import config_du_doctor  # noqa: E402 — instance/doctor/, l'ancien emplacement en repli
 
-EXEMPTIONS = Path("workspace") / ".zone-projet-orphelins"
+EXEMPTIONS = Path("workspace") / ".zone-projet-orphelins"   # l'ancien emplacement, lu en repli
+EXEMPTIONS_DIT = "instance/doctor/zone-projet-orphelins"
 PREFIXE = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 FICHE = re.compile(r"^([A-Z][A-Z0-9]*)-\d+\.md$")
 PALIERS = {"a", "b", "c"}
@@ -64,7 +66,7 @@ def _meta(fiche: Path) -> dict:
 
 
 def exemptions(brain: Path) -> tuple[dict[str, str], list[str]]:
-    chemin = brain / EXEMPTIONS
+    chemin = config_du_doctor(brain, EXEMPTIONS.name.lstrip("."))
     if not chemin.is_file():
         return {}, []
     nommes, fautives = {}, []
@@ -93,14 +95,14 @@ def juger(brain: Path) -> list[str]:
     # 1. un dossier de liste a sa fiche — ou il est nommé
     nommes, fautives = exemptions(brain)
     for l in fautives:
-        defauts.append(f"{EXEMPTIONS} : « {l} » — sans raison, une exemption n'est qu'une porte")
+        defauts.append(f"{EXEMPTIONS_DIT} : « {l} » — sans raison, une exemption n'est qu'une porte")
     for d in dossiers:
         if d not in fiches and d not in nommes:
             defauts.append(f"workspace/backlog/{d}/ n'a pas de fiche projets/{d}.md "
-                           f"— la créer, le rattacher, ou le nommer dans {EXEMPTIONS}")
+                           f"— la créer, le rattacher, ou le nommer dans {EXEMPTIONS_DIT}")
     for d in nommes:
         if d not in dossiers or d in fiches:
-            defauts.append(f"{EXEMPTIONS} nomme « {d} », qui n'est plus un dossier sans fiche "
+            defauts.append(f"{EXEMPTIONS_DIT} nomme « {d} », qui n'est plus un dossier sans fiche "
                            f"— retirer la ligne")
 
     # 7. chaque fichier de projets/ est une fiche de projet, avec un statut

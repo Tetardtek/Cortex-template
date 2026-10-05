@@ -140,6 +140,7 @@ INSTANCE = frozenset({
     "doc du gabarit", "le wiki dit vrai", "les pages d'instance disent vrai",
     "rapports de clôture", "discipline d'écriture Dolt", "Dolt vs disque",
     "les jetons du moteur en service", "les satellites à jour", "fondation du CORE",
+    "chaque session a son claim",
 })
 
 
@@ -277,6 +278,11 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("la vue des agents",
                  "un agent écrit dans la vue, que git ne voit pas",
                  [sys.executable, str(OUTILS / "vue_juste.py"), "--brain", str(brain)]),
+        # Un cycle d'unités ne lève aucune erreur : systemd supprime une unité au
+        # boot. Dolt ne démarrait plus chez l'owner le 3/10, après un fork.
+        Controle("les unités sans cycle",
+                 "une unité que le boot supprime en silence",
+                 [sys.executable, str(OUTILS / "unites_sans_cycle.py"), "--brain", str(brain)]),
         Controle("compteurs hors vecteurs",
                  "un compteur logé dans la table la plus lourde du schéma",
                  [sys.executable, str(OUTILS / "hits_hors_table.py"),
@@ -360,6 +366,10 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
                  "un archivage qui echoue chaque dimanche dans un journal que personne ne lit",
                  [sys.executable, str(OUTILS / "archivage_a_tourne.py"),
                   "--brain", str(brain)]),
+        Controle("l instantane a tourne",
+                 "un instantane Dolt refuse a chaque passage dans un journal que personne ne lit",
+                 [sys.executable, str(OUTILS / "instantane_a_tourne.py"),
+                  "--brain", str(brain)]),
         Controle("les chiffres de la doc",
                  "un chiffre ecrit dans une doc que le commit suivant a rendu faux",
                  [sys.executable, str(OUTILS / "chiffres_de_la_doc.py"),
@@ -368,10 +378,9 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
                  "une fiche qu on croit tenue parce qu elle a l air recente",
                  [sys.executable, str(OUTILS / "fraicheur_des_fiches.py"),
                   "--brain", str(brain)]),
-        Controle("le front rotatif est actif",
-                 "un chantier mort servi au boot comme s il attendait qu on s y mette",
-                 [sys.executable, str(OUTILS / "front_rotatif_actif.py"),
-                  "--brain", str(brain)]),
+        # « le front rotatif est actif » retiré le 4/10 : le boot ne sert plus de
+        # front — la table `intentions` est retirée, « en cours » se calcule des
+        # PR fusionnées (`brain-engine/fiches_en_cours.py`).
         Controle("statuts conformes a l enum",
                  "une fiche que la base refusera d ecrire, et qu on decouvre en ecrivant",
                  [sys.executable, str(OUTILS / "statuts_conformes.py"),
@@ -571,6 +580,17 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("les handoffs disent s'ils sont attendus",
                  "un handoff actif que plus personne ne reprendra, ou sans statut",
                  [sys.executable, str(OUTILS / "handoffs_vivants.py"), "--brain", str(brain)]),
+        # « Ouvrir le claim avant toute réponse de travail » est la loi du boot, et
+        # rien ne la vérifiait : `bsi_coherence` contrôle que le TEXTE la nomme. Ici,
+        # les sessions Claude Code vivantes du brain contre les claims ouverts.
+        Controle("chaque session a son claim",
+                 "une session qui travaille sans claim — invisible aux sessions parallèles",
+                 [sys.executable, str(brain / "scripts" / "claims-orphelins.py"), "--sans-claim"]),
+        # `helloWorld` présentait `profil/session-types.md`, déprécié depuis le
+        # 20/03, comme une source : aucun lien n'était mort, le fichier existe.
+        Controle("les renvois du noyau",
+                 "un agent du noyau qui envoie la session lire un fichier déprécié",
+                 [sys.executable, str(OUTILS / "renvois_deprecies.py"), "--brain", str(brain)]),
         # Rien ne tenait les satellites à jour hors de l'installation : le
         # laptop a booté avec un `profil/` en retard de 30 commits. Ici, sur le
         # fixe, le danger est l'inverse — un satellite DEVANT son amont, des

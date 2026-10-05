@@ -66,6 +66,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _config_instance import config_du_doctor  # noqa: E402 — instance/doctor/, l'ancien emplacement en repli
+
 TEMOIN = ".convention-commits-depuis"
 EXEMPTIONS = ".convention-commits-exemptions"
 SHA_COMPLET = re.compile(r"^[0-9a-f]{40}$")
@@ -359,7 +362,7 @@ def main() -> int:
         print("     invente sa référence ne mesure plus rien.\n")
         return 1
 
-    temoin = racine / "workspace" / TEMOIN
+    temoin = config_du_doctor(racine, TEMOIN.lstrip("."))
     if args.poser or not temoin.is_file():
         head = git(racine, "rev-parse", "HEAD")
         temoin.parent.mkdir(parents=True, exist_ok=True)
@@ -379,7 +382,7 @@ def main() -> int:
         # ligne) devient ⏭️ au doctor ; un vert qui ne mesure rien y devient ✅.
         print(f"\nSKIP: le point de référence `{depuis[:12]}` n'est pas un commit "
               f"de ce dépôt.")
-        print(f"  Fichier : workspace/{TEMOIN}")
+        print(f"  Fichier : {temoin.relative_to(racine)}")
         print("  Rien n'est jugé — et surtout pas déclaré conforme : `git log")
         print("  <invalide>..HEAD` rend une liste VIDE, ce qui ressemble à")
         print("  « aucun commit fautif ».")
@@ -388,7 +391,8 @@ def main() -> int:
         print(f"  {_ok} vérification(s), {_ko} échec(s)\n")
         return 1 if _ko else 0
 
-    nommees, erreurs = exemptions(racine, racine / "workspace" / EXEMPTIONS)
+    fichier_exemptions = config_du_doctor(racine, EXEMPTIONS.lstrip("."))
+    nommees, erreurs = exemptions(racine, fichier_exemptions)
     juges, fautifs, exemptes, anterieurs, nommes = juger(racine, depuis, types, borne,
                                                          nommees)
 
@@ -407,7 +411,7 @@ def main() -> int:
         print(f"\n  ⚪ {sha}  exempté nommément — {raison}")
         print(f"     {sujet[:70]}")
     if erreurs:
-        print(f"\n  ❌ {len(erreurs)} exemption(s) refusée(s) — workspace/{EXEMPTIONS} :")
+        print(f"\n  ❌ {len(erreurs)} exemption(s) refusée(s) — {fichier_exemptions.relative_to(racine)} :")
         for e in erreurs:
             print(f"     {e}")
 

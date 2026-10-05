@@ -58,6 +58,9 @@ entrees:
   docs/:
     niveau: programme
     indexe: non
+  ecosystem.config.js:
+    niveau: artefact
+    cree_par: brain-engine.sh install pm2
   focus.md:
     niveau: donnee
     versionne: ici
@@ -66,18 +69,15 @@ entrees:
     cree_par: l'indexeur
   handoffs/:
     niveau: donnee
-    versionne: ici
+    versionne: depot-separe
   infrastructure/:
     niveau: donnee
-    versionne: ici
+    versionne: depot-separe
   instance/:
     niveau: donnee
     versionne: ici
     indexe: non
     cree_par: brain vue
-  intentions/:
-    niveau: donnee
-    versionne: ici
   kernel.lock:
     niveau: programme
     indexe: non
@@ -95,9 +95,6 @@ entrees:
     niveau: programme
     indexe: non
     cree_par: la migration vers la vue
-  now.md:
-    niveau: donnee
-    versionne: ici
   PATHS.md: invariant
   profil/:
     niveau: donnee
@@ -108,7 +105,7 @@ entrees:
     versionne: depot-separe
   projets/:
     niveau: donnee
-    versionne: ici
+    versionne: depot-separe
   README.md: programme
   scripts/:
     niveau: moteur
@@ -127,7 +124,7 @@ entrees:
     indexe: non
   workspace/:
     niveau: donnee
-    versionne: ici
+    versionne: depot-separe
   ARCHITECTURE.md:
     niveau: programme
     indexe: non

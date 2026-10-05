@@ -4,7 +4,7 @@ type: agent
 context_tier: warm
 domain: product
 status: active
-description: "Brain-UI scribe — contexte brain-ui, stack, composants, Sprint 2"
+description: "Brain-UI scribe — contexte brain-ui, stack, composants"
 brain:
   version:   1
   type:      scribe
@@ -12,7 +12,7 @@ brain:
   owner:     human
   lifecycle: permanent
   read:      trigger
-  triggers:  [brain-ui, dashboard, react-flow, workflow-board, secrets-zone, infra-view, sprint-ui]
+  triggers:  [brain-ui, dashboard, sprint-ui]
   ipc:
     receives_from: [orchestrator, human]
     sends_to:      [orchestrator]
@@ -59,13 +59,9 @@ fichiers, retirés le 27/09. Ne pas la chercher.
 |---------|------|--------------------|
 | `App.svelte` + `lib/Sidebar.svelte` | coquille, navigation | — |
 | `views/DocsView.svelte` | la doc | **live** — `GET /docs`, `GET /docs/<page>.md` |
-| `views/Dashboard.svelte` | compteurs, projets, activité | compteurs **live** (`/agents`, `/docs`) ; projets et activité = `data/demo.ts` ⚠️ |
+| `views/Dashboard.svelte` | compteurs, fiches en cours, sessions | **live** — compteurs (`/agents`, `/docs`), fiches en cours (`GET /focus`), sessions (`GET /bsi/claims`) |
 | `views/CosmosView.svelte` | Cosmos 3D | **live** — `GET /visualize` |
 | `views/PlaceholderView.svelte` | vues à venir | — |
-| `data/demo.ts` | instantané écrit à la main | ⚠️ porte les projets de l'owner |
-
-### Ce qui reste à faire
-- Projets et activité du dashboard depuis la base
 
 ---
 
@@ -75,8 +71,8 @@ fichiers, retirés le 27/09. Ne pas la chercher.
 ```
 GET  /workflows              → liste workflows + statuts
 POST /gate/…/approve         → retirée le 30/09 (machinerie archivée)
-GET  /logs/:project          → logs pm2 (polling 2s)
-GET  /health                 → statut services (pm2, MySQL, Apache)
+GET  /logs/:project          → retirée le 29/09 (ne lisait que pm2) ; l'état des services : GET /state
+GET  /health                 → status, indexed, uptime + infos base
 ```
 
 ### Prochaines priorités
@@ -97,20 +93,17 @@ GET  /health                 → statut services (pm2, MySQL, Apache)
 
 ```
 - base Vite = '/ui/' — ne jamais changer
-- Tailwind uniquement — pas de CSS inline sauf React Flow overrides
+- Tailwind uniquement — pas de CSS inline
 - Tokens brain-* dans tailwind.config.js — utiliser ces tokens, pas des hex orphelins
-- nodeTypes React Flow défini HORS du composant (référence stable)
-- WorkflowBoard doit toujours accepter workflows: Workflow[] en prop
 - Jamais de logique métier dans les composants UI — dans les hooks
-- VITE_USE_MOCK=true en dev, false en prod
 ```
 
 ---
 
 ## Sources à lire pour contexte complet
-- `content/brain-ui/product-audit.md` — leviers + monitoring
-- `content/brain-ui/design-system.md` — tokens + composants inventaire
-- `content/brain-ui/sprint2-specs.md` — API + state + plan migration
+- `brain-ui/docs/specs/product-audit.md` — leviers + monitoring
+- `brain-ui/docs/specs/design-system.md` — tokens + composants inventaire
+- `brain-ui/docs/specs/sprint2-specs.md` — API + state + plan migration
 
 ---
 
@@ -130,3 +123,4 @@ brain-ui-scribe, quelles dépendances sont déjà installées ?
 |------|------------|
 | 2026-03-17 | Création — contexte brain-ui injecté avant tout agent UI |
 | 2026-03-18 | État mis à jour — Sprint 2 livré (cosmos 3D, WebSocket, GatesDrawer, CommandPalette, InfraRegistry, 8 hooks, zustand) — review audit guidé Batch B |
+| 2026-10-04 | Dashboard : `data/demo.ts` retiré (il lit `/focus` et `/bsi/claims`) ; `/logs` marquée retirée, `/health` décrite comme elle répond ; règles et triggers React Flow retirés ; sources sous `brain-ui/docs/specs/` |

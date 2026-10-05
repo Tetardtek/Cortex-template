@@ -47,8 +47,7 @@ secrets et les dépendances ; `testing` couvre les corrections.
 **Performance** — « charge les agents optimizer-backend, optimizer-db et
 optimizer-frontend ».
 
-Chacun sait ce qu'il ne couvre pas et renvoie aux deux autres. `optimizer`
-couvre les trois terrains d'un coup, profilage compris.
+Chacun sait ce qu'il ne couvre pas et renvoie aux deux autres.
 
 **Refacto sans casse** — « charge les agents refacto et testing ».
 

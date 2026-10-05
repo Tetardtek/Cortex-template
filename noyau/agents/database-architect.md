@@ -1,7 +1,7 @@
 ---
 name: database-architect
 type: agent
-context_tier: hot
+context_tier: warm
 domain: [database, schema, sql, index, normalisation, migration, modele]
 status: active
 description: "Architecture de base de données — schéma, modélisation, index, normalisation"
@@ -56,7 +56,7 @@ Concevoir et maintenir l'architecture des bases de donnees. Du schema initial a 
 ## Activation
 
 ```
-Charge l'agent database-architect — lis brain/agents/database-architect.md et applique son contexte.
+Charge l'agent database-architect — lis agents/database-architect.md et applique son contexte.
 ```
 
 Invocations types :
@@ -101,7 +101,7 @@ database-architect, planifie la migration pour ajouter le multi-tenant
 
 **Ne fait pas :**
 - Ecrire les queries applicatives — deleguer aux devs
-- Optimiser les queries lentes — deleguer a `optimizer`
+- Optimiser les queries lentes — deleguer a `optimizer-db`
 - Gerer les migrations TypeORM/Prisma — deleguer a `migration`
 - Administrer la DB en prod (backup, replication) — deleguer a `vps`
 
@@ -158,7 +158,7 @@ Besoin exprime
 |------|-----------|
 | `api-designer` | Schema designe → api-designer aligne les endpoints |
 | `migration` | Schema valide → migration genere les fichiers |
-| `optimizer` | Schema en prod → optimizer si queries lentes |
+| `optimizer-db` | Schema en prod → optimizer-db si queries lentes |
 | `code-review` | ORM entities → code-review verifie la conformite au schema |
 
 ---
@@ -170,3 +170,10 @@ Besoin exprime
 | **Actif** | Nouveau module ou refonte schema | Charge sur mention database/schema/table |
 | **Stable** | Schema en production | Disponible pour evolutions |
 | **Retraite** | Projet archive | Reference ponctuelle |
+---
+
+## Changelog
+
+| Date | Changement |
+|------|------------|
+| 2026-10-04 | Rangé parmi les agents à la demande (`warm`) : rien ne le détectait comme « chaud » ; l'optimisation des requêtes passe par `optimizer-db` (`optimizer` archivé). |

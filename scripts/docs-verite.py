@@ -75,7 +75,7 @@ PAGES = ("README.md", "ARCHITECTURE.md", "BRAIN-INDEX.md", "docs/*.md", "brain-e
 #: gabarit ne la porte jamais, `brain vue` la crée chez le fork.
 RACINES = ("agents", "noyau", "scripts", "contexts", "wiki", "docs", "profil",
            "brain-engine", "brain-ui", "runbooks", "modes", "projets",
-           "handoffs", "workspace", "intentions", "infrastructure",
+           "handoffs", "workspace", "infrastructure",
            "skills", "workflows", "todo", "toolkit", "progression", "reviews")
 
 # ── Ce que le brain a supprimé ─────────────────────────────────────────────
@@ -99,6 +99,12 @@ RETIRES: tuple[tuple[str, str], ...] = (
     # `(?<![\w/-])` : `/bsi/claims/touch` est une ROUTE, pas le dossier.
     (r"(?<![\w/-])claims/",
      "les claims sont une table Dolt, il n'y a plus de dossier claims/"),
+    # Le 4/10, `intentions/` a quitté les racines jugées — et un chemin hors des
+    # racines n'est plus jugé du tout : le wiki citait encore
+    # `intentions/README.md`, et rien ne le voyait. Un retrait s'inscrit ICI.
+    (r"(?<![\w/-])intentions/|\bbrain_intentions\b|(?<![\w])/intentions\b",
+     "la couche intentions est retirée (4/10) — le travail se suit dans les fiches, "
+     "« en cours » se calcule des PR fusionnées"),
 )
 
 #: Agents qui ont existé et ne sont plus. Un nom ici n'a pas besoin du brain
@@ -243,7 +249,9 @@ def renvois(gabarit: Path, brain: Path) -> list[tuple[str, int, str, str]]:
     absents = tous(brain) - tous(gabarit)
     if not absents:
         return []
-    motif = re.compile(r"(?<![\w/-])(%s)(?![\w-])" % "|".join(
+    # Ni un nom plus long, ni un FICHIER qui porte le nom : `brain-compose.yml` n'est pas
+    # l'agent `brain-compose` (archivé le 4/10). Un point en fin de phrase, lui, ferme le nom.
+    motif = re.compile(r"(?<![\w/-])(%s)(?![\w-]|\.\w)" % "|".join(
         re.escape(a) for a in sorted(absents, key=len, reverse=True)))
     faux = []
     for page in sorted((gabarit / "agents").glob("*.md")):

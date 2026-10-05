@@ -259,27 +259,27 @@ def identite() -> None:
         # « son » claim, et a fermé celui de l'autre. Succès affiché.
         bsi.ouvre("sess-20260926-2219-pilote-brain", scope="pilote/brain",
                   type="pilote", zone="kernel", agent_session=moi)
-        bsi.ouvre("sess-20260926-2233-omarchy", scope="learning/omarchy",
+        bsi.ouvre("sess-20260926-2233-piste", scope="learning/piste",
                   type="learning", agent_session=autre)
         refuse("fermer le claim d'une AUTRE session est refusé (l'incident du 26/09)",
-               lambda: bsi.ferme("sess-20260926-2233-omarchy", par=moi),
+               lambda: bsi.ferme("sess-20260926-2233-piste", par=moi),
                ClaimDUneAutreSession)
         verifie("et ce claim-là est toujours ouvert",
-                bsi.est_ouvert("sess-20260926-2233-omarchy"), True)
+                bsi.est_ouvert("sess-20260926-2233-piste"), True)
 
         verifie("chaque session retrouve SON claim",
                 [c.sess_id for c in bsi.de_la_session(moi)],
                 ["sess-20260926-2219-pilote-brain"])
         verifie("et pas celui de l'autre",
                 [c.sess_id for c in bsi.de_la_session(autre)],
-                ["sess-20260926-2233-omarchy"])
+                ["sess-20260926-2233-piste"])
         verifie("une session inconnue n'en porte aucun",
                 bsi.de_la_session("claude-session-fantome"), [])
         verifie("une identité vide ne désigne rien", bsi.de_la_session(""), [])
         verifie("l'identité remonte dans la lecture",
                 {c.sess_id: c.agent_session for c in bsi.ouverts()},
                 {"sess-20260926-2219-pilote-brain": moi,
-                 "sess-20260926-2233-omarchy": autre})
+                 "sess-20260926-2233-piste": autre})
 
         verifie("une session ferme son propre claim",
                 isinstance(bsi.ferme("sess-20260926-2219-pilote-brain", par=moi), int),
@@ -288,7 +288,7 @@ def identite() -> None:
         # Les trois chemins qui doivent rester ouverts — sinon le refus
         # bloquerait les gestes légitimes et apprendrait à le contourner.
         verifie("la levée nommée ferme quand même",
-                isinstance(bsi.ferme("sess-20260926-2233-omarchy", par=moi,
+                isinstance(bsi.ferme("sess-20260926-2233-piste", par=moi,
                                      meme_si_autre=True), int), True)
 
         bsi.ouvre("sess-20260926-2300-humain", scope="work/x", type="work",
