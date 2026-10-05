@@ -30,6 +30,10 @@ contrôlé s'il va bien ne contrôle rien.
                        carte calculée : son en-tête doit y être, et aucun fichier du dossier
                        ne doit être plus récent que l'assemblage (sinon : périmée)
     catalogue          `agents/CATALOG.yml` absent, ou un lien (il se calcule)
+    pages de la skill  `instance/skill/` existe : `skills/brain/instance` doit être un lien vers
+                       lui — absent, la skill ne voit plus les pages de l'instance et
+                       `skill_instance_juste` s'abstient en silence ; un dossier réel à sa
+                       place ; un lien sans `instance/skill/`
     non suivi          un fichier de `noyau/` que git ne suit pas : un agent que le
                        tronc a retiré et qu'une fusion sur le noyau verrouillé n'a pas
                        pu effacer — elle sort en 0 (mesuré le 3/10)
@@ -160,6 +164,21 @@ def ecarts(brain: Path) -> list[str]:
             if l:
                 e.append(f"non suivi : {l} — retiré par le tronc et resté (fusion sur le noyau "
                          "verrouillé, sans `brain aligne`), ou écrit à la main")
+    # Les pages d'instance de la skill : un lien, posé par la vue.
+    pages, source = brain / "skills" / "brain" / "instance", brain / "instance" / "skill"
+    if source.is_dir():
+        if pages.is_symlink():
+            if pages.resolve() != source.resolve():
+                e.append(f"pages de la skill : skills/brain/instance → {os.readlink(pages)} "
+                         "(attendu instance/skill)")
+        elif pages.exists():
+            e.append("pages de la skill : skills/brain/instance est un dossier réel — "
+                     "il masque instance/skill/")
+        elif pages.parent.is_dir():
+            e.append("pages de la skill : lien absent — la skill ne voit pas instance/skill/ ; "
+                     "`brain vue --construire`")
+    elif pages.is_symlink():
+        e.append("pages de la skill : lien orphelin — instance/skill/ n'existe pas")
     cat = vue / "CATALOG.yml"
     if cat.is_symlink():
         e.append("catalogue : agents/CATALOG.yml est un lien — il se calcule dans la vue")

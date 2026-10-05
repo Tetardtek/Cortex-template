@@ -2739,11 +2739,23 @@ class TestSyncTemplate(unittest.TestCase):
     def test_un_manifeste_ne_charge_que_ce_qui_part(self):
         """L'incident du 27/09 : les manifests publiés chargeaient en L1
         l'identité de l'owner (BRAIN-056 : jamais distribuée) et le disaient en
-        commentaire. Le brain jetable porte les VRAIS manifests — le cas est
-        l'incident, pas un exemple."""
-        source = (self.brain / 'contexts' / 'session-brain.yml').read_text()
+        commentaire. Le brain jetable porte les VRAIS manifests.
+
+        Depuis le 5/10, l'identité de l'owner n'est plus dans ses manifests : elle
+        vit dans son complément (`instance/contexts/`), qui ne part pas. Le
+        retrait au rendu reste le filet d'un manifest qui la chargerait encore : le
+        témoin y remet la ligne de l'incident."""
+        manifeste = self.brain / 'contexts' / 'session-brain.yml'
         identite = 'profil/' + 'identity/'
-        self.assertIn(identite, source, "la source charge l'identité — le témoin a de quoi rougir")
+        ligne = f'  - {identite}personality.md  # la ligne de l\'incident\n'
+        source = manifeste.read_text()
+        self.assertNotIn(identite, source, "l'identité vit dans le complément, plus dans le manifeste")
+        source = source.replace('\nL1:\n', '\nL1:\n' + ligne, 1)
+        self.assertIn(identite, source, "le témoin a de quoi rougir")
+        manifeste.write_text(source)
+        complement = self.brain / 'instance' / 'contexts' / 'session-brain.complement.yml'
+        complement.parent.mkdir(parents=True, exist_ok=True)
+        complement.write_text(f'L1:\n  - {identite}methods.md\n')
         rendu = self.tmp / 'rendu'
         r = self._sync('--rendre', str(rendu))
         publie = (rendu / 'contexts' / 'session-brain.yml').read_text()
@@ -2751,8 +2763,10 @@ class TestSyncTemplate(unittest.TestCase):
         self.assertIn('KERNEL.md', publie, "ce qui part reste chargé")
         self.assertIn('brain-compose.local.yml', publie,
                       "un fichier que le setup CRÉE n'est pas un chargement mort")
-        self.assertIn(identite, (self.brain / 'contexts' / 'session-brain.yml').read_text(),
+        self.assertIn(identite, manifeste.read_text(),
                       "la SOURCE garde ses chargements — c'est le boot de l'owner")
+        self.assertFalse((rendu / 'instance' / 'contexts').exists(),
+                         "le complément de l'instance ne part pas au gabarit")
 
     def test_l_index_ne_presente_pas_les_agents_absents(self):
         """L'incident du 28/09 : `AGENTS.md` publié présentait `recruiter`,
@@ -7667,6 +7681,54 @@ class TestVueDesAgents(unittest.TestCase):
         r = self._vue('--construire')
         self.assertEqual(r.returncode, 0)
         self.assertFalse((self.brain / 'agents').exists())
+
+
+class TestLesPagesDeLaSkill(unittest.TestCase):
+    """Les pages d'instance de la skill vivent dans `instance/skill/` ; la vue pose le lien
+    `skills/brain/instance` qui les montre à la skill. Mêmes règles que les agents :
+    un dossier réel n'est jamais touché, un lien sans source part."""
+
+    # Le brain jetable et les outils de la vue des agents — pas ses tests.
+    SCRIPT, REGISTRE = TestVueDesAgents.SCRIPT, TestVueDesAgents.REGISTRE
+    tearDown, _posture, _vue = TestVueDesAgents.tearDown, TestVueDesAgents._posture, TestVueDesAgents._vue
+
+    def setUp(self):
+        TestVueDesAgents.setUp(self)
+        (self.brain / 'skills' / 'brain').mkdir(parents=True)
+        (self.brain / 'instance' / 'skill').mkdir(parents=True)
+        (self.brain / 'instance' / 'skill' / 'outils.md').write_text('mes outils\n')
+        self.lien = self.brain / 'skills' / 'brain' / 'instance'
+
+    def test_le_lien_est_pose_et_montre_les_pages(self):
+        self.assertEqual(self._vue().returncode, 1, "à poser : l'état le dit")
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.lien.is_symlink())
+        self.assertEqual((self.lien / 'outils.md').read_text(), 'mes outils\n')
+        self.assertEqual(self._vue().returncode, 0, "posé : l'état est juste")
+
+    def test_un_dossier_reel_n_est_jamais_touche(self):
+        self.lien.mkdir()
+        (self.lien / 'outils.md').write_text("la page d'avant le déménagement\n")
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('dossier réel', r.stdout)
+        self.assertFalse(self.lien.is_symlink())
+        self.assertEqual((self.lien / 'outils.md').read_text(), "la page d'avant le déménagement\n")
+
+    def test_un_dossier_vide_cede_la_place(self):
+        """Celui que laisse le déménagement des pages (un `git mv`, une fusion)."""
+        self.lien.mkdir()
+        self.assertEqual(self._vue('--construire').returncode, 0)
+        self.assertTrue(self.lien.is_symlink())
+
+    def test_sans_pages_le_lien_part(self):
+        self._vue('--construire')
+        shutil.rmtree(self.brain / 'instance' / 'skill')
+        self.assertEqual(self._vue().returncode, 1, "à retirer : l'état le dit")
+        self._vue('--construire')
+        self.assertFalse(self.lien.is_symlink() or self.lien.exists())
+        self.assertEqual(self._vue().returncode, 0)
 
 
 class TestLaVueDUnWorktree(unittest.TestCase):

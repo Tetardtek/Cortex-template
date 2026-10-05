@@ -391,7 +391,7 @@ def main() -> int:
     ap.add_argument("--gabarit", required=True, type=Path)
     ap.add_argument("--brain", type=Path)
     ap.add_argument("--pages", nargs="+", metavar="MOTIF",
-                    help="d'autres pages que celles du gabarit — ex. skills/brain/instance/*.md, "
+                    help="d'autres pages que celles du gabarit — ex. instance/skill/*.md, "
                          "jugées contre le brain passé en --gabarit")
     ap.add_argument("--wiki", action="store_true",
                     help="les pages sont un wiki Gitea : [texte](page) mène à page.md")

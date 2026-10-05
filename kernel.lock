@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.0.1"
-generated_at: "2026-10-05T13:44"
+kernel_version: "3.1.0"
+generated_at: "2026-10-05T17:58"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: b33d59ea7eae402f558ff7a062113e1a5cc4919e7ceb33cf890a9df26ef92e1c
+  brain-compose.yml: 9c18cc28a39bdefc7509a0620c5acfc9c46908dca1cb28298c8f7e75e103ce0b
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 5b0b9e013626cacc3945764c865679e47c6f4df0ba8d80107ae151d2ea0733e3
   noyau/agents/AGENTS.md: 9d8873c425314ed9797a42cbdb29fee9c14deb0c04ba4f0edbe247569882a370
@@ -36,7 +36,7 @@ files:
   noyau/agents/game-designer.md: dac13470929766c31ec0289f88641ffc332ae328fa8c6d68be0ed617589e0670
   noyau/agents/git-analyst.md: 4495fef0fc75b12557f28cd6e7e75151df120385d1235a09ad864a026068ef6d
   noyau/agents/guide.md: 1a9f660a1737cd84c60cf7d57a4b785ba1c885f249b8cf6aa2f4d8926c0c5af7
-  noyau/agents/helloWorld.md: 572f39a1cbdd7abd5ea1794d006aa4e6a07368fcc1aaf1eef167552671cade6b
+  noyau/agents/helloWorld.md: 0514e95c1634f95d8be5fcebc303e985595d14ae3dfffb56586301c09ce83d31
   noyau/agents/i18n.md: 0cea7f2a87396f860f4d8998c27adb09bb56069e604e0afc88faef738bdfcd4d
   noyau/agents/integrator.md: 27a94713c2ec24363af5d831f5ee3a84df74c9ed5e2a4dd8d2369293f4b26afc
   noyau/agents/kanban-scribe.md: 295c0fa58a66c0b4344ed3a25a068a59e9fb233ffc28a6830473e42856755e2b
@@ -81,7 +81,7 @@ files:
   scripts/bsi-query.sh: 9138a62bb72b301f9071a4728a93d04ca2db4b3d71afb33f69bf94fbbc149b1b
   scripts/bsi-signal.sh: 22bf02f4f87293442c7bbc0f3bfa3b84f5ffab540d8a1643b62fd57c14439ae2
   scripts/docs-generer.py: c2fac8d3cf54d94e6e0d645787eb57712c8fdefc191eba2b72e9bb5935858092
-  scripts/docs-verite.py: e5a16a44a25db2d9e8f1439004b6d9c7ff7fd6f9231d16f75add8879f6e65c28
+  scripts/docs-verite.py: 962bf20558205f6f94cbaad8be3023249a2b8757bcab557932cbd593744e6079
   scripts/dolt-dump-reparer.py: 958ebb311df192f26a3a0eec6cc2ab086fc0f9ffffb111cc7dc1231e8ef4836b
   scripts/dolt-schema-gen.sh: 24795b978f4b9f1042ff1599a8cae7a40091193815b9c70dbd77df3ed687cc18
   scripts/dolt-setup.sh: f57375fae86e6df3a3edf208029da147e1b47e34ba269c4ab15bad35d578e566
@@ -102,4 +102,4 @@ files:
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: b99f52706b128c29eed7b4320f67535f39e353bae9fdc05392ac4db8da8d4082
-  scripts/vue.py: 75efd504cee98b05be4f849ef8ee4fac922476da439704f9af07f8a3d80f3163
+  scripts/vue.py: cab9f5a4520ac973f5fb092164b44478be02933711b08dda81afc181519fe2de

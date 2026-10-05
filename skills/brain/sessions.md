@@ -16,6 +16,11 @@ Syntaxe : `brain boot <type>[/<scope>]`. Chaque type a son manifest,
 `contexts/session-<type>.yml` : `L0` (le socle, commun), `L1` (ce que ce type
 charge toujours), `L2` (ce qui dépend du scope), `L3` (le reste, à la demande).
 **Charger ce qui est déclaré, rien de plus.**
+Ce qui est propre à l'instance s'ajoute par son complément,
+`instance/contexts/session-<type>.complement.yml` (`L1` et `L2.extras`,
+lus après ceux du manifest) — jamais dans le manifest, qui est du programme.
+Ses règles de travail aussi : `instance/specs/collaboration.complement.md`
+s'ajoute à `profil/specs/collaboration.md`, lu au boot s'il existe.
 
 Pour savoir ce qu'un type permet d'écrire : `KERNEL.md`, « Session type → zone
 access ». En `explore/audit`, rien ne s'écrit sauf le rapport.

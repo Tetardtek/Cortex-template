@@ -50,6 +50,9 @@ l'owner. Le plan dit aussi les fichiers que le dépôt suit encore et que la ver
 range en satellites (`projets/`, `handoffs/`…) : git ne les retire pas, l'owner les
 versionne à part quand il veut (`docs/satellites.md`).
 
+Les pages de la skill propres à l'instance vivent dans `instance/skill/` ; la vue
+pose le lien `skills/brain/instance` qui les montre à la skill.
+
 Un agent est `agents/<nom>.md` : un frontmatter (`description`, `brain.scope`,
 `brain.type`, `brain.triggers`, `brain.ipc`), puis son texte — souvent un
 `## boot-summary` court, chargé d'abord, et un `## detail`. Le gabarit d'un nouvel agent : `agents/_template.md` ; ses

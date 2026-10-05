@@ -106,3 +106,6 @@ Thumbs.db
 
 # ce que le setup et Python écrivent chez un fork — jamais commité
 __pycache__/
+
+# le lien des pages d'instance de la skill vers instance/skill/, posé par `brain vue`
+/skills/brain/instance

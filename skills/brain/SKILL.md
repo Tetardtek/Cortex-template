@@ -19,7 +19,7 @@ description: >
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v3.0.1 — 57 agents, 6 types de session,
+Kernel v3.1.0 — 57 agents, 6 types de session,
 23 routes d'API, 10 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
@@ -82,5 +82,6 @@ compte pas comme vert. Le détail : `docs/moteur.md`, « brain doctor ».
 - [`doc.md`](doc.md) — écrire la doc sans qu'elle mente
 
 Si un dossier `instance/` existe à côté de ce fichier, ses pages décrivent
-**cette** instance (ses outils, sa méthode) : lis-les aussi. Il n'est jamais
+**cette** instance (ses outils, sa méthode) : lis-les aussi. C'est un lien vers
+`instance/skill/` du brain, posé par `brain vue`. Il n'est jamais
 distribué.

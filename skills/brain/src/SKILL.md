@@ -81,5 +81,6 @@ compte pas comme vert. Le détail : `docs/moteur.md`, « brain doctor ».
 - [`doc.md`](doc.md) — écrire la doc sans qu'elle mente
 
 Si un dossier `instance/` existe à côté de ce fichier, ses pages décrivent
-**cette** instance (ses outils, sa méthode) : lis-les aussi. Il n'est jamais
+**cette** instance (ses outils, sa méthode) : lis-les aussi. C'est un lien vers
+`instance/skill/` du brain, posé par `brain vue`. Il n'est jamais
 distribué.

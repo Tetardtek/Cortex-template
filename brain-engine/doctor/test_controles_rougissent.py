@@ -18,6 +18,10 @@ Garanties :
     contextes / L1        un fichier déclaré et absent est signalé
     contextes / L2        un template dont le répertoire manque est signalé
     contextes / vrai      un brain cohérent passe au vert
+    contextes / complément  juste ⇒ vert ; un fichier absent (L1, extras), une clé
+                          que le boot ne lit pas (L0, L2.template), un type
+                          inconnu ⇒ refus ; dans instance/specs/, le complément
+                          des règles passe, un autre fichier (jamais lu) ⇒ refus
     lock / version        lock et compose en désaccord ⇒ refus, quel que soit l'écart
     lock / seuil          onze fichiers inconnus ⇒ refus ; un seul ⇒ vert
     lock / ignorés        ce que .gitignore écarte ne compte pas (Ventoy, 27/09)
@@ -60,7 +64,9 @@ Garanties :
                           faux ou orphelin, le catalogue absent, un replica au noyau
                           ouvert (noyau/ lui-même compris), un retrait resté dans
                           noyau/ ⇒ rouge ; la vue juste, un .gitkeep et un brain à plat
-                          passent
+                          passent ; les pages de la skill : le lien absent,
+                          un dossier réel, un lien orphelin ⇒ rouge, le lien juste
+                          passe
     unités / cycle        un cycle d'ordre au démarrage (l'incident Dolt) ⇒ rouge ;
                           sans l'`After=` qui le ferme, vert
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
@@ -291,6 +297,43 @@ def main() -> int:
             niv.write_text(avant_niv, encoding="utf-8")
         ctx.write_text(vrai, encoding="utf-8")
 
+        # Le complément de l'instance s'ajoute au boot d'un type : ses fichiers se
+        # jugent comme ceux du manifest, et ce que le boot n'en lit pas rougit.
+        comp_dir = base / "instance" / "contexts"
+        comp_dir.mkdir(parents=True)
+        comp = comp_dir / "session-work.complement.yml"
+        juste = "L1:\n  - agents/coach.md\nL2:\n  extras:\n    - KERNEL.md\n"
+        comp.write_text(juste, encoding="utf-8")
+        garantie("contextes / complément juste",
+                 joue("contextes_de_session.py", base), 0)
+        comp.write_text(juste.replace("agents/coach.md", "agents/parti.md"), encoding="utf-8")
+        garantie("contextes / complément L1 absent",
+                 joue("contextes_de_session.py", base), 1)
+        comp.write_text(juste.replace("    - KERNEL.md", "    - disparu.md"), encoding="utf-8")
+        garantie("contextes / complément extras absent",
+                 joue("contextes_de_session.py", base), 1)
+        comp.write_text("L0:\n  - KERNEL.md\n" + juste, encoding="utf-8")
+        garantie("contextes / complément L0 jamais lu",
+                 joue("contextes_de_session.py", base), 1)
+        comp.write_text(juste.replace("  extras:", "  template: \"x/{project}.md\"\n  extras:"),
+                        encoding="utf-8")
+        garantie("contextes / complément L2.template jamais lu",
+                 joue("contextes_de_session.py", base), 1)
+        comp.unlink()
+        (comp_dir / "session-inconnu.complement.yml").write_text(juste, encoding="utf-8")
+        garantie("contextes / complément d'un type inconnu",
+                 joue("contextes_de_session.py", base), 1)
+        shutil.rmtree(comp_dir)
+        specs = base / "instance" / "specs"
+        specs.mkdir(parents=True)
+        (specs / "collaboration.complement.md").write_text("# Mes règles\n", encoding="utf-8")
+        garantie("contextes / règles de l'instance lues",
+                 joue("contextes_de_session.py", base), 0)
+        (specs / "collaboration.md").write_text("# Une surcharge\n", encoding="utf-8")
+        garantie("contextes / règles : un fichier jamais lu",
+                 joue("contextes_de_session.py", base), 1)
+        shutil.rmtree(base / "instance")
+
         garantie("lock / absent",
                  joue("derive_du_lock.py", base), 1)
 
@@ -509,7 +552,6 @@ def main() -> int:
         nomme = any("mon-jeu" in l for l in section(r.stdout, "HORS CATALOGUE"))
         garantie("registre / agent hors catalogue",
                  r.returncode if nomme or r.returncode == 0 else 2, 1)
-        import shutil
         shutil.rmtree(base / "agents" / "games")
 
         # Entrée orpheline et désaccord `export` : les deux autres refus de
@@ -1857,6 +1899,22 @@ def cmd_close_stale():
             (vue / "CATALOG.yml").unlink()
             garantie("vue / sans catalogue", joue("vue_juste.py", b), 1)
             (vue / "CATALOG.yml").write_text("calculé\n", encoding="utf-8")
+            # Les pages d'instance de la skill : un lien vers instance/skill/.
+            (b / "skills" / "brain").mkdir(parents=True)
+            (b / "instance" / "skill").mkdir(parents=True)
+            (b / "instance" / "skill" / "outils.md").write_text("mes outils\n", encoding="utf-8")
+            pages = b / "skills" / "brain" / "instance"
+            garantie("vue / pages de la skill : lien absent", joue("vue_juste.py", b), 1)
+            pages.symlink_to("../../instance/skill")
+            garantie("vue / pages de la skill : lien juste", joue("vue_juste.py", b), 0)
+            pages.unlink()
+            pages.mkdir()
+            garantie("vue / pages de la skill : dossier réel", joue("vue_juste.py", b), 1)
+            pages.rmdir()
+            pages.symlink_to("../../instance/skill")
+            shutil.rmtree(b / "instance" / "skill")
+            garantie("vue / pages de la skill : lien orphelin", joue("vue_juste.py", b), 1)
+            pages.unlink()
             serve = VRAI_BRAIN / "brain-engine" / "serve.py"
             if serve.is_file() and os.geteuid() != 0:
                 (b / "brain-engine").mkdir()

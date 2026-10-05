@@ -46,6 +46,14 @@ Un fichier réel que ni le noyau ni l'instance ne fournit (un agent écrit direc
 dans `agents/`) est signalé lui aussi : `agents/` est ignorée par git, personne d'autre
 ne le verrait, et il serait lu comme un agent sans jamais être commité.
 
+── Les pages d'instance de la skill ────────────────────────────────────────
+
+`skills/brain/instance` est un LIEN vers `instance/skill/` : les pages de la skill
+qui décrivent cette instance (ses outils, sa prod) vivent dans sa couche, pas dans le
+programme, et la skill les trouve « à côté » d'elle, comme avant. Ignoré par git. Un
+dossier réel à sa place (les pages d'avant le déménagement) est signalé, jamais
+touché ; un lien sans `instance/skill/` est retiré.
+
 ── Ce qu'il calcule ────────────────────────────────────────────────────────
 
 `agents/CATALOG.yml` : le catalogue de ce que l'instance voit vraiment — le noyau, ses
@@ -89,6 +97,39 @@ MARQUE = "<!-- brain vue : assemblé"
 #: `recruiter` et `scribe` y écrivent (ignorées par git avant la vue comme après). Ni
 #: liées ni signalées. Trouvé le jour J (3/10), tranché par l'owner.
 DONNEES = {Path("reviews")}
+
+
+#: La skill voit les pages de l'instance par ce lien, posé par la vue.
+PAGES_SKILL = Path("skills/brain/instance")
+SOURCE_PAGES = Path("instance/skill")
+
+
+def etat_pages(brain: Path) -> str:
+    """Le lien des pages d'instance de la skill : juste, a_poser, a_retirer, reel, ou rien."""
+    lien, source = brain / PAGES_SKILL, brain / SOURCE_PAGES
+    if not lien.parent.is_dir():
+        return "rien"                                  # pas de skill dans ce brain
+    # Un dossier VIDE ne porte rien : celui que laissent les pages déménagées.
+    vide = lien.is_dir() and not lien.is_symlink() and not any(lien.iterdir())
+    if source.is_dir():
+        if lien.is_symlink():
+            return "juste" if os.readlink(lien) == os.path.relpath(source, lien.parent) else "a_poser"
+        return "reel" if lien.exists() and not vide else "a_poser"
+    if lien.is_symlink():
+        return "a_retirer"
+    return "reel" if lien.exists() and not vide else "rien"
+
+
+def construire_pages(brain: Path) -> str:
+    e = etat_pages(brain)
+    lien = brain / PAGES_SKILL
+    if e in ("a_poser", "a_retirer") and lien.is_symlink():
+        lien.unlink()                                  # jamais un dossier réel
+    elif e == "a_poser" and lien.is_dir():
+        lien.rmdir()                                   # vide : rmdir refuse tout le reste
+    if e == "a_poser":
+        lien.symlink_to(os.path.relpath(brain / SOURCE_PAGES, lien.parent))
+    return e
 
 
 def donnee(rel: Path) -> bool:
@@ -396,8 +437,18 @@ def main() -> int:
         print("noyau/ modifiable — `brain vue --construire` le rendra à sa posture")
         return 0
     e = construire(brain) if o.construire else etat(brain)
+    pages = construire_pages(brain) if o.construire else etat_pages(brain)
     verbe = "posés" if o.construire else "à poser"
     print(f"\nBRAIN VUE — {e['justes']} juste(s)")
+    if pages == "a_poser":
+        print(f"  lien des pages d'instance de la skill {'posé' if o.construire else 'à poser'} "
+              f"— {PAGES_SKILL} → {SOURCE_PAGES}/")
+    elif pages == "a_retirer":
+        print(f"  lien des pages d'instance de la skill {'retiré' if o.construire else 'à retirer'} "
+              f"— {SOURCE_PAGES}/ n'existe pas")
+    elif pages == "reel":
+        print(f"  ⚠️ {PAGES_SKILL}/ est un dossier réel — jamais touché. À ranger : ses pages dans "
+              f"{SOURCE_PAGES}/, puis le retirer et `brain vue --construire`")
     if e["a_creer"] or e["a_corriger"]:
         print(f"  liens {verbe}             {len(e['a_creer']) + len(e['a_corriger'])}")
     if e["orphelins"]:
@@ -417,9 +468,9 @@ def main() -> int:
     for rel in e["complements_seuls"]:
         print(f"  ⚠️ instance/agents/{rel.with_suffix('')}{COMPLEMENT} complète un agent qui "
               f"n'existe pas (ni noyau/agents/{rel}, ni instance/agents/{rel}) — il n'est lu nulle part")
-    bloque = e["reels"] or e["etrangers"] or e["complements_seuls"]
+    bloque = e["reels"] or e["etrangers"] or e["complements_seuls"] or pages == "reel"
     if not o.construire:
-        a_faire = e["a_creer"] or e["a_corriger"] or e["orphelins"]
+        a_faire = e["a_creer"] or e["a_corriger"] or e["orphelins"] or pages in ("a_poser", "a_retirer")
         # L'état dit aussi le verrou : la posture le décide, le disque peut l'avoir perdu
         # (un `--deverrouiller` resté sans `--construire`).
         ouvert = os.access(noyau, os.W_OK) and os.geteuid() != 0

@@ -24,6 +24,16 @@ Ce qu'il vérifie :
                   pas le fichier : il dépend du projet en cours
     L0 unanime    les six types partent du MÊME socle — un L0 qui diverge
                   n'est plus un niveau zéro, c'est une préférence
+    complément    `instance/contexts/session-<type>.complement.yml` — ce que
+                  l'instance AJOUTE au boot d'un type : ses fichiers existent,
+                  comme ceux du manifest ; il ne porte que ce que le boot en lit
+                  (`L1`, `L2.extras`) ; il complète un type qui existe. Une clé
+                  de plus, ou un type inconnu, serait lu nulle part, sans que
+                  rien le dise
+    règles        `instance/specs/` — seul `collaboration.complement.md` y est
+                  lu (au boot, après `profil/specs/collaboration.md`) ; tout
+                  autre fichier, une surcharge par exemple, ne l'est nulle part
+                 
 
 Ce qu'il ne compte pas comme manquant : un fichier d'un SATELLITE — un dossier que
 `NIVEAUX.yml` déclare `versionne: depot-separe`. C'est de la donnée, pas du
@@ -76,22 +86,16 @@ def main() -> int:
     comptes = 0
     socles: dict[str, tuple] = {}
 
-    for f in fichiers:
-        try:
-            d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError as exc:
-            manquants.append((f.name, "—", f"YAML illisible : {exc}"))
-            continue
-
-        socles[f.stem] = tuple(d.get("L0") or [])
-
+    def juger(nom: str, d: dict) -> None:
+        """Chaque fichier qu'un manifest — ou un complément — fait charger."""
+        nonlocal comptes
         for niveau in ("L0", "L1"):
             for ref in d.get(niveau) or []:
                 if not isinstance(ref, str):
                     continue
                 comptes += 1
                 if not (racine / ref).exists():
-                    (a_ecrire if ref.split("/")[0] in satellites else manquants).append((f.name, niveau, ref))
+                    (a_ecrire if ref.split("/")[0] in satellites else manquants).append((nom, niveau, ref))
 
         l2 = d.get("L2")
         if isinstance(l2, dict):
@@ -111,10 +115,62 @@ def main() -> int:
                 else:
                     cible = racine / ref
                 if not cible.exists():
-                    manquants.append((f.name, "L2", ref))
+                    manquants.append((nom, "L2", ref))
+
+    for f in fichiers:
+        try:
+            d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            manquants.append((f.name, "—", f"YAML illisible : {exc}"))
+            continue
+
+        socles[f.stem] = tuple(d.get("L0") or [])
+        juger(f.name, d)
+
+    # Le complément de l'instance : il s'ajoute au boot du type.
+    types = {f.name[len("session-"):-len(".yml")] for f in fichiers}
+    complements = sorted((racine / "instance" / "contexts").glob("session-*.complement.yml"))
+    for f in complements:
+        nom = f"instance/contexts/{f.name}"
+        type_ = f.name[len("session-"):-len(".complement.yml")]
+        try:
+            d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            manquants.append((nom, "—", f"YAML illisible : {exc}"))
+            continue
+        if not isinstance(d, dict):
+            manquants.append((nom, "—", "ni L1 ni L2 : ce n'est pas un mapping"))
+            continue
+        if type_ not in types:
+            manquants.append((nom, "—", f"complète un type qui n'existe pas (contexts/session-{type_}.yml) "
+                                        "— lu nulle part"))
+        hors = sorted(set(d) - {"L1", "L2"})
+        l2 = d.get("L2")
+        if isinstance(l2, dict):
+            hors += [f"L2.{k}" for k in sorted(set(l2) - {"extras"})]
+        elif l2 is not None:
+            hors.append("L2")
+        if hors:
+            manquants.append((nom, "—", f"{', '.join(hors)} : le boot ne lit d'un complément "
+                                        "que L1 et L2.extras"))
+        juger(nom, d)
+
+    # Les règles de travail de l'instance : un seul fichier est lu.
+    LUES = "collaboration.complement.md"
+    specs = racine / "instance" / "specs"
+    regles = (specs / LUES).is_file()
+    if specs.is_dir():
+        for f in sorted(specs.rglob("*")):
+            rel = f.relative_to(specs)
+            if (f.is_file() and str(rel) not in (LUES, "README.md")
+                    and not any(x.startswith(".") for x in rel.parts)):
+                manquants.append((f"instance/specs/{rel}", "—",
+                                  f"lu nulle part : seul instance/specs/{LUES} s'ajoute aux règles"))
 
     print(f"\nCONTEXTES — {len(fichiers)} types de session, "
-          f"{comptes} fichiers déclarés au boot")
+          + (f"{len(complements)} complément(s) de l'instance, " if complements else "")
+          + ("ses règles de travail, " if regles else "")
+          + f"{comptes} fichiers déclarés au boot")
 
     # `L0` n'est pas « tout ce qui est toujours chargé » — CLAUDE.md s'en charge
     # et les deux s'additionnent. `L0` est ce que le TYPE ajoute avant tout le

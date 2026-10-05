@@ -50,6 +50,32 @@ Le fichier d'instructions global (`~/.claude/CLAUDE.md`) est lu à chaque
 session, quel que soit le type, et charge sa propre liste : elle **s'ajoute**
 à L0.
 
+### Ce que ton instance ajoute : le complément
+
+Ce que **ton** boot charge en plus — ton identité, l'index de tes décisions —
+n'a rien à faire dans un manifest : `contexts/` est du programme, reçu à chaque
+version. Ça va dans `instance/contexts/session-<type>.complement.yml` :
+
+```yaml
+L1:
+  - profil/identity/<fichier>.md      # ce que ce type charge en plus, toujours
+L2:
+  extras:
+    - <dossier>/<fichier>.md          # en plus, quand un projet est déclaré
+```
+
+Le boot charge le L1 du manifest, puis celui du complément ; les `extras` du
+L2, avec les siens. Il ne fait qu'**ajouter** : seuls `L1` et `L2.extras` y sont
+lus. `instance/` ne part jamais au gabarit, et une mise à jour n'y touche pas.
+`brain doctor` vérifie que chaque fichier qu'il nomme existe, comme pour le
+manifest.
+
+**Tes règles de travail**, de même : `profil/specs/collaboration.md` est celle
+du gabarit, chargée à chaque session par ton `~/.claude/CLAUDE.md`. Ce que tu
+y ajoutes va dans `instance/specs/collaboration.complement.md` — le boot le lit
+juste après, s'il existe. Rien d'autre dans `instance/specs/` n'est lu : le
+doctor le signale.
+
 ---
 
 ## Où chaque type peut écrire

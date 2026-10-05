@@ -84,7 +84,7 @@ L2:
   # besoin. Les scopes sans fiche projet (kernel, agents) ne chargent rien —
   # `fallback: null` le dit.
   template: "projets/{project}.md"
-  extras:
+  extras: []
   fallback: null
 
 # L3 — On demand

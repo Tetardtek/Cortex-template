@@ -40,6 +40,10 @@ vivent le brain, les satellites, les secrets. **Aucun chemin machine ne
 s'écrit ailleurs** — un chemin en dur dans un agent est une dépendance à une
 machine, et le premier fork la découvre en la cassant.
 
+Puis **tes règles de travail**, s'il y en a : `instance/specs/collaboration.complement.md`
+s'ajoute à `profil/specs/collaboration.md` (que `~/.claude/CLAUDE.md` charge déjà) —
+il ne le remplace pas.
+
 ### 2. Charger ce que le type de session déclare
 
 `contexts/session-<type>.yml` porte trois niveaux :
@@ -52,6 +56,12 @@ L2   ce qui dépend du projet en cours — un motif, pas un fichier
 
 Charger **ce qui est déclaré**, rien de plus. Un boot qui charge « au cas où »
 consomme le contexte dont la session aura besoin plus tard.
+
+Puis le **complément de l'instance**, s'il existe —
+`instance/contexts/session-<type>.complement.yml` : son `L1` après celui du
+manifeste, ses `extras` du `L2` avec les siens. Il ne fait qu'ajouter ; c'est là
+que l'instance met ce que son boot charge en plus (son identité, ses index), pas
+dans le manifeste, qui est du programme reçu à chaque version.
 
 > **`L0` n'est pas « tout ce qui est toujours chargé ».** Le fichier
 > d'instructions global est lu à chaque session quel que soit le type, et il
