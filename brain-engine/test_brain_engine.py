@@ -1468,6 +1468,65 @@ class TestSatelliteNEcritPasLeKernel(unittest.TestCase):
         self.assertTrue((self.tmp / 'workspace' / 'une-note.md').exists())
 
 
+class TestUnNoyauEnLectureNeSEcritPasParLeMoteur(unittest.TestCase):
+    """Un fork `noyau: lecture` garde un moteur qui écrit : un PUT qui vise `noyau/`
+    rendait une 500 (`PermissionError` non rattrapée). Il rend un 403 qui dit où
+    écrire. Joué dans un brain jetable, en `owner`, claim et lock neutralisés :
+    seule l'écriture elle-même peut refuser. Le témoin : le même noyau modifiable → 200."""
+
+    def setUp(self):
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-noyau-lecture-'))
+        (self.tmp / 'noyau' / 'agents').mkdir(parents=True)
+        (self.tmp / 'noyau' / 'agents' / 'coach.md').write_text('# le coach du noyau\n')
+        (self.tmp / 'agents').mkdir()
+        (self.tmp / 'agents' / 'coach.md').symlink_to('../noyau/agents/coach.md')
+        shutil.copy(BRAIN_ROOT_PATH / 'NIVEAUX.yml', self.tmp / 'NIVEAUX.yml')   # la vraie règle des zones
+        self._racine = srv.BRAIN_ROOT
+        srv.BRAIN_ROOT = self.tmp
+        self.client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+
+    def tearDown(self):
+        srv.BRAIN_ROOT = self._racine
+        for p in [self.tmp, *self.tmp.rglob('*')]:
+            if not p.is_symlink():
+                p.chmod(p.stat().st_mode | 0o200)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _verrou(self):
+        for p in (self.tmp / 'noyau' / 'agents' / 'coach.md', self.tmp / 'noyau' / 'agents', self.tmp / 'noyau'):
+            p.chmod(p.stat().st_mode & ~0o222)
+
+    def _put(self, chemin, mode='owner'):
+        with patch.object(srv, 'BRAIN_MODE', mode), patch.object(srv, '_TOKEN_MAP', {}), \
+             patch.object(srv, '_open_claims', return_value=[{'sess_id': 'seul', 'scope': 'x'}]), \
+             patch.object(srv, '_foreign_lock', return_value=None), \
+             patch.object(srv, '_demander_reindex', return_value=False):
+            return self.client.put(f'/brain/{chemin}', json={'content': '# réécrit\n'})
+
+    def test_un_noyau_en_lecture_rend_un_403_qui_dit_ou_ecrire(self):
+        self._verrou()
+        for chemin in ('agents/coach.md', 'noyau/agents/coach.md', 'noyau/agents/nouveau.md'):
+            r = self._put(chemin)
+            self.assertEqual(r.status_code, 403, f'{chemin} : {r.status_code} {r.text}')
+            self.assertIn('lit son noyau', r.text)
+            self.assertIn('instance/agents/', r.text)
+        self.assertEqual((self.tmp / 'noyau' / 'agents' / 'coach.md').read_text(), '# le coach du noyau\n')
+
+    def test_le_temoin_un_noyau_modifiable_s_ecrit(self):
+        """Le brain d'origine : rien ne change."""
+        r = self._put('agents/coach.md')
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((self.tmp / 'noyau' / 'agents' / 'coach.md').read_text(), '# réécrit\n')
+
+    def test_replica_garde_son_refus_a_lui(self):
+        self._verrou()
+        r = self._put('agents/coach.md', mode='satellite')
+        self.assertEqual(r.status_code, 403, r.text)
+        self.assertIn('satellite', r.text)
+
+
 class TestLectureParZone(unittest.TestCase):
     """`GET /brain/{path}` applique à la lecture les zones de `_SCOPE_ACCESS`.
 
@@ -1841,6 +1900,40 @@ class TestSetupResoutPaths(unittest.TestCase):
         texte, _, sortie = self._jouer('| `brain/` | `/x` |\n')
         self.assertEqual(texte, '| `brain/` | `/x` |\n')
         self.assertIn('déjà configuré', sortie)
+
+
+class TestSetupDeclareLeNoyau(unittest.TestCase):
+    """L'étape 3 du setup : un fork (sans `satellites.yml`) déclare `noyau: lecture` dans
+    son instance active ; une machine de plus d'une instance, non. L'étape est
+    jouée SEULE, extraite du script, dans un brain jetable."""
+
+    def _jouer(self, satellites: bool) -> dict:
+        import yaml
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        etape = script[script.index('# ── Étape 3 — brain-compose'):script.index('# ── Étape 3 (suite)')]
+        with tempfile.TemporaryDirectory() as tmp:
+            b = Path(tmp)
+            (b / 'brain-compose.yml').write_text('version: "9.9.9"\n')
+            if satellites:
+                (b / 'satellites.yml').write_text('satellites: {}\n')
+            r = subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; warn(){ echo "warn $*"; }; '
+                                'info(){ echo "info $*"; }\n' + etape],
+                               env={'PATH': os.environ['PATH'], 'BRAIN_ROOT': str(b), 'BRAIN_NAME': 'essai',
+                                    'BRAIN_MACHINE': 'essai', 'ETAPES': '13'},
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return yaml.safe_load((b / 'brain-compose.local.yml').read_text())
+
+    def test_un_fork_declare_son_noyau_en_lecture(self):
+        c = self._jouer(satellites=False)
+        self.assertEqual(c['instances']['essai'].get('noyau'), 'lecture')
+        self.assertTrue(c['instances']['essai'].get('active'))
+        self.assertNotIn('write_mode', c, 'le push du fork reste ouvert')
+
+    def test_avec_satellites_yml_rien_n_est_declare(self):
+        c = self._jouer(satellites=True)
+        self.assertNotIn('noyau', c['instances']['essai'])
+        self.assertEqual(c.get('write_mode'), 'readonly_kernel', 'le témoin : le verrou du push, lui, y est')
 
 
 class TestSetupGardeClaudeMd(unittest.TestCase):
@@ -4876,6 +4969,7 @@ class TestExempleConfigLocale(unittest.TestCase):
         self.assertIsNotNone(m, "le bloc écrit par le setup n'a pas été trouvé")
         corps = re.sub(r'\$\([^)]*\)', 'x', m.group(1))         # $(date …)
         corps = corps.replace('${WRITE_MODE}', '')               # fork : pas de verrou
+        corps = corps.replace('${NOYAU_LECTURE}', '    noyau: lecture')   # fork : il lit son noyau
         corps = re.sub(r'\$\{?[A-Z_]+\}?', 'x', corps)
         return yaml.safe_load(corps)
 
@@ -6866,7 +6960,8 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
         if absents:
             self.skipTest(f'garde de posture absente de ce brain ({absents[0]})')
 
-    def _jouer(self, posture: str, chemin: str) -> int:
+    def _jouer(self, posture: str, chemin: str, noyau: str | None = None, override: bool = False,
+               session: str | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix='brain-posture-') as tmp:
             b = Path(tmp)
             for rel in ('scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
@@ -6877,8 +6972,9 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
             (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
             if (BRAIN_ROOT_PATH / 'brain-engine' / 'core').is_dir():
                 (b / 'brain-engine' / 'core').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / 'core')
+            cle = f'    noyau: {noyau}\n' if noyau else ''
             (b / 'brain-compose.local.yml').write_text(
-                f'instances:\n  ici:\n    active: true\n    posture: {posture}\n')
+                f'instances:\n  ici:\n    active: true\n    posture: {posture}\n{cle}')
             g = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
                                           cwd=b, capture_output=True, text=True)
             g('init', '-q')
@@ -6886,8 +6982,12 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
             (b / chemin).write_text('# un fichier\n')
             g('add', chemin)
             env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_MAIN', 'BRAIN_KERNEL_OVERRIDE')}
-            return subprocess.run(['bash', str(b / 'scripts/hooks/pre-commit-posture')], cwd=b,
-                                  capture_output=True, text=True, env=env, timeout=120).returncode
+            if override:
+                env['BRAIN_KERNEL_OVERRIDE'] = '1'
+            commande = (['bash', str(b / 'scripts/posture-gate-check.sh'), '--check-session', session]
+                        if session else ['bash', str(b / 'scripts/hooks/pre-commit-posture')])
+            return subprocess.run(commande, cwd=b, capture_output=True, text=True, env=env,
+                                  timeout=120).returncode
 
     def test_le_noyau_est_refuse_en_replica(self):
         self.assertEqual(self._jouer('replica-nomad', 'noyau/agents/un-agent.md'), 1)
@@ -6906,6 +7006,28 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
 
     def test_le_master_ecrit_son_noyau(self):
         self.assertEqual(self._jouer('master', 'noyau/agents/un-agent.md'), 0)
+
+    # ── Un fork `noyau: lecture` : son noyau refusé, son instance libre ──
+
+    def test_un_fork_en_lecture_refuse_un_commit_du_noyau(self):
+        self.assertEqual(self._jouer('master', 'noyau/agents/x.md', noyau='lecture'), 1)
+
+    def test_un_fork_en_lecture_commite_son_instance(self):
+        self.assertEqual(self._jouer('master', 'instance/agents/x.md', noyau='lecture'), 0)
+        self.assertEqual(self._jouer('master', 'scripts/un-outil.sh', noyau='lecture'), 0,
+                         'seul noyau/ est verrouillé')
+
+    def test_l_override_leve_le_refus_du_noyau(self):
+        self.assertEqual(self._jouer('master', 'noyau/agents/x.md', noyau='lecture', override=True), 0)
+
+    def test_noyau_ouvert_laisse_passer(self):
+        self.assertEqual(self._jouer('master', 'noyau/agents/x.md', noyau='ouvert'), 0)
+
+    def test_la_cle_ne_ferme_aucune_session(self):
+        """Pas une posture : `brain` et `pilote` restent ouvertes à un fork qui lit son noyau."""
+        for session in ('brain', 'pilote'):
+            self.assertEqual(self._jouer('master', 'x.md', noyau='lecture', session=session), 0, session)
+        self.assertEqual(self._jouer('replica-nomad', 'x.md', session='brain'), 1, 'le témoin : replica ferme')
 
 
 class TestIsolationVoitLaVue(unittest.TestCase):
@@ -7512,6 +7634,64 @@ class TestVueDesAgents(unittest.TestCase):
         self._vue('--construire')
         (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('x')   # le témoin : master écrit
 
+    # ── Un fork lit son noyau : la clé `noyau:` de l'instance active ──
+
+    def _noyau(self, valeur, posture='master'):
+        cle = f'    noyau: {valeur}\n' if valeur else ''
+        (self.brain / 'brain-compose.local.yml').write_text(
+            f'instances:\n  ici:\n    active: true\n    posture: {posture}\n{cle}')
+
+    def test_un_fork_qui_declare_noyau_lecture_lit_son_noyau(self):
+        """Un fork reste `master` (maître de son instance) : seul son `noyau/` se fige,
+        comme le dossier d'un paquet du système. `ouvert`, ou rien : modifiable."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        self._noyau('lecture')
+        r = self._vue('--construire')
+        self.assertIn('lecture seule', r.stdout, r.stdout + r.stderr)
+        self.assertIn('noyau: lecture', r.stdout)
+        with self.assertRaises(PermissionError):
+            (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('dans le noyau')
+        e = self._vue()
+        self.assertEqual(e.returncode, 0, e.stdout)
+        self.assertIn('lecture seule', e.stdout)
+        for valeur in ('ouvert', None):
+            self._noyau(valeur)
+            r = self._vue('--construire')
+            self.assertIn('noyau/ modifiable', r.stdout, f'{valeur} : {r.stdout}')
+            (self.brain / 'noyau' / 'agents' / f'nouveau-{valeur}.md').write_text('le fork écrit')
+
+    def test_la_cle_ne_change_ni_le_mode_ni_la_posture(self):
+        """Pas une posture : le moteur d'un fork `noyau: lecture` ne passe pas en `satellite`."""
+        sys.path.insert(0, str(self.brain / 'brain-engine'))
+        try:
+            import importlib
+            import serve
+            serve = importlib.reload(serve)
+            self._noyau('lecture')
+            self.assertEqual(serve.posture_de(self.brain), 'master')
+            self.assertTrue(serve.ecrit_le_kernel(self.brain, serve.posture_de(self.brain)))
+            self.assertNotEqual(serve.mode_de({}, self.brain), 'satellite')
+            self._noyau(None, posture='replica-nomad')
+            self.assertEqual(serve.mode_de({}, self.brain), 'satellite', 'le témoin : replica, oui')
+        finally:
+            sys.path.pop(0)
+
+    def test_une_posture_illisible_et_noyau_lecture_verrouille_par_prudence(self):
+        """La règle de repli de la posture, étendue à la clé : `serve.py` cassé, un fork
+        qui déclare `noyau: lecture` reste verrouillé, et le dit."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        (self.brain / 'brain-engine' / 'serve.py').write_text('cassé(\n')
+        self._noyau('lecture')
+        r = self._vue('--construire')
+        self.assertIn('par prudence', r.stdout + r.stderr)
+        with self.assertRaises(PermissionError):
+            (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('x')
+        self._noyau('ouvert')
+        self._vue('--construire')
+        (self.brain / 'noyau' / 'agents' / 'nouveau.md').write_text('x')   # le témoin : ouvert écrit
+
     def _complement(self, nom, texte):
         (self.brain / 'instance' / 'agents' / f'{nom}.complement.md').write_text(texte)
 
@@ -7784,6 +7964,20 @@ class TestLaVueDUnWorktree(unittest.TestCase):
                             capture_output=True, text=True)
         self.assertEqual(rm.returncode, 0, rm.stderr)
         self.assertFalse(self.wt.exists(), 'le worktree part entier')
+
+    def test_le_worktree_d_un_fork_ne_promet_pas_un_commit_refuse(self):
+        """Un fork `noyau: lecture` sans le garde de posture : « le commit le refusera »
+        était faux. Le worktree reste modifiable, et le dit sans rien promettre."""
+        (self.brain / 'brain-compose.local.yml').write_text(
+            'instances:\n  ici:\n    active: true\n    posture: master\n    noyau: lecture\n')
+        r = self._vue(self.wt, '--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.access(self.wt / 'noyau' / 'agents', os.W_OK), 'un worktree : jamais verrouillé')
+        self.assertIn('noyau: lecture', r.stdout)
+        self.assertNotIn('le commit le refusera', r.stdout)
+        (self.brain / 'scripts' / 'hooks').mkdir(parents=True)
+        (self.brain / 'scripts' / 'hooks' / 'pre-commit-posture').write_text('# le garde\n')
+        self.assertIn('le commit le refusera', self._vue(self.wt, '--construire').stdout, 'avec le garde : oui')
 
 
 class TestGardeDuDistribue(unittest.TestCase):
@@ -8430,6 +8624,79 @@ class TestBrainMaj(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('1.2', (f / 'noyau' / 'agents' / 'c.md').read_text(), 'la fusion a écrit le noyau')
         self.assertFalse(os.access(f / 'noyau' / 'agents' / 'c.md', os.W_OK), 'et il est reverrouillé')
+
+    # ── Un fork lit son noyau : `brain maj` sème `noyau: lecture` une fois ──
+
+    def _installe(self, noyau=None, version='1.0.0', avant=False):
+        """La config locale qu'écrit le setup : l'instance active, puis des pairs (actifs eux aussi).
+        `avant` : la clé écrite avant `active:` — sa place dans le bloc est libre."""
+        cle = f'    noyau: {noyau}\n' if noyau else ''
+        (self.fork / 'brain-compose.local.yml').write_text(
+            f'kernel_path: /x\nkernel_version: "{version}"\nmachine: essai\n\ninstances:\n  essai:\n'
+            f'    path: /x\n    brain_name: essai\n{cle if avant else ""}    mode: prod\n    active: true\n'
+            f'{"" if avant else cle}\n'
+            'peers:\n  laptop:\n    active: true\n    url: http://x:7700\n')
+
+    def _noyau_declare(self):
+        import yaml
+        data = yaml.safe_load((self.fork / 'brain-compose.local.yml').read_text())
+        return data['instances']['essai'].get('noyau'), data['peers']['laptop'].get('noyau')
+
+    def test_un_fork_installe_recoit_noyau_lecture_une_fois(self):
+        self._installe()
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._noyau_declare(), ('lecture', None), "dans le bloc de l'instance active")
+        self.assertIn('noyau: lecture', r.stdout, 'semée, et dite')
+        self.assertIn('1.1.0', (self.fork / 'brain-compose.local.yml').read_text())
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue encore\n'}, tag='v1.2.0')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(re.findall(r'^\s+noyau:', (self.fork / 'brain-compose.local.yml').read_text(), re.M)), 1,
+                         'une fois')
+        self.assertNotIn('noyau: lecture déclarée', r.stdout, 'rien à redire')
+
+    def test_noyau_ouvert_n_est_jamais_remplace(self):
+        for avant, tag in ((False, 'v1.1.0'), (True, 'v1.2.0')):
+            self._installe(noyau='ouvert', avant=avant)
+            self._version_amont({'agents/c.md': f'name: c\ndescription: c, {tag}\n'}, tag=tag)
+            self.assertEqual(self._maj('--appliquer').returncode, 0)
+            self.assertEqual(self._noyau_declare(), ('ouvert', None), f'avant active: {avant}')
+
+    def test_avec_satellites_yml_rien_n_est_seme(self):
+        """Une machine de plus d'une instance (le brain d'origine, son laptop) : pas un fork."""
+        self._installe()
+        self._ecrire(self.fork, {'satellites.yml': 'satellites: {}\n'})
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        self.assertEqual(self._maj('--appliquer').returncode, 0)
+        self.assertEqual(self._noyau_declare(), (None, None))
+
+    def test_un_fork_verrouille_recoit_une_version_qui_change_un_agent_du_noyau(self):
+        """Le fork `noyau: lecture` (posture master) : la fusion lève le verrou, écrit
+        l'agent, et la vue le repose. Sans la clé, elle est semée et le verrou posé."""
+        if os.geteuid() == 0:
+            self.skipTest('root écrit partout')
+        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'serve.py', self.amont / 'brain-engine' / 'serve.py')
+        self._commit(self.amont, 'le moteur')
+        self._g(self.fork, 'pull', '-q', 'upstream', 'main')
+        self._amont_migre()
+        self._installe()                                   # installé sans la clé : la maj la sème
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        f = self.fork
+        self.assertEqual(self._noyau_declare()[0], 'lecture')
+        self.assertFalse(os.access(f / 'noyau' / 'agents' / 'c.md', os.W_OK), 'semée : le noyau se lit')
+        self._ecrire(self.amont, {'noyau/agents/c.md': 'name: c\ndescription: c, 1.2\n',
+                                  'brain-compose.yml': 'version: "1.2.0"\n'})
+        self._commit(self.amont, 'v1.2.0')
+        self._g(self.amont, 'tag', 'v1.2.0')
+        self._g(f, 'fetch', '-q', 'upstream', '--tags')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('c, 1.2', (f / 'noyau' / 'agents' / 'c.md').read_text(), "l'agent du noyau mis à jour")
+        self.assertFalse(os.access(f / 'noyau' / 'agents' / 'c.md', os.W_OK), 'et le noyau de nouveau en lecture')
+        self.assertFalse(os.access(f / 'noyau' / 'agents', os.W_OK))
 
     def test_les_unites_d_un_autre_brain_ne_sont_pas_touchees(self):
         """Le faux systemctl décrit un autre brain : rien n'est réinstallé."""
@@ -9703,6 +9970,25 @@ class TestGardeCommandes(unittest.TestCase):
         self.assertIsNone(self.refuse('rm -f workspace/scratch/mon-brouillon.md'))
         self.assertIsNone(self.refuse(f'rm -f {self.autre}/tmp-*.txt'))
         self.assertIsNone(self.refuse('echo "rm -f workspace/scratch/pr-*.md"'), 'une citation n\'est pas un geste')
+
+    def test_recherche_aveugle_dans_un_dossier_de_liens(self):
+        """Le 6/10 : `agents/`, une vue de liens (63 sur 68), invisible à `grep -r`."""
+        cibles = self.brain / 'noyau' / 'agents'
+        vue = self.brain / 'agents'
+        cibles.mkdir(parents=True)
+        vue.mkdir()
+        for nom in ('debug', 'coach', 'vps'):
+            (cibles / f'{nom}.md').write_text(f'name: {nom}\n')
+            (vue / f'{nom}.md').symlink_to(cibles / f'{nom}.md')
+        (vue / 'assemble.md').write_text('un fichier assemblé\n')
+        for c in ("grep -rn 'name: debug' agents/", 'rg -l coach agents', "find agents -type f -name '*.md'",
+                  'cd agents && grep -r x .', 'grep --recursive x agents'):
+            self.assertIsNotNone(self.refuse(c), c)
+        # Témoins : ce qui suit les liens, ce qui cherche dans les cibles, ce qui ne cherche pas.
+        for c in ('grep -R x agents/', 'grep --dereference-recursive x agents/',
+                  'rg -L x agents/', 'rg --follow x agents/', 'find -L agents -type f',
+                  'grep -rn x noyau/agents/', 'grep -n x agents/debug.md', 'ls agents/'):
+            self.assertIsNone(self.refuse(c), c)
 
     def test_git_add_tout_dans_le_brain(self):
         self.assertIsNotNone(self.refuse('git add -A'), "l'incident des 09-10/09")

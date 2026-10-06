@@ -19,6 +19,10 @@ instances:
     docs_fetch: ask
     config_status: hydrated   # hydrated / partial / empty
     active: true
+    # Un fork lit son noyau : noyau/ en lecture seule, tes retouches dans instance/.
+    # Pas une posture (ni le mode ni les sessions ne changent). `ouvert` le garde
+    # modifiable ; sans la clé, rien ne change. Le setup l'écrit sans satellites.yml.
+    noyau: lecture
 
 # ── Peers — les autres machines de CETTE instance (optionnel) ─────────────────
 # `bsi-query.sh peers`, `bsi-signal.sh` et `bsi-peer-poll.sh` les joignent en SSH.

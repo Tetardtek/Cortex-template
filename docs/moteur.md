@@ -89,6 +89,11 @@ refuse, plus la session qu'il restreint.
 | `satellite` | oui, sauf la zone kernel |
 | `template`, `demo` | non — lecture seule |
 
+La clé `noyau: lecture` d'un fork ne change pas le mode : le moteur reste en
+écriture. Mais son `noyau/` est en lecture seule sur le disque, et une écriture
+qui le vise (`PUT /brain/agents/<nom>.md`, `brain_write` du MCP, qui passe par la
+même route) est refusée en 403, avec l'endroit où écrire : `instance/`.
+
 ---
 
 ## Les accès

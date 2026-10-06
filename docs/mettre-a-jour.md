@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.3.1.
+> travail. Kernel v3.4.0.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -69,6 +69,12 @@ déclare la version et branche le garde de lecture. Il ne se lance jamais seul.
   écraserait sans un mot un fichier qu'il ignore (ta donnée, dans un satellite)
   si la fusion apporte un fichier suivi au même chemin. Le plan le nomme ;
   déplace-le, puis relance.
+- **Ton noyau se lit, et la mise à jour l'écrit quand même** : un fork déclare
+  `noyau: lecture` (son `noyau/` en lecture seule) ; `brain maj` lève le verrou le
+  temps de la fusion, puis la vue le repose. Un fork installé avant cette clé la
+  reçoit une fois : `brain maj --appliquer` l'écrit dans l'instance active de
+  `brain-compose.local.yml`, et le dit. Jamais par-dessus `noyau: ouvert` (ton
+  refus), jamais sur une machine qui a un `satellites.yml`.
 - **Un conflit sur un fichier écrit à la main l'arrête avant toute fusion** :
   il le nomme, et le choix est le tien. Fusionne à la main (étape 3), puis
   relance `brain maj --appliquer` pour la suite.

@@ -60,6 +60,7 @@ zone kernel est impossible dès qu'il y a plus d'un claim ouvert.
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import sys
 from pathlib import Path
@@ -97,18 +98,30 @@ def empreinte(p: Path) -> str:
 
 
 
+#: Si aucun agent de zone kernel n'est inscriptible, d'autres fichiers de la même zone.
+AUTRES_KERNEL = ("brain-compose.yml",)
+
+
 def cible_kernel(racine: Path, server) -> str | None:
-    """Le premier agent dont l'écriture tombe en zone kernel — `coach` d'abord."""
+    """Un fichier de zone kernel que le témoin peut ÉCRIRE — un agent d'abord (`coach`).
+
+    Le témoin, plus bas, joue un PUT qui aboutit : sur un fichier en lecture seule,
+    le serveur ne peut pas écrire. Chez un fork dont le noyau se lit (`noyau: lecture`),
+    `agents/coach.md` mène à `noyau/agents/coach.md`, verrouillé : viser un agent à
+    l'aveugle faisait tomber le serveur dans le contrôle (6/10). On vise donc un fichier
+    réellement inscriptible ; à défaut d'agent, un autre fichier de zone kernel. Ce qui
+    n'est pas inscriptible n'est pas une garde qui refuse : c'est le disque."""
     dossier = racine / "agents"
     noms = ["coach.md"] + sorted(p.name for p in dossier.glob("*.md")
                                  if p.name not in ("coach.md", "AGENTS.md") and not p.name.startswith("_"))
-    for nom in noms:
-        f = dossier / nom
-        if not f.is_file():
+    candidats = [f"agents/{n}" for n in noms] + list(AUTRES_KERNEL)
+    for rel in candidats:
+        f = racine / rel
+        if not f.is_file() or not os.access(f.resolve(), os.W_OK):
             continue
         reel = str(f.resolve().relative_to(racine.resolve()))
         if server._write_zone(reel) == "kernel":
-            return f"agents/{nom}"
+            return rel
     return None
 
 def main() -> int:

@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v3.3.1.
+> machine. Kernel v3.4.0.
 
 ---
 
@@ -50,7 +50,7 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses tr
 |---|---|
 | 1. Satellites | vérifie `profil/`, `todo/`, `toolkit/`, `progression/`, `reviews/` — les dossiers du gabarit. Rien n'est cloné. |
 | 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
-| 3. Configuration | crée `brain-compose.local.yml` (ta machine), remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
+| 3. Configuration | crée `brain-compose.local.yml` (ta machine) — ton instance y déclare `noyau: lecture` : ton `noyau/` se lit, tes retouches vont dans `instance/` —, remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
 | 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
 | 5. Outils | vérifie Claude Code, Node et Python |
 | 6. brain-engine | crée `brain-engine/.venv` et y installe les dépendances |
@@ -71,6 +71,13 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses tr
 > Ton fork est à toi : le setup laisse le push vers `origin` ouvert. Il ne le
 > verrouille (`write_mode: readonly_kernel`) que sur une machine de plus d'une
 > instance qui déclare ses satellites (`satellites.yml`).
+
+> Ton fork lit son noyau : le setup déclare `noyau: lecture` dans ton instance
+> (`brain-compose.local.yml`), et `noyau/` est en lecture seule — comme le dossier
+> d'un paquet installé. Tes retouches d'agents vont dans `instance/agents/` : une
+> surcharge (`<nom>.md`) ou un complément (`<nom>.complement.md`). Ce n'est pas une
+> posture : ton moteur, tes sessions et ton push ne changent pas. `noyau: ouvert`
+> garde le noyau modifiable. Pas sur une machine qui a un `satellites.yml`.
 
 Sans systemd utilisateur (conteneur, machine partagée) :
 

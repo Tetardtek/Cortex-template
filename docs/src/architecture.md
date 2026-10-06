@@ -83,6 +83,17 @@ du noyau livré (`noyau/agents/<nom>.md`). Un complément
 assemblé — l'agent, puis le complément. Tu gardes tout : `brain maj` met le noyau à
 jour sans toucher à tes surcharges ni à tes compléments.
 
+**Un fork lit son noyau.** Le setup déclare `noyau: lecture` dans l'instance active
+de `brain-compose.local.yml` (à côté de `posture:`), et la vue pose alors `noyau/`
+en lecture seule : tes retouches vont dans `instance/`, une surcharge ou un
+complément. Le hook de posture, là où il est installé, refuse un commit qui touche
+`noyau/` (`BRAIN_KERNEL_OVERRIDE=1` pour l'exception) ; `instance/` passe. Ce n'est
+pas une posture : ni le mode du moteur ni tes sessions ne changent, et seul
+`noyau/` est figé. `brain maj` lève le verrou le temps de la fusion, puis le
+repose. `noyau: ouvert` garde le noyau modifiable ; sans la clé, rien ne change
+(le brain d'origine ne la déclare pas, c'est là que le noyau se forge). Un
+worktree n'est jamais verrouillé.
+
 ---
 
 ## Plusieurs machines

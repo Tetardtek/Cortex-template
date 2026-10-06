@@ -52,6 +52,7 @@ context_tier: cold
 
 | Agent | Domaine | Statut |
 |-------|---------|--------|
+| `forgeron` | Le programme du brain — scripts, hooks, moteur, dashboard, setup, mise à jour, vue ; l'agent du worker sur ces fiches | ✅ active |
 | `orchestrator` | Coordination — aiguiller, composer une fiche prête (critères de fin), juger le rendu (BRAIN-079) | ✅ 2026-03-12 |
 | `scribe` | Maintenance du brain | ✅ 2026-03-12 |
 | `mentor` | Pédagogie — explication, garde-fou | ✅ 2026-03-12 |
@@ -145,6 +146,7 @@ context_tier: cold
 | Exploration / décision archi | `brainstorm` → `recruiter` (si présent) ou agent métier | Explorer + challenger → construire |
 | Question hors-scope en session | `aside` (si présent) | /btw → 2-3 lignes → retour session |
 | Coordination multi-instances | `orchestrator-scribe` | Signals BSI + cycles coworking inter-brains |
+| Fiche sur le programme du brain | `orchestrator` (composer) → `forgeron` (worker) → `orchestrator` (juger) → `kanban-scribe` | Une PR jugée contre sa zone, son mutant, puis la fusion par l'humain |
 | Fin de session complète | `session-orchestrator` → `scribe` + `coach` | Séquence close : fiches → brain → rapport coach → BSI |
 | Feature livrée en prod | `git-analyst` + `capital-scribe` (si présent) | Commits synthétisés + capital CV mis à jour |
 | Projet multi-langue | `i18n` + `frontend-stack` | Audit traductions + intégration lib |

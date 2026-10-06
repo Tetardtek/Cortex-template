@@ -69,6 +69,8 @@ Garanties :
                           passe
     unités / cycle        un cycle d'ordre au démarrage (l'incident Dolt) ⇒ rouge ;
                           sans l'`After=` qui le ferme, vert
+    doc / avertissement   le texte que doc_du_gabarit guette est celui que
+                          sync-template.sh écrit ; reformulé d'un côté ⇒ rouge
     garde de lecture      son hook absent de `.claude/settings.json`, ou ce fichier
                           illisible ⇒ rouge ; branché par `brancher`, vert
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
@@ -137,6 +139,18 @@ def _outils_presents(*outils: str) -> bool:
     éprouve aussi : leur section s'abstient, en le disant — elle ne rougit pas
     pour un outil qui n'a pas à être là."""
     return all((OUTILS / o).is_file() for o in outils)
+
+
+def avertissement_suivi(brain: Path) -> int | None:
+    """0 si `sync-template.sh` écrit encore le texte que `doc_du_gabarit.py` guette
+    (`RENDU_PARTIEL`), 1 sinon ; None sans synchro à lire."""
+    synchro = brain / "scripts" / "sync-template.sh"
+    if not synchro.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("doc_du_gabarit", OUTILS / "doc_du_gabarit.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return 0 if module.RENDU_PARTIEL in synchro.read_text(encoding="utf-8") else 1
 
 
 def joue(outil: str, racine: Path, *extra: str) -> int:
@@ -1635,6 +1649,67 @@ def cmd_close_stale():
             print("  ⏭  doc / les scripts de doc ne sont pas dans le brain de la machine")
     else:
         print("  ⏭  La doc du gabarit dit-elle vrai ? / outil d'instance absent de ce brain")
+
+    # ── Un rendu sans sa base ne juge pas la doc — ──────────────────
+    #
+    # Sans le gabarit publié (`brain-template/`, ou `GABARIT_DEPOT`), la synchro
+    # rend quand même — en le disant sur stderr — et le juge accusait la doc de
+    # 21 « affirmations fausses », toutes à tort (6/10, depuis un worktree).
+    # Hermétique : un brain jetable dont les trois scripts sont des bouchons —
+    # ni le vrai brain, ni un vrai rendu.
+    if _outils_presents("doc_du_gabarit.py"):
+        with tempfile.TemporaryDirectory(prefix="temoin-doc-sans-base-") as tmp:
+            b = Path(tmp).resolve()
+            (b / "scripts").mkdir()
+            avertir = 'echo "⚠️  $BASE introuvable — rendu SANS les fichiers propres au gabarit" >&2\n'
+
+            def bouchons(partiel: bool, verite: int, generer: int, rendu: int = 0) -> None:
+                # `rendu` non nul : la synchro s'arrête AVANT de juger la doc (pas
+                # de marqueur DOC_JUGEE) — la garde « le gabarit se rend ».
+                fin = 'echo "LA DOC DU GABARIT DIT FAUX"\nexit 0\n' if rendu == 0 else f'exit {rendu}\n'
+                (b / "scripts" / "sync-template.sh").write_text(
+                    '#!/bin/bash\n[ "$1" = "--rendre" ] || exit 2\nmkdir -p "$2"\n'
+                    f'BASE="{b}/brain-template"\n' + (avertir if partiel else "") + fin,
+                    encoding="utf-8")
+                (b / "scripts" / "docs-verite.py").write_text(
+                    f'print("✗ 21 affirmation(s) fausse(s) sur 21 pages")\nraise SystemExit({verite})\n',
+                    encoding="utf-8")
+                (b / "scripts" / "docs-generer.py").write_text(
+                    f'raise SystemExit({generer})\n', encoding="utf-8")
+
+            def juge_sans_base() -> tuple[int, str]:
+                r = subprocess.run([sys.executable, str(OUTILS / "doc_du_gabarit.py"), "--brain", str(b)],
+                                   capture_output=True, text=True,
+                                   env={k: v for k, v in os.environ.items() if k != "GABARIT_DEPOT"})
+                return r.returncode, r.stdout + r.stderr
+
+            bouchons(partiel=True, verite=1, generer=0)
+            code, sortie = juge_sans_base()
+            # L'abstention, telle que le doctor la lit : une ligne SKIP, sortie 0 —
+            # et qui nomme la base attendue et `GABARIT_DEPOT`, sans rien accuser.
+            dit = any(l.strip().startswith("SKIP") and "rendu sans la base publiée — rien de jugé" in l
+                      and f"{b}/brain-template" in l and "GABARIT_DEPOT" in l
+                      for l in sortie.splitlines())
+            garantie("doc / un rendu sans sa base ne juge pas",
+                     code if dit and "affirmation" not in sortie else 1, 0)
+            bouchons(partiel=False, verite=1, generer=0)
+            garantie("doc / un rendu complet qui ment refuse", juge_sans_base()[0], 1)
+            bouchons(partiel=True, verite=1, generer=1)
+            garantie("doc / docs en retard rougit même sans base", juge_sans_base()[0], 1)
+            # La garde d'avant (28/09) passe d'abord : un rendu arrêté avant le
+            # jugement reste rouge, base ou pas — l'abstention ne l'avale pas.
+            bouchons(partiel=True, verite=0, generer=0, rendu=1)
+            garantie("doc / un rendu arrêté rougit même sans base", juge_sans_base()[0], 1)
+
+        # Le texte que l'outil guette est celui que la synchro ÉCRIT : reformulé d'un
+        # côté seulement, la détection se tairait, et l'outil recommencerait à accuser
+        # à tort — sans qu'aucun témoin ne bouge (les bouchons portent le texte de
+        # l'outil). Lu dans le vrai `sync-template.sh`.
+        code = avertissement_suivi(VRAI_BRAIN)
+        if code is None:
+            print("  ⏭  doc / l'avertissement suivi : sync-template.sh absent du vrai brain — rien à comparer")
+        else:
+            garantie("doc / l'avertissement de la synchro est celui guetté", code, 0)
 
     # ── Le wiki dit-il vrai ? — ─────────────────────────────────────
     #

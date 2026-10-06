@@ -39,6 +39,9 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 `agents/_template.md` est le gabarit d'un agent, et `agents/_conventions.md`
 ses conventions. Ton agent s'écrit dans `instance/agents/<nom>.md` — pas dans
 `agents/`, qui est une vue — puis `brain vue --construire` le rend visible.
+Une vue de **liens** : les lire les suit, mais `grep -r`, `rg` et `find -type f`
+ne les suivent pas — pour chercher dans `agents/`, `grep -R`, `rg -L`, `find -L`,
+ou cherche dans `noyau/agents/` et `instance/agents/`.
 
 Pour **ajouter** à un agent du noyau ce qui t'est propre — ton niveau, ta façon de
 travailler avec lui —, écris seulement l'ajout dans

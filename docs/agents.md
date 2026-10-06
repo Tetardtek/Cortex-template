@@ -25,7 +25,7 @@ travaillent : le contexte reste disponible pour ce que tu fais.
 
 ---
 
-## Les 57 agents
+## Les 58 agents
 
 *Liste générée depuis l'en-tête de chaque fichier `agents/*.md` — la portée
 (`brain.scope`) et le rôle (`brain.type`) qu'il déclare, et sa description.
@@ -100,10 +100,11 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 - **`todo-scribe`** — La liste du backlog — une fiche par tâche, par projet ; proposée à l'humain, créée seule en mode kanban
 - **`toolkit-scribe`** — Toolkit scribe — persistance patterns, gardien toolkit/
 
-### Sur le brain lui-même (4)
+### Sur le brain lui-même (5)
 
 - **`agent-review`** — Audit du système d'agents — gaps, patches, vue système
 - **`audit`** — Audit brain — cohérence inter-couches, gaps sessions/agents/ADRs, références cassées
+- **`forgeron`** — Forgeron — écrit le programme du brain : scripts, hooks, moteur, dashboard, setup, mise à jour, vue, doc générée
 - **`french-teacher`** — Langue française — orthographe, grammaire, syntaxe, style
 - **`git-analyst`** — Git analyst — historique sémantique, conventions, synthèse commits
 
@@ -119,6 +120,9 @@ Un agent ajouté ou retiré change cette page à la génération suivante.*
 `agents/_template.md` est le gabarit d'un agent, et `agents/_conventions.md`
 ses conventions. Ton agent s'écrit dans `instance/agents/<nom>.md` — pas dans
 `agents/`, qui est une vue — puis `brain vue --construire` le rend visible.
+Une vue de **liens** : les lire les suit, mais `grep -r`, `rg` et `find -type f`
+ne les suivent pas — pour chercher dans `agents/`, `grep -R`, `rg -L`, `find -L`,
+ou cherche dans `noyau/agents/` et `instance/agents/`.
 
 Pour **ajouter** à un agent du noyau ce qui t'est propre — ton niveau, ta façon de
 travailler avec lui —, écris seulement l'ajout dans

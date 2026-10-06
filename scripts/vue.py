@@ -60,12 +60,15 @@ touché ; un lien sans `instance/skill/` est retiré.
 surcharges, ses agents à elle. Un calcul, écrit dans la vue ; celui que livrerait le
 noyau décrirait le noyau de l'amont, pas ce qui est lu ici.
 
-── La posture décide du droit d'écrire le noyau ────────────────────────────
+── La posture, et la clé `noyau:`, décident du droit d'écrire le noyau ─────
 
 Une instance dont la posture refuse le kernel (`kernel_write: false`) a son `noyau/` en
-lecture seule ; les autres le gardent modifiable. git ne garde pas ce droit : il est
-reposé à chaque construction. Une garde contre l'accident, pas contre le propriétaire
-de la machine.
+lecture seule. Un fork aussi, quand son instance active déclare `noyau: lecture` dans
+`brain-compose.local.yml` : il lit son noyau, ses retouches vont dans `instance/`. Ce
+n'est pas une posture — ni le mode du moteur ni les sessions ne changent ; `noyau: ouvert`
+le garde modifiable, et sans la clé (le brain d'origine) rien ne change. git ne garde
+pas ce droit : il est reposé à chaque construction. Une garde contre l'accident, pas
+contre le propriétaire de la machine.
 
 Le verrou garde le checkout PRINCIPAL — celui qu'on aligne, où tournent les services. Un
 worktree garde son `noyau/` modifiable : verrouillé, `git worktree remove` échoue à
@@ -372,26 +375,58 @@ def calculer_catalogue(brain: Path) -> str:
             else f"⚠️ catalogue non calculé : {(r.stderr or r.stdout).strip()[-200:]}")
 
 
-def ecrit_le_kernel(brain: Path) -> bool:
-    """La posture de l'instance active — la lecture de `serve.py`, la même source.
+def noyau_declare(brain: Path) -> str | None:
+    """La clé `noyau:` de l'instance active (`lecture`, `ouvert`), None sans elle.
 
-    Illisible : si l'instance DÉCLARE une posture autre que `master`, on verrouille et
-    on le dit — se rabattre sur « modifiable » ouvrait le noyau d'un satellite en
-    silence. Rien de déclaré (un fork neuf) : modifiable, comme avant."""
+    YAML illisible : la ligne `noyau:` du fichier — une déclaration ne se perd pas en
+    silence (la règle de repli de la posture)."""
+    local = brain / "brain-compose.local.yml"
+    if not local.is_file():
+        return None
+    texte = local.read_text(encoding="utf-8", errors="replace")
+    try:
+        import yaml
+        instances = (yaml.safe_load(texte) or {}).get("instances") or {}
+        for inst in instances.values():
+            if isinstance(inst, dict) and inst.get("active"):
+                return None if inst.get("noyau") is None else str(inst["noyau"])
+        return None
+    except Exception:                                          # noqa: BLE001
+        m = re.search(r"^\s+noyau:\s*['\"]?([\w-]+)", texte, re.M)
+        return m.group(1) if m else None
+
+
+def raison(brain: Path) -> str:
+    """Pourquoi le noyau se lit : la clé du fork, ou la posture."""
+    return ("noyau: lecture — tes retouches vont dans instance/" if noyau_declare(brain) == "lecture"
+            else "la posture refuse le kernel")
+
+
+def ecrit_le_kernel(brain: Path) -> bool:
+    """La posture de l'instance active — la lecture de `serve.py`, la même source —
+    puis la clé `noyau:` : `lecture` fige le noyau, quelle que soit la posture.
+
+    Illisible : si l'instance DÉCLARE une posture autre que `master`, ou `noyau: lecture`,
+    on verrouille et on le dit — se rabattre sur « modifiable » ouvrait le noyau d'un
+    satellite en silence. Rien de déclaré (un fork d'avant la clé) : modifiable."""
+    lecture = noyau_declare(brain) == "lecture"
     sys.path.insert(0, str(brain / "brain-engine"))
     # Pas de `__pycache__` : la synchro construit la vue d'un RENDU, et le bytecode de
     # `serve.py` partait avec le gabarit (répétition générale du 3/10).
     sys.dont_write_bytecode = True
     try:
         import serve
-        return serve.ecrit_le_kernel(brain, serve.posture_de(brain))
+        return serve.ecrit_le_kernel(brain, serve.posture_de(brain)) and not lecture
     except Exception as e:                                     # noqa: BLE001
-        import re
         local = brain / "brain-compose.local.yml"
         texte = local.read_text(encoding="utf-8", errors="replace") if local.is_file() else ""
         declaree = re.search(r"^\s*posture:\s*['\"]?([\w-]+)", texte, re.M)
         if declaree and declaree.group(1) != "master":
             print(f"  ⚠️ la posture ne se lit pas ({e.__class__.__name__}) — « {declaree.group(1)} » "
+                  "déclarée : le noyau est verrouillé par prudence", file=sys.stderr)
+            return False
+        if lecture:
+            print(f"  ⚠️ la posture ne se lit pas ({e.__class__.__name__}) — « noyau: lecture » "
                   "déclarée : le noyau est verrouillé par prudence", file=sys.stderr)
             return False
         return True
@@ -480,10 +515,10 @@ def main() -> int:
         elif ecrit_le_kernel(brain):
             print("  noyau/ modifiable (posture qui écrit le kernel)")
         elif ouvert:
-            print("  ⚠️ la posture refuse le kernel et noyau/ est modifiable")
+            print(f"  ⚠️ noyau/ est modifiable, il devrait se lire ({raison(brain)})")
             a_faire = True
         else:
-            print("  🔒 noyau/ en lecture seule (la posture refuse le kernel)")
+            print(f"  🔒 noyau/ en lecture seule ({raison(brain)})")
         if a_faire:
             print("  `brain vue --construire` pour la construire")
         return 1 if (a_faire or bloque) else 0
@@ -496,16 +531,22 @@ def main() -> int:
     ecrire = ecrit_le_kernel(brain)
     droit_d_ecrire(brain, ecrire)
     print("  noyau/ modifiable (posture qui écrit le kernel)" if ecrire
-          else "  🔒 noyau/ en lecture seule (la posture refuse le kernel)")
+          else f"  🔒 noyau/ en lecture seule ({raison(brain)})")
     return 1 if bloque else 0
 
 
 def dit_le_worktree(depot: Path) -> str:
-    """Un worktree n'est pas verrouillé ; la posture du dépôt principal garde le commit."""
+    """Un worktree n'est pas verrouillé ; le garde de posture du dépôt principal garde le
+    commit. Il ne part pas au gabarit : un fork `noyau: lecture` ne l'a pas, et la
+    promesse d'un commit refusé y serait fausse — elle n'est faite que là où il est."""
     if ecrit_le_kernel(depot):
         return "  noyau/ modifiable (un worktree ; la posture de l'instance écrit le kernel)"
-    return ("  worktree : noyau/ modifiable — la posture de l'instance refuse le kernel, "
-            "le commit le refusera (le verrou garde le checkout principal)")
+    if (noyau_declare(depot) != "lecture"
+            or (depot / "scripts" / "hooks" / "pre-commit-posture").is_file()):
+        return (f"  worktree : noyau/ modifiable — {raison(depot)}, "
+                "le commit le refusera (le verrou garde le checkout principal)")
+    return (f"  worktree : noyau/ modifiable — {raison(depot)} ; aucun garde de commit ici : "
+            "le verrou garde le checkout principal")
 
 
 if __name__ == "__main__":

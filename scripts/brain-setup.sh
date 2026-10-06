@@ -149,6 +149,11 @@ KERNEL_VERSION=$(grep '^version:' "$BRAIN_ROOT/brain-compose.yml" | awk '{print 
 # (voir le verrou plus bas). Écrit partout, il mentait à chaque fork.
 WRITE_MODE=""
 [[ -f "$BRAIN_ROOT/satellites.yml" ]] && WRITE_MODE="write_mode: readonly_kernel   # machine de plus d'une instance : son noyau se lit, il ne se pousse pas"
+# Un fork (sans `satellites.yml`) lit son noyau : `noyau/` en lecture seule, ses
+# retouches dans `instance/`. Pas une posture — ni le mode ni les sessions ne
+# changent ; `noyau: ouvert` le garde modifiable.
+NOYAU_LECTURE=""
+[[ -f "$BRAIN_ROOT/satellites.yml" ]] || NOYAU_LECTURE="    noyau: lecture   # ton noyau/ se lit : tes retouches vont dans instance/ (noyau: ouvert pour le modifier)"
 
 if [[ -f "$LOCAL_COMPOSE" ]]; then
   warn "brain-compose.local.yml existe déjà — skip"
@@ -171,8 +176,12 @@ instances:
     docs_fetch: ask
     config_status: hydrated
     active: true
+${NOYAU_LECTURE}
 EOF
   ok "brain-compose.local.yml créé"
+  if [[ -n "$NOYAU_LECTURE" ]]; then
+    info "noyau: lecture — noyau/ se lit, tes retouches d'agents vont dans instance/agents/"
+  fi
 fi
 
 # ── Étape 3 (suite) — les satellites déclarés pour cette machine ────────────────────

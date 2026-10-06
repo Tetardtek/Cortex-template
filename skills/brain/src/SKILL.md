@@ -62,6 +62,10 @@ tort — et c'est un défaut à signaler, pas à contourner.*
    services de la machine : on les lit dans le code, on ne les sonde pas pour
    voir. Un essai se fait dans un bac à sable : HOME jetable, ports décalés, rien
    de la machine en commun.
+8. **`agents/` est une vue de liens : la lire les suit, la fouiller non.**
+   `grep -r`, `rg` et `find -type f` n'y voient que les quelques agents assemblés,
+   et rendent « rien » sans le dire. `grep -R`, `rg -L`, `find -L` — ou chercher
+   dans les cibles, `noyau/agents/` et `instance/agents/`. → [`noyau.md`](noyau.md)
 
 ## Le doctor : `brain doctor`
 

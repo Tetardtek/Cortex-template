@@ -106,6 +106,7 @@ Demande soumise
 | pipeline CI en échec, nouveau déploiement | `ci-cd` |
 | VPS, Apache, Docker, SSL | `vps` |
 | mail, DNS, SMTP | `mail` |
+| le code du brain (scripts, hooks, moteur, dashboard, setup, mise à jour, vue) | `forgeron` |
 | créer ou améliorer un agent | `recruiter` (si présent) |
 | problème multi-couches (code + infra) | `code-review` + `vps` |
 
@@ -200,6 +201,8 @@ Interdit   : le tronc ; toucher hors du périmètre de la fiche, ou hors de la z
              se juger (« c'est bon ») — il rapporte, l'orchestrator juge
 Personnel  : jamais lu — les chemins de `zone_personal` et `zone_aucune` (`NIVEAUX.yml`) ;
              ce qui manque se rapporte, ne se cherche pas
+Chercher   : `agents/` est une vue de liens — `grep -R`, `rg -L`, `find -L`, ou dans
+             `noyau/agents/` et `instance/agents/` ; `grep -r` n'y voit presque rien
 Rendre     : le numéro de PR, et ce qu'il n'a pas pu faire, dit tel quel
 ```
 
@@ -333,3 +336,5 @@ Suite : fusion dans dev/autonome + kanban-scribe | la fiche reste ouverte
 | 2026-10-05 | Mode juger : la zone de l'agent rejouée par `scripts/zone-du-diff.py` — un chemin hors de sa `zone_write`, et le verdict est défavorable |
 | 2026-10-06 | Le juge ne prend pour « dépôt de code » que le `repo:` d'une fiche projet (ou un satellite hors du brain) : un dépôt inconnu sort en 2, il passait en 0 |
 | 2026-10-06 | Le brief dit le personnel jamais lu par le worker (`zone_personal`, `zone_aucune`) |
+| 2026-10-06 | Le brief dit comment chercher dans `agents/`, une vue de liens que `grep -r` ne voit pas |
+| 2026-10-06 | Matrice : le code du brain → `forgeron`, l'agent de son programme |

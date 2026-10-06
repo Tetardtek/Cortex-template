@@ -1062,9 +1062,22 @@ async def brain_put(
             detail=f"lock détenu par {lock['holder']} jusqu'à {lock['expires_at']}",
         )
 
-    # Écriture
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding='utf-8')
+    # Écriture. Un fork `noyau: lecture` a son `noyau/` en lecture seule (posé par
+    # `brain vue`) et un moteur qui écrit : le système de fichiers refuse, et la
+    # route rendait une 500. Elle dit pourquoi, et où écrire.
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding='utf-8')
+    except PermissionError:
+        if rel.split('/', 1)[0] == 'noyau':
+            raise HTTPException(
+                status_code=403,
+                detail=f'ce brain lit son noyau (noyau: lecture) — {rel} ne s\'écrit pas ici : '
+                       f'écris dans instance/ (instance/{rel.split("/", 1)[1]}, ou un complément '
+                       f'.complement.md) ; le noyau se reçoit par brain maj',
+            )
+        raise HTTPException(status_code=403,
+                            detail=f'{rel} : écriture refusée par le système de fichiers')
     # Trace d'audit : sans identité de l'écrivain, on sait quoi a changé mais
     # pas qui l'a changé — la moitié inutile de l'information.
     writer = 'localhost' if _is_localhost(request) else role_from_token(authorization)

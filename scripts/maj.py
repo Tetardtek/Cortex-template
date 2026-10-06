@@ -40,6 +40,11 @@ Un brain dont `agents/` est une VUE (`noyau/agents/`, le noyau livré ;
 temps de la fusion, la vue reconstruite après — le catalogue se calcule en elle,
 il ne se commite plus.
 
+Un fork installé avant la clé `noyau:` la reçoit une fois : `noyau: lecture` est
+écrite dans l'instance active de `brain-compose.local.yml`, et dite — son `noyau/` se
+lit désormais, ses retouches vont dans `instance/`. Jamais par-dessus une clé
+déclarée (`noyau: ouvert` est un refus), jamais avec un `satellites.yml`.
+
 Un brain encore à plat qui reçoit une version à vue : AVANT de fusionner, tes
 agents passent dans `instance/agents/` — un agent que tu as modifié y emporte ta
 version, `agents/` revient à celle que tu avais reçue ; un agent à toi y part tel
@@ -457,9 +462,66 @@ def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
     return la_suite(brain, cible, sans_unites, dire)
 
 
+#: La ligne semée dans l'instance active d'un fork installé.
+NOYAU_LECTURE = "noyau: lecture   # ton noyau/ se lit : tes retouches vont dans instance/ (noyau: ouvert pour le modifier)"
+
+
+def semer_le_noyau(brain: Path, dire) -> bool:
+    """`noyau: lecture`, semée UNE fois chez un fork installé avant la clé.
+
+    Jamais avec un `satellites.yml` (une machine de plus d'une instance : pas un fork),
+    jamais par-dessus une clé déclarée (`ouvert` est un refus, `lecture` est déjà là).
+    La ligne va dans le bloc de l'instance active, après son `active:` ; le résultat
+    relu doit la porter, sinon le fichier est rendu tel qu'il était. True : semée."""
+    local = brain / "brain-compose.local.yml"
+    if (brain / "satellites.yml").is_file() or not local.is_file():
+        return False
+    texte = local.read_text(encoding="utf-8")
+    try:
+        import yaml
+        instances = (yaml.safe_load(texte) or {}).get("instances") or {}
+    except Exception:                                          # noqa: BLE001
+        dire("  ⓘ brain-compose.local.yml ne se lit pas : noyau: lecture à déclarer à la main (docs/architecture.md)")
+        return False
+    actif = next((n for n, i in instances.items() if isinstance(i, dict) and i.get("active")), None)
+    if actif is None:
+        dire("  ⓘ aucune instance active dans brain-compose.local.yml : noyau: lecture à déclarer à la main")
+        return False
+    if "noyau" in instances[actif]:
+        return False
+    lignes = texte.split("\n")
+    debut = next((k for k, l in enumerate(lignes) if l.rstrip() == "instances:"), None)
+    bloc = None if debut is None else next(
+        (k for k in range(debut + 1, len(lignes))
+         if re.match(rf"^\s+{re.escape(str(actif))}:\s*(#.*)?$", lignes[k])), None)
+    if bloc is not None:
+        retrait = len(lignes[bloc]) - len(lignes[bloc].lstrip())
+        for k in range(bloc + 1, len(lignes)):
+            l = lignes[k]
+            if l.strip() and len(l) - len(l.lstrip()) <= retrait:
+                break                                          # sorti du bloc de l'instance
+            if re.match(r"^\s+active:", l):
+                lignes.insert(k + 1, l[:len(l) - len(l.lstrip())] + NOYAU_LECTURE)
+                neuf = "\n".join(lignes)
+                try:
+                    relu = (yaml.safe_load(neuf) or {}).get("instances") or {}
+                except Exception:                              # noqa: BLE001
+                    relu = {}
+                if (relu.get(actif) or {}).get("noyau") == "lecture":
+                    local.write_text(neuf, encoding="utf-8")
+                    dire("  ✅ noyau: lecture déclarée (brain-compose.local.yml) — ton noyau/ se lit, "
+                         "tes retouches vont dans instance/ ; noyau: ouvert pour le garder modifiable")
+                    return True
+                break
+    dire("  ⓘ noyau: lecture à déclarer à la main dans l'instance active de brain-compose.local.yml")
+    return False
+
+
 def la_suite(brain: Path, cible: str, sans_unites: bool, dire) -> int:
     """Ce qui suit la fusion : déclarer la version, réinstaller les unités, dire le reste."""
     declarer(brain, cible, dire)
+    if semer_le_noyau(brain, dire) and (brain / "noyau" / "agents").is_dir():
+        vue(brain, "--construire")                     # la clé semée : le noyau se fige maintenant
     unite = subprocess.run(["systemctl", "--user", "cat", "brain-engine.service"],
                            capture_output=True, text=True) if not sans_unites else None
     # L'unité installée doit être celle de CE brain : sur une machine qui porte
