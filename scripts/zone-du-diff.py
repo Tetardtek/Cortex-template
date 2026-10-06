@@ -12,7 +12,8 @@ de la déclaration rend le verdict défavorable.
 
     --depot     le dépôt de la PR, tel que la forge le nomme : `brain`, un
                 satellite (`workspace`, `brain-todo`… — son dossier vient de
-                `satellites.yml`), ou un dépôt de code
+                `satellites.yml`), ou un dépôt de code — celui qu'une fiche
+                projet déclare (`repo:` dans `projets/*.md`)
     --git       le clone où lire le diff (défaut : le dossier courant)
     --base      la base de la PR (défaut : `origin/dev/autonome`)
     --stdin     les chemins, un par ligne, au lieu du diff
@@ -34,20 +35,55 @@ outil fait les LECTURES : `NIVEAUX.yml` (niveaux, exceptions `zone:`,
 ── Ce qu'il ne juge pas, en le disant ─────────────────────────────────────
 
 Un dépôt de code : les zones parlent du brain. Le périmètre est celui de la
-fiche, et la forge borne le reste. Sortie 0, le message le dit.
+fiche, et la forge borne le reste. Sortie 0, le message le dit. N'est « de code »
+que le dépôt d'une fiche projet (`repo:`) ou un satellite qui vit hors du brain
+(`chemin:`) : un worker ne part que sur un projet au palier c, qui a sa fiche.
+Un nom que le brain ne connaît pas — une faute de frappe, un satellite que ce
+brain ne déclare pas — sort en 2 : le juge ne laisse pas passer ce qu'il ne
+reconnaît pas.
 
 Sorties : 0 dans la zone (ou dépôt de code) · 1 un chemin hors zone · 2 rien à
-juger — agent introuvable, sans `zone_write`, ou `NIVEAUX.yml` illisible.
+juger — dépôt inconnu, agent introuvable, sans `zone_write`, `NIVEAUX.yml`
+illisible, ou l'outil
+lui-même en panne (`core` introuvable, diff illisible). Une panne n'est jamais
+un 1 : « hors zone » se dit d'un chemin, pas d'un plantage.
+
+── Le CORE ────────────────────────────────────────────────────────────────
+
+Un fork le reçoit à côté de l'outil (`brain-engine/core/`). Le brain d'origine
+n'en a pas copie : son CORE est celui de Myéline, installé dans le venv de
+`brain-engine/`. Lancé par le `python3` du système, l'outil s'y relance donc.
 """
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
 AUCUNE = "aucune"
+
+
+class Panne(Exception):
+    """L'outil ne peut pas juger — sortie 2, jamais 1."""
+
+
+def dependances() -> None:
+    """`yaml` et le CORE — sinon la relance dans le venv de brain-engine/, une fois."""
+    sys.path.insert(0, str(RACINE / "brain-engine"))
+    try:
+        import yaml  # noqa: F401
+        import core.zones  # noqa: F401
+    except ImportError as e:
+        venv = RACINE / "brain-engine" / ".venv" / "bin" / "python3"
+        if venv.is_file() and not os.environ.get("ZONE_DU_DIFF_RELANCE"):
+            # Rien n'est encore lu de l'entrée : la relance la reçoit intacte.
+            os.environ["ZONE_DU_DIFF_RELANCE"] = "1"
+            os.execv(str(venv), [str(venv), *sys.argv])
+        raise Panne(f"`{e.name}` introuvable — ni pour ce python, ni dans le venv "
+                    f"de brain-engine/") from None
 
 
 def lire_yaml(chemin: Path) -> dict:
@@ -61,7 +97,6 @@ def lire_yaml(chemin: Path) -> dict:
 def registre(brain: Path):
     """Le `Registre` du CORE, nourri de ce que `NIVEAUX.yml` déclare."""
     # Le CORE de CE programme — celui qui vit à côté de l'outil, pas du brain jugé.
-    sys.path.insert(0, str(RACINE / "brain-engine"))
     from core.zones import Registre
     d = lire_yaml(brain / "NIVEAUX.yml")
     niveaux, exceptions = {}, {}
@@ -104,22 +139,43 @@ def zone_write(brain: Path, agent: str) -> list[str] | None:
     return None
 
 
-def prefixe_du_depot(brain: Path, depot: str) -> str | None:
-    """`""` pour le brain, `<dossier>/` pour un satellite, None pour un dépôt de code."""
+CODE = object()   # un dépôt de code connu : les zones n'y jugent rien
+
+
+def depots_de_code(brain: Path) -> set[str]:
+    """Les dépôts que les fiches projet déclarent (`repo:`) — le dernier segment."""
+    noms = set()
+    for fiche in sorted((brain / "projets").glob("*.md")):
+        texte = fiche.read_text(encoding="utf-8", errors="replace")
+        fin = texte.find("\n---", 3)
+        if not texte.startswith("---") or fin == -1:
+            continue
+        for ligne in texte[3:fin].splitlines():
+            if ligne.startswith("repo:"):
+                valeur = ligne[5:].split("#", 1)[0].strip().strip("'\"").rstrip("/")
+                nom = valeur.rsplit("/", 1)[-1].removesuffix(".git")
+                if nom and "<" not in nom:      # le gabarit d'une fiche : `<depot>`
+                    noms.add(nom)
+    return noms
+
+
+def prefixe_du_depot(brain: Path, depot: str):
+    """`""` pour le brain, `<dossier>/` pour un satellite, CODE pour un dépôt de code
+    connu, None pour un nom que ce brain ne connaît pas."""
     if depot == "brain":
         return ""
     for dossier, val in (lire_yaml(brain / "satellites.yml").get("satellites") or {}).items():
-        # Un satellite qui vit hors du brain (`chemin:`) n'a pas de chemin dans ses zones.
-        if isinstance(val, dict) and val.get("depot") == depot and not val.get("chemin"):
-            return dossier.rstrip("/") + "/"
-    return None
+        if isinstance(val, dict) and val.get("depot") == depot:
+            # Un satellite qui vit hors du brain (`chemin:`) n'a pas de chemin dans ses zones.
+            return CODE if val.get("chemin") else dossier.rstrip("/") + "/"
+    return CODE if depot in depots_de_code(brain) else None
 
 
 def chemins_du_diff(git: Path, base: str) -> list[str]:
     r = subprocess.run(["git", "-C", str(git), "diff", "--name-only", f"{base}...HEAD"],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        raise SystemExit(f"❌ git diff {base}...HEAD dans {git} : {r.stderr.strip()}")
+        raise Panne(f"git diff {base}...HEAD dans {git} : {r.stderr.strip()}")
     return [l for l in r.stdout.splitlines() if l.strip()]
 
 
@@ -132,9 +188,14 @@ def main() -> int:
     ap.add_argument("--brain", type=Path, default=RACINE)
     ap.add_argument("--stdin", action="store_true")
     a = ap.parse_args()
+    dependances()
 
     prefixe = prefixe_du_depot(a.brain, a.depot)
     if prefixe is None:
+        print(f"⛔ {a.depot} : dépôt inconnu — ni `brain`, ni un satellite de `satellites.yml`, "
+              f"ni le `repo:` d'une fiche projet. Rien à juger.")
+        return 2
+    if prefixe is CODE:
         print(f"ⓘ  {a.depot} est un dépôt de code : les zones parlent du brain, elles ne "
               f"jugent rien ici — le périmètre de la fiche, et la forge.")
         return 0
@@ -170,4 +231,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Panne as e:
+        print(f"⛔ {e} — rien à juger.")
+        sys.exit(2)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print("⛔ l'outil est en panne (trace ci-dessus) — rien à juger.")
+        sys.exit(2)

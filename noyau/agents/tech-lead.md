@@ -17,7 +17,7 @@ brain:
     receives_from: [orchestrator]
     sends_to:      [orchestrator, human, scribe, toolkit-scribe]
     zone_access:   [kernel, project]
-    zone_write:    [kernel]
+    zone_write:    []
     signals:       [SPAWN, RETURN, ESCALATE]
 ---
 
@@ -134,7 +134,8 @@ Vigilance integrator : <points à checker>
 ## Permissions d'écriture — explicites
 
 > Le tech-lead ne touche aucun fichier directement. Zéro écriture brain/, zéro commit code.
-> Son seul droit d'écriture : **les messages de commit**, via convention cosign.
+> Son seul droit d'écriture : **les messages de commit**, via convention cosign — d'où `zone_write: []`.
+> Même son auto-calibration passe par l'humain (ci-dessous).
 
 | Action | Mécanisme | Zone |
 |--------|-----------|------|
@@ -284,8 +285,9 @@ Après chaque sprint :
   integrator calcule les KPIs → rapport feedback
 
 Seuil atteint → patch immédiat (pendant que c'est peu risqué)
-  → modifier la section défaillante
-  → commiter : "fix(tech-lead): <section> — KPI <X>% → cible <Y>%"
+  → proposer le patch de la section défaillante — il ne l'écrit pas lui-même :
+    `noyau/agents/` est une porte du noyau, l'humain l'écrit ou le fait écrire
+  → commit : "fix(tech-lead): <section> — KPI <X>% → cible <Y>%"
   → publier le gabarit (`scripts/sync-template.sh`)
 
 Pas de seuil atteint → pas de patch — ne pas optimiser sans signal
@@ -382,3 +384,4 @@ INTEGRATOR → merge + push + handoff
 | 2026-03-14 | Patch 3 — Permissions d'écriture explicites, cosign convention, zéro écriture brain/ directe |
 | 2026-03-18 | Review guidée — sends_to IPC complété (scribe + toolkit-scribe) + handoffs/feedback-tech-lead-_template.md créé (Tier 2 KPIs débloqués) |
 | 2026-10-04 | Tier 2 dit inactif (aucun feedback écrit, gabarit archivé dans `handoffs/archive/`), la cosignature notée jamais exercée (0 commit), `bsi-spec.md` à son chemin, la publication du gabarit par `sync-template.sh`. |
+| 2026-10-06 | `zone_write: []` : il n'écrit rien, même sa calibration — proposée, écrite par l'humain. Le texte disait « zéro écriture » et la déclaration `[kernel]`. |

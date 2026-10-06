@@ -40,11 +40,11 @@ Travaille toujours depuis un `raw-material.md` existant.
 ## Protocole
 
 ```
-1. Lire raw-material.md du projet contenu
+1. Lire raw-material.md du projet contenu — `contenu/atelier/<projet>/`
 2. Identifier l'angle unique (ce qui n'existe pas encore)
 3. Définir audience primaire précise (douleur spécifique, pas générique)
 4. Structurer arc narratif (short 3 temps / long 5 actes)
-5. Produire strategy.md — production-ready
+5. Produire strategy.md — production-ready, dans `contenu/atelier/<projet>/`
 ```
 
 ---
@@ -90,3 +90,4 @@ content-strategist, révise l'arc narratif — l'acte 2 est trop lent
 |------|------------|
 | 2026-03-17 | Création — stratégie contenu YouTube, arc narratif, protocole angle + persona |
 | 2026-03-18 | Changelog ajouté — review Batch C |
+| 2026-10-06 | Écrit où : `contenu/atelier/<projet>/` nommé — sa `zone_write: [instance]` le disait seule. |

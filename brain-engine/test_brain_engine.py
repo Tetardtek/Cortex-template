@@ -7947,6 +7947,17 @@ class TestBrainAligne(unittest.TestCase):
         self.assertFalse((self.laptop / 'noyau' / 'agents' / 'watch.md').exists())
         self.assertFalse(os.path.lexists(self.laptop / 'agents' / 'watch.md'), 'le lien part aussi')
 
+    def test_le_garde_de_lecture_se_branche(self):
+        """Une machine installée avant le garde le reçoit par `brain aligne`."""
+        def geste(s):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'garde-lecture.py', s / 'scripts' / 'garde-lecture.py')
+        self._publier(geste)
+        r = self._run('aligne.py')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('garde de lecture branché', r.stdout)
+        d = json.loads((self.laptop / '.claude' / 'settings.json').read_text())
+        self.assertIn('garde-lecture.py', json.dumps(d['hooks']['PreToolUse']))
+
     def test_un_retrait_reste_d_une_fusion_oubliee_est_signale(self):
         """L'incident : la fusion sans `brain aligne` sort en 0 et laisse l'agent retiré."""
         self._publier(lambda s: (s / 'noyau/agents/watch.md').unlink())
@@ -9512,6 +9523,129 @@ class TestFocusInstantane(unittest.TestCase):
         self.assertLess(corps.index('focus_instantane.py'), corps.index('command -v ollama'))
 
 
+class TestGardeLecture(unittest.TestCase):
+    """Aucun sous-agent ne lit le personnel — `scripts/garde-lecture.py`, hook `PreToolUse`.
+
+    Un brain jetable : `NIVEAUX.yml`, un fichier par zone, un lien qui mène au
+    personnel. Le hook est joué comme Claude Code le joue (JSON sur stdin) : un
+    appel de sous-agent porte `agent_type`, un appel de la session n'en porte pas
+    (mesuré le 6/10, Claude Code 2.1.282)."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'garde-lecture.py'
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        b = self.brain = Path(self._tmp.name) / 'Brain'
+        (b / 'scripts').mkdir(parents=True)
+        shutil.copy(script_d_instance(self.SCRIPT), b / 'scripts' / 'garde-lecture.py')
+        (b / 'NIVEAUX.yml').write_text(
+            'version: 1\n# zone_personal: un commentaire n\'ouvre rien\nzone_personal:\n'
+            '  - profil/identity/\n  - profil/capital*\n  - vie/\n  - journal/\n'
+            'zone_aucune:\n  - brain-secrets/\nentrees:\n  vie/: donnee\n', encoding='utf-8')
+        for f in ('vie/papiers.md', 'profil/identity/moi.md', 'profil/capital.md', 'profil/decisions/x.md',
+                  'brain-secrets/MYSECRETS', 'journal/j.md', 'public.md', 'revie/x.md'):
+            (b / f).parent.mkdir(parents=True, exist_ok=True)
+            (b / f).write_text('x', encoding='utf-8')
+        (b / 'raccourci.md').symlink_to(b / 'vie' / 'papiers.md')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def hook(self, outil, entree, agent='Explore'):
+        donnees = {'tool_name': outil, 'tool_input': entree, 'cwd': str(self.brain)}
+        if agent:
+            donnees['agent_type'] = agent
+        r = subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), 'hook'],
+                           input=json.dumps(donnees), capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout) if r.stdout.strip() else {}
+
+    def refuse(self, outil, entree, agent='Explore'):
+        sortie = self.hook(outil, entree, agent)
+        return (sortie.get('hookSpecificOutput') or {}).get('permissionDecision') == 'deny'
+
+    def test_un_sous_agent_ne_lit_pas_le_personnel(self):
+        for f in ('vie/papiers.md', 'profil/identity/moi.md', 'profil/capital.md', 'brain-secrets/MYSECRETS',
+                  str(self.brain / 'vie' / 'papiers.md')):
+            self.assertTrue(self.refuse('Read', {'file_path': f}), f)
+        self.assertTrue(self.refuse('Read', {'file_path': 'vie/papiers.md'}, agent='worker'), 'le worker aussi')
+
+    def test_la_session_lit_librement(self):
+        self.assertFalse(self.refuse('Read', {'file_path': 'vie/papiers.md'}, agent=None),
+                         'sans agent_type : la session, l\'humain présent')
+
+    def test_le_reste_du_brain_se_lit(self):
+        for f in ('public.md', 'profil/decisions/x.md', 'revie/x.md'):
+            self.assertFalse(self.refuse('Read', {'file_path': f}), f)
+
+    def test_un_lien_ne_contourne_pas(self):
+        self.assertTrue(self.refuse('Read', {'file_path': 'raccourci.md'}), 'le lien mène à vie/')
+
+    def test_la_liste_vient_de_niveaux(self):
+        self.assertTrue(self.refuse('Read', {'file_path': 'journal/j.md'}), 'journal/ : déclaré ici seulement')
+        (self.brain / 'NIVEAUX.yml').unlink()
+        self.assertTrue(self.refuse('Read', {'file_path': 'vie/papiers.md'}), 'illisible : la liste par défaut')
+        self.assertFalse(self.refuse('Read', {'file_path': 'journal/j.md'}))
+
+    def test_grep_et_glob(self):
+        self.assertTrue(self.refuse('Grep', {'pattern': 'x', 'path': 'vie'}))
+        self.assertTrue(self.refuse('Glob', {'pattern': '*.md', 'path': 'profil/identity'}))
+        self.assertTrue(self.refuse('Glob', {'pattern': 'vie/**/*.md'}), 'le motif nomme le personnel')
+        self.assertTrue(self.refuse('Grep', {'pattern': 'x', 'glob': 'profil/capital*'}))
+        # Témoins : une recherche à la racine passe — Grep saute ce que .gitignore écarte ;
+        # Glob en liste les NOMS, limite dite dans le garde.
+        self.assertFalse(self.refuse('Grep', {'pattern': 'x', 'path': str(self.brain)}))
+        self.assertFalse(self.refuse('Glob', {'pattern': '**/*.md'}))
+
+    def test_bash_qui_nomme_le_personnel(self):
+        for c in ('cat vie/papiers.md', f'head {self.brain}/profil/identity/moi.md', 'ls brain-secrets',
+                  'grep -r x profil/capital.md', 'wc -l "vie/papiers.md"'):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        for c in ('ls profil/decisions', 'cat revie/x.md', 'git status', 'cat public.md'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def brancher(self, *args):
+        return subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), *args,
+                               '--brain', str(self.brain)], capture_output=True, text=True, timeout=30)
+
+    def test_brancher_pose_le_hook_une_fois(self):
+        """Un fork n'a pas de `.claude/` : le gabarit ne le livre pas. Setup et maj le branchent."""
+        self.assertEqual(self.brancher('etat').returncode, 1, 'absent : etat le dit')
+        self.assertEqual(self.brancher('brancher').returncode, 0)
+        self.assertEqual(self.brancher('brancher').returncode, 0)
+        d = json.loads((self.brain / '.claude' / 'settings.json').read_text())
+        self.assertEqual(len(d['hooks']['PreToolUse']), 1, 'deux fois, une seule entrée')
+        self.assertEqual(self.brancher('etat').returncode, 0)
+
+    def test_brancher_garde_les_reglages_du_fork(self):
+        (self.brain / '.claude').mkdir()
+        f = self.brain / '.claude' / 'settings.json'
+        f.write_text(json.dumps({'permissions': {'allow': ['Bash(ls *)']}, 'hooks': {
+            'PreToolUse': [{'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': 'echo mon-hook'}]}],
+            'SessionStart': [{'hooks': [{'type': 'command', 'command': 'echo bonjour'}]}]}}))
+        self.assertEqual(self.brancher('brancher').returncode, 0)
+        d = json.loads(f.read_text())
+        self.assertEqual(d['permissions'], {'allow': ['Bash(ls *)']})
+        self.assertIn('SessionStart', d['hooks'])
+        commandes = [h['command'] for e in d['hooks']['PreToolUse'] for h in e['hooks']]
+        self.assertIn('echo mon-hook', commandes, 'son hook reste à côté')
+        self.assertTrue(any('garde-lecture.py' in c for c in commandes))
+
+    def test_brancher_ne_reecrit_pas_un_fichier_illisible(self):
+        (self.brain / '.claude').mkdir()
+        f = self.brain / '.claude' / 'settings.json'
+        f.write_text('{ pas du json', encoding='utf-8')
+        self.assertEqual(self.brancher('brancher').returncode, 2)
+        self.assertEqual(f.read_text(encoding='utf-8'), '{ pas du json', 'rien n\'est écrit')
+        self.assertEqual(self.brancher('etat').returncode, 1)
+
+    def test_une_erreur_laisse_passer_en_le_disant(self):
+        r = subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), 'hook'],
+                           input='pas du json', capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('lecture non jugée', r.stdout)
+
+
 class TestGardeCommandes(unittest.TestCase):
     """Le hook `PreToolUse` refuse trois gestes, chacun un incident.
 
@@ -10090,6 +10224,12 @@ class TestZoneDuDiff(unittest.TestCase):
         (b / 'satellites.yml').write_text(
             'satellites:\n  workspace: {depot: workspace}\n  profil: {depot: brain-profil}\n'
             '  myeline: {depot: myeline, chemin: ~/ailleurs}\n', encoding='utf-8')
+        (b / 'projets').mkdir()
+        (b / 'projets' / 'mon-projet.md').write_text(
+            '---\nname: mon-projet\nrepo: git.exemple.org/moi/mon-projet   # le dépôt de travail\n---\n',
+            encoding='utf-8')
+        (b / 'projets' / '_template.md').write_text(
+            '---\nrepo: <forge>/<owner>/<depot>\n---\n', encoding='utf-8')
         for nom, zones in (('ecrit', '[instance]'), ('noyau', '[kernel, instance]'),
                            ('intime', '[personal]'), ('sans', None)):
             ipc = f'  ipc:\n    zone_write: {zones}\n' if zones else ''
@@ -10124,6 +10264,53 @@ class TestZoneDuDiff(unittest.TestCase):
         self.assertEqual(self.juge('intime', 'brain-profil', 'decisions/x.md').returncode, 1,
                          'le reste de profil/ est kernel')
 
+    def outil_hors_du_brain(self, venv=False):
+        """L'outil seul, loin de tout CORE ; avec `venv`, un venv qui le porte."""
+        racine = self.tmp / 'ailleurs'
+        (racine / 'scripts').mkdir(parents=True)
+        outil = racine / 'scripts' / 'zone-du-diff.py'
+        shutil.copy(self.OUTIL, outil)
+        if venv:
+            py = racine / 'brain-engine' / '.venv' / 'bin' / 'python3'
+            py.parent.mkdir(parents=True)
+            # Le python qui fait tourner ces tests porte le CORE : le venv y renvoie.
+            py.write_text(f'#!/bin/sh\nexec {sys.executable} "$@"\n', encoding='utf-8')
+            py.chmod(0o755)
+        return outil
+
+    def juge_sans_core(self, outil, *chemins):
+        """Par le python de base, sans `PYTHONPATH` : rien n'y porte le CORE."""
+        systeme = Path(sys.base_prefix) / 'bin' / 'python3'
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('PYTHONPATH', 'ZONE_DU_DIFF_RELANCE')}
+        if subprocess.run([str(systeme), '-c', 'import core'], env=env,
+                          capture_output=True).returncode == 0:
+            self.skipTest('le python du système porte déjà le CORE')
+        return subprocess.run(
+            [str(systeme), str(outil), '--brain', str(self.brain), '--agent', 'ecrit',
+             '--depot', 'brain', '--stdin'], input='\n'.join(chemins) + '\n',
+            capture_output=True, text=True, timeout=60, env=env)
+
+    def test_sans_core_c_est_une_panne_pas_un_hors_zone(self):
+        """Le 6/10 : sans `core`, l'outil plantait en 1 — le code de « hors zone »."""
+        r = self.juge_sans_core(self.outil_hors_du_brain(), 'workspace/ok.md')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('introuvable — ni pour ce python', r.stdout)
+
+    def test_sans_core_il_se_relance_dans_le_venv(self):
+        r = self.juge_sans_core(self.outil_hors_du_brain(venv=True),
+                                'workspace/ok.md', 'scripts/vue.py')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('✅ workspace/ok.md', r.stdout, 'l\'entrée a survécu à la relance')
+        self.assertIn('❌ scripts/vue.py', r.stdout)
+
+    def test_un_diff_illisible_est_une_panne(self):
+        r = subprocess.run(
+            [sys.executable, str(self.OUTIL), '--brain', str(self.brain), '--agent', 'ecrit',
+             '--depot', 'brain', '--git', str(self.tmp), '--base', 'nulle-part'],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+
     def test_zone_aucune_toujours_refusee(self):
         for agent in ('ecrit', 'noyau', 'intime'):
             r = self.juge(agent, 'brain', 'brain-secrets/MYSECRETS')
@@ -10134,6 +10321,13 @@ class TestZoneDuDiff(unittest.TestCase):
             r = self.juge('ecrit', depot, 'src/app.ts')
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn('dépôt de code', r.stdout)
+
+    def test_un_depot_inconnu_n_est_pas_un_depot_de_code(self):
+        """Le 6/10 : `--depot wokspace` passait en 0, « dépôt de code »."""
+        for depot in ('wokspace', 'brain-todo', '<depot>'):  # faute, satellite non déclaré, gabarit
+            r = self.juge('ecrit', depot, 'scripts/vue.py')
+            self.assertEqual(r.returncode, 2, depot + r.stdout + r.stderr)
+            self.assertIn('dépôt inconnu', r.stdout)
 
     def test_sans_zone_write_rien_a_juger(self):
         for agent in ('sans', 'absent'):

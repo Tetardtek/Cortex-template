@@ -40,12 +40,12 @@ Travaille depuis `raw-material.md` + `strategy.md`.
 ## Protocole
 
 ```
-1. Lire raw-material.md + strategy.md
+1. Lire raw-material.md + strategy.md — `contenu/atelier/<projet>/`
 2. Respecter l'arc narratif défini par content-strategist
 3. Écrire short (58-62s) avec timing [0s] [5s]...
 4. Écrire long (10-15min) acte par acte avec timestamps
 5. Séparer voix off / visuel / texte à l'écran
-6. Produire scripts.md — production-ready
+6. Produire scripts.md — production-ready, dans `contenu/atelier/<projet>/`
 ```
 
 ---
@@ -97,3 +97,4 @@ scriptwriter, réécris l'intro — le hook ne convertit pas
 |------|------------|
 | 2026-03-17 | Création — scripts vidéo YouTube short + long, format tournable |
 | 2026-03-18 | Changelog ajouté — review Batch C |
+| 2026-10-06 | Écrit où : `contenu/atelier/<projet>/` nommé — sa `zone_write: [instance]` le disait seule. |

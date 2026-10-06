@@ -35,7 +35,7 @@ BRAIN_ROOT="${POSITIONNELS[1]:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # le nom de l'instance, et un laptop se déclarait `prod-laptop` quand la liste
 # attendait `laptop`.
 BRAIN_MACHINE="${BRAIN_MACHINE:-$BRAIN_NAME}"
-ETAPES=12
+ETAPES=13
 
 # ── Couleurs ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -447,6 +447,20 @@ if [[ -d "$BRAIN_ROOT/noyau/agents" ]]; then
   fi
 else
   info "pas de noyau/agents/ — agents/ est un dossier ordinaire, rien à construire"
+fi
+
+# ── Étape 13 — le garde de lecture ─────────────────────────────────────────
+#
+# Aucun sous-agent de Claude Code (le worker de l'autonomie, un Explore…) ne
+# lit le personnel : `zone_personal` et `zone_aucune` de NIVEAUX.yml. Le garde
+# est un hook `PreToolUse` du projet : il s'ajoute à `.claude/settings.json`
+# sans toucher au reste — un hook à toi reste à côté.
+echo ""
+echo "[13/$ETAPES] Le garde de lecture..."
+if python3 "$BRAIN_ROOT/scripts/garde-lecture.py" brancher --brain "$BRAIN_ROOT" >/dev/null; then
+  ok "garde de lecture branché — aucun sous-agent ne lit le personnel (.claude/settings.json)"
+else
+  warn "le garde de lecture n'est pas posé — .claude/settings.json illisible ? relancer : python3 scripts/garde-lecture.py brancher"
 fi
 
 # ── Résumé ────────────────────────────────────────────────────────────────────

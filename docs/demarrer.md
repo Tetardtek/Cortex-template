@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v3.2.0.
+> machine. Kernel v3.3.0.
 
 ---
 
@@ -44,7 +44,7 @@ bash scripts/brain-setup.sh <nom-de-ton-brain>
 ```
 
 Il installe le brain **où il est cloné** (un second argument choisit un autre
-dossier). Le script est idempotent : relance-le si une étape a échoué. Ses onze étapes :
+dossier). Le script est idempotent : relance-le si une étape a échoué. Ses treize étapes :
 
 | Étape | Ce qu'elle fait |
 |---|---|
@@ -59,6 +59,8 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses on
 | 9. Le moteur | installe le moteur et le serveur MCP en **services utilisateur** (`brain-engine`, `brain-mcp`) : ils survivent au reboot |
 | 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |
 | 11. Les hooks git | installe les hooks du brain dans `.git/hooks` : le claim d'une session reste en vie, la base suit les handoffs, et **un commit doit porter un type déclaré dans `KERNEL.md`** (`feat:`, `fix:`, `todo:`…) — un message libre est refusé, en le disant |
+| 12. La vue des agents | construit `agents/` : des liens vers `noyau/agents/`, ou vers `instance/agents/` quand tu surcharges un agent (`brain vue --construire`) |
+| 13. Le garde de lecture | ajoute à `.claude/settings.json` un hook qui interdit à tout **sous-agent** de Claude Code (le worker de l'autonomie, un Explore…) de lire le personnel — `zone_personal` et `zone_aucune` de `NIVEAUX.yml` ; ta session lit librement. Il n'ajoute que son entrée : tes réglages et tes hooks restent. `brain maj` le pose aussi sur un fork déjà installé |
 
 > **L'étape 2 ne remplace pas un `~/.claude/CLAUDE.md` qui existe déjà.** S'il
 > diffère du modèle, elle pose le modèle à côté (`~/.claude/CLAUDE.md.modele`) :

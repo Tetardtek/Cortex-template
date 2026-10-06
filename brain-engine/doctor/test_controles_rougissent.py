@@ -69,6 +69,8 @@ Garanties :
                           passe
     unités / cycle        un cycle d'ordre au démarrage (l'incident Dolt) ⇒ rouge ;
                           sans l'`After=` qui le ferme, vert
+    garde de lecture      son hook absent de `.claude/settings.json`, ou ce fichier
+                          illisible ⇒ rouge ; branché par `brancher`, vert
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
                           une clôture sans preuve arrête avant la forge (BRAIN-079)
     zone / projet         un préfixe déclaré se tient ; l'exemption d'un autre préfixe
@@ -2048,6 +2050,25 @@ def cmd_close_stale():
                 "[Unit]\n[Service]\nExecStart=/bin/true\n", encoding="utf-8")
             garantie("unités / sans l'After=, juste",
                      joue("unites_sans_cycle.py", u, "--unites", str(u)), 0)
+
+    # Le garde de lecture : son branchement, mesuré par le garde lui-même.
+    garde_src = VRAI_BRAIN / "scripts" / "garde-lecture.py"
+    if _outils_presents("garde_de_lecture.py") and garde_src.is_file() \
+            and "brancher" in garde_src.read_text(encoding="utf-8"):
+        with tempfile.TemporaryDirectory(prefix="temoin-garde-") as tmp:
+            g = Path(tmp)
+            (g / "scripts").mkdir()
+            shutil.copy(garde_src, g / "scripts" / "garde-lecture.py")
+            garantie("garde de lecture / absent", joue("garde_de_lecture.py", g), 1)
+            (g / ".claude").mkdir()
+            (g / ".claude" / "settings.json").write_text("{ pas du json", encoding="utf-8")
+            garantie("garde de lecture / illisible", joue("garde_de_lecture.py", g), 1)
+            (g / ".claude" / "settings.json").unlink()
+            subprocess.run([sys.executable, str(g / "scripts" / "garde-lecture.py"), "brancher",
+                            "--brain", str(g)], capture_output=True)
+            garantie("garde de lecture / branché", joue("garde_de_lecture.py", g), 0)
+    else:
+        print("  ⏭  garde de lecture / scripts/garde-lecture.py (avec brancher) absent du vrai brain — rien à éprouver")
 
     print()
     if echecs:

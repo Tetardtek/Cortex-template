@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.2.0"
-generated_at: "2026-10-05T23:30"
+kernel_version: "3.3.0"
+generated_at: "2026-10-06T13:58"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 088cf8cb3e0c145ebe79ad1e011de579e6bb25aa84d5cc29064ffa1c5a7dbe9a
+  brain-compose.yml: 78762b7958b7c647111a8ef03335b18be03ea7142bdcb2db486704df00b7bc17
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 9d8873c425314ed9797a42cbdb29fee9c14deb0c04ba4f0edbe247569882a370
@@ -24,10 +24,10 @@ files:
   noyau/agents/code-review.md: dfa9de031ddb54811acb891938ebaf05727106f894eb19623965493c73801434
   noyau/agents/conciergerie.md: 969fc15215c7f39eab2270237b3f309feb9bea9f8449c13805f9b32f015dfeb8
   noyau/agents/config-scribe.md: fe741182039bad2e0ed45d52c216ceffea1773533b51919b16e93f7837353dad
-  noyau/agents/content-strategist.md: 891c419991c3787c304b14dd5e9fc2f30dc8ecbf0b35f30f29778a505d383775
+  noyau/agents/content-strategist.md: 9ccf14f1f951a0a5777f26e55075b31fc43fa9ecc6a4582b40dcc62c8deef139
   noyau/agents/content-writer.md: 27e7fddc13241a3e75b71f1f8d8facb6cc2e2fa6fc531c5125fe0e9bd0bfaaed
   noyau/agents/_conventions.md: b9bee6e3457163605ced174d5e6ec06491729b58fa611d0e194bbd3026aefcd7
-  noyau/agents/copywriter.md: 0e12f6429de3105313274bc720d2d88956a807cdf211b4787c351b74d67dbde1
+  noyau/agents/copywriter.md: c112d5400eda05884dc7991a0c1f54491e9d9502303085d35916ce4e5a1b564e
   noyau/agents/database-architect.md: 8fa97c61d2f6bc73ab4d89d845a169fa8e25ebb53a86b3fc0b8ca97c6c8ba680
   noyau/agents/debug.md: 85b825b31611f15993357240351e488b5389c2ff6c5c223abc2079b542ba2c26
   noyau/agents/doc.md: 84b80287807869d520f3ed2f23929b561ac522b38ca4a36509af92fc12aae15a
@@ -48,7 +48,7 @@ files:
   noyau/agents/optimizer-backend.md: 86c28aa3cdfec041c6edf36a0cae996eb5aef94d82acdace669d4ed4b6457170
   noyau/agents/optimizer-db.md: 2e05908892bd6685c926b8aabb3e1ee7dbd7d43e1e26377f5792c41b571bc0eb
   noyau/agents/optimizer-frontend.md: 264149b135242fd2f157bed1b49515bbd20e9c09c388b85500de4a24413e2dff
-  noyau/agents/orchestrator.md: c18bdba001ddbac0a3398e0d2588a85fe6fde23279d6c57dc53070fa2520958e
+  noyau/agents/orchestrator.md: 0127303284256bc744db4ea478d0b622fdf9fb81e147249e0fefcd5cf6dc2a62
   noyau/agents/orchestrator-scribe.md: 426f77e2c44dc31584691006b7b468c54e317551a0b7b6c6e8d1332bbd18c0c1
   noyau/agents/pathfinder.md: 80061adada01a5c306cec16a6894e3e93c86c2314ebf1fa0266d75748f2747ff
   noyau/agents/pm2.md: f920dc7414e3c59d235fe392df7fb01cbff70551453f0bc6203a18a077f4babf
@@ -57,24 +57,24 @@ files:
   noyau/agents/refacto.md: 864a9b2a52b52e51b1974155c86e3904129315d16b3a6d2c36e15aab693b45dd
   noyau/agents/release-manager.md: ebed74988c6b9c265710f9e65a8974f7964c9ef8a63f091a689a52f9dd48166e
   noyau/agents/scribe.md: a2ee3f88a37f8bd89c93300f474358f6b5fa2e3846c23c635514b07df560f54f
-  noyau/agents/scriptwriter.md: 80f01a1709cf7d0428b5e33bcef46fb16c5a6a618221ed96d2dc8be3353cfea5
+  noyau/agents/scriptwriter.md: 1f50c1134a0f4d548aa09fa6dd1b3b193bce9667c25df6c7cd0bd96e132e077e
   noyau/agents/secrets-guardian.md: 673e602687a4d7d2bec3b1d74618e6c23bb2c4e1f2e9ed7c6c758f8cd374013e
   noyau/agents/secrets-manager.md: c87497e15d785b7be4bf3e493a0d26ce07349c3a2728941b236f205b1fe56032
   noyau/agents/security.md: cad2206f2fb4e9803fc98285ab16be9d6d3d62e815342af7d24413b7c0a36361
-  noyau/agents/seo-youtube.md: c32f955e71f291578c2a8e09e0b34f85be25f68baba88c16e52a53fcc475a1ae
+  noyau/agents/seo-youtube.md: 85831d226223b94fffd921d1c86802519fc622ea3cc6bbfeed5d39f24a281bdc
   noyau/agents/session-orchestrator.md: ac15284a2df746360e191021cca4d7c219d4da8819b68a789ed2eae45cf3e2e7
-  noyau/agents/tech-lead.md: 59ae8c1ef17b773f208b45ca6898b2bfef0fc65e187248a0f9c2a429d503c8e2
+  noyau/agents/tech-lead.md: 4d145654f09a0715a6ab36ff6369df06735ff6e09db91c022267881d8f9000fd
   noyau/agents/testing.md: f64b9f1f135b35f401e4db467185265c5c5d16647f3f07e2347b25c72d1412f1
   noyau/agents/todo-scribe.md: 46a635aea83b9e9776cb09006283b42f6e34dfc9324f2f4d2ecb28fedf1600e7
   noyau/agents/toolkit-scribe.md: 7e71c92fb54c93286d2843112c03484a5931e48675f9ae74e879fee8c3cc909f
   noyau/agents/vps.md: a8fdf0bdecb5dd13162fcbb18722a33cf288d3f1d83bdd46adaaef8cc8ab23aa
   noyau/agents/watch.md: 8339cbe7fec7f31eb2cbcd13d4db000c08b7e29df14138a124139a7017afce9d
-  scripts/aligne.py: a837193dea2d339e8fcc39b2afa19e7747c850a47a4652ec762b4d779264117e
+  scripts/aligne.py: 10436902a891e044f0f81288cba1f73189d285d60d6d83470977b7944e129729
   scripts/brain: bab01dcdcad45bed1ad949f71c2090998422a0ab3bea76d76786c2da2ef80bed
   scripts/brain-db-sync.sh: a32572dc06560ba6d84eb02e9f71483435590f7f26b9b42cc4e1e7f00b0cad76
   scripts/brain-engine.sh: 6988e5b7ce59ecc580a9a567a19bcea2cbe5f57b5f8e1e70d2e2c1b9cf74b595
   scripts/brain-satellites.py: 129a09493aa1c2ba28d5d0d6759ba08a8b82d77467d40ff376f8d1c549cf8f31
-  scripts/brain-setup.sh: abf726fa2c10f953ec5b248231f40a595dc4224705d4feba771632176472b357
+  scripts/brain-setup.sh: 3554d71d7a363c913dd2d07688914bc609a0553c2a5bdf5cf27397ab3ef34f27
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
   scripts/briefing.py: ba41658cfc230de47bda41b21841840811f684cf80e5abaca4ef7d7bc3270ec4
   scripts/bsi-claim.sh: e2fe88a232171a6540e43e87d6a23600a8aa9b1f7f0cc1765020ea30fa3f8cfa
@@ -86,6 +86,7 @@ files:
   scripts/dolt-schema-gen.sh: 24795b978f4b9f1042ff1599a8cae7a40091193815b9c70dbd77df3ed687cc18
   scripts/dolt-setup.sh: f57375fae86e6df3a3edf208029da147e1b47e34ba269c4ab15bad35d578e566
   scripts/file-lock.sh: 25a57d3f58a9d873f0a4b0b24ba53de13e1ac9a635ef9afd5bd347b8cf113f41
+  scripts/garde-lecture.py: b766adc60e677c147222d9059e2ad5beef4b9148642a963a791fe080ba424cbb
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
   scripts/install-brain-hooks.sh: 65c594159c21f417e918135f2207888cc270bc3efa2aa2da06f02b6ee2dabcda
@@ -97,10 +98,10 @@ files:
   scripts/lib/premieres.sh: 91bd6f53ca50bb2f448fcf699cf6c59ae7323860401531f0492e23d0cda4ae32
   scripts/lib/python.sh: d603f4e063e58b7eab2fe6cb1315cfcbd5dc85b90cfe9db9cfa1d79a97ec2ae6
   scripts/maj-disponible.py: c772464d72a49fc5ee22e5b16d82c129ebd4eb650d5c94ff31fad57fe7b8e061
-  scripts/maj.py: b8c14e37d7f2dfe7f0131284d74b91e405af1690878071bb7c7eca003544ed8b
+  scripts/maj.py: ed6460d28361785a07c38a723726f024169ff58bef8bddb8cf3cd23ad4ea2ebf
   scripts/ollama-setup.sh: 90e93f2dafac9e948b4350865308fa46148201ff00e65da596a68244aedc2b23
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: b99f52706b128c29eed7b4320f67535f39e353bae9fdc05392ac4db8da8d4082
   scripts/vue.py: cab9f5a4520ac973f5fb092164b44478be02933711b08dda81afc181519fe2de
-  scripts/zone-du-diff.py: 6c013192f19cec8e1d4cfc935211f491afc7acab5be789c013e96daa169f6dfb
+  scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

@@ -40,12 +40,12 @@ Travaille depuis raw-material.md + scripts.md.
 ## Protocole
 
 ```
-1. Lire raw-material.md + scripts.md (pour timestamps réels)
+1. Lire raw-material.md + scripts.md (pour timestamps réels) — `contenu/atelier/<projet>/`
 2. Produire titre principal + alternatif (A/B testable)
 3. Rédiger description complète (hook 150 chars + corps + timestamps + tags)
 4. Générer 20 tags (mix volume/niche)
 5. Brief thumbnail 9:16 (short) + 16:9 (long)
-6. Produire seo-thumbnail.md — copy-pasteable
+6. Produire seo-thumbnail.md — copy-pasteable, dans `contenu/atelier/<projet>/`
 ```
 
 ---
@@ -96,3 +96,4 @@ seo-youtube, optimise le titre pour CTR sans sacrifier le SEO
 |------|------------|
 | 2026-03-17 | Création — SEO YouTube + direction artistique thumbnail |
 | 2026-03-18 | Changelog ajouté — review Batch C |
+| 2026-10-06 | Écrit où : `contenu/atelier/<projet>/` nommé — sa `zone_write: [instance]` le disait seule. |

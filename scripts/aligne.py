@@ -31,6 +31,10 @@ Il fait donc, dans l'ordre :
        elle, le laptop a dit 2.7.0 du 3/10 au 5/10, à travers trois versions, et
        son boot annonçait un « Kernel drift » faux. Seulement si la fusion a
        réussi : une version refusée n'est pas reçue.
+    7. branche le garde de lecture (`garde-lecture.py brancher`) : son hook vit
+       dans `.claude/settings.json`, que git ne suit pas chez un fork — une
+       machine installée avant lui ne l'aurait jamais. Il n'ajoute que son
+       entrée, une fois.
 
 Sans `noyau/` (un brain à plat), il fait 1 et 3, rien d'autre.
 Sortie 0 : aligné. 1 : la fusion a refusé, ou un fichier non suivi reste dans
@@ -132,6 +136,11 @@ def main() -> int:
         print(f"  {verrou}")
     if (ligne := declarer(brain)):
         print(ligne)
+    garde = brain / "scripts" / "garde-lecture.py"
+    if garde.is_file():
+        g = subprocess.run([sys.executable, str(garde), "brancher", "--brain", str(brain)],
+                           capture_output=True, text=True, timeout=60)
+        print((g.stdout or g.stderr).strip())
     restes = [l for l in git(brain, "ls-files", "--others", "--exclude-standard", "--", "noyau").stdout.splitlines() if l]
     if restes:
         print(f"⚠️ {len(restes)} fichier(s) non suivi(s) dans noyau/ — retirés par le tronc, ou écrits à la main :")

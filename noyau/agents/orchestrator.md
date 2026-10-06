@@ -198,6 +198,8 @@ Ne pas     : affaiblir l'existant — une garantie que la PR touche ou entoure d
 affaiblir    encore pouvoir échouer ; le prouver par un MUTANT du code qu'elle protège
 Interdit   : le tronc ; toucher hors du périmètre de la fiche, ou hors de la zone de l'agent ; fusionner sa propre PR ;
              se juger (« c'est bon ») — il rapporte, l'orchestrator juge
+Personnel  : jamais lu — les chemins de `zone_personal` et `zone_aucune` (`NIVEAUX.yml`) ;
+             ce qui manque se rapporte, ne se cherche pas
 Rendre     : le numéro de PR, et ce qu'il n'a pas pu faire, dit tel quel
 ```
 
@@ -230,8 +232,10 @@ python3 scripts/zone-du-diff.py --agent <agent du brief> --depot <dépôt de la 
 ```
 
 Sortie 1 → **défavorable**, le chemin hors zone nommé, même si tous les critères
-sont remplis. Sortie 2 → l'agent ne déclare pas `zone_write` : la fiche n'aurait
-pas dû partir. Un dépôt de code sort en 0 et le dit : les zones parlent du brain.
+sont remplis. Sortie 2 → rien à juger : l'agent ne déclare pas `zone_write` (la
+fiche n'aurait pas dû partir), ou le dépôt est inconnu — `--depot` prend le nom que
+la forge donne, celui du `repo:` de la fiche projet. Un dépôt de code sort en 0 et
+le dit : les zones parlent du brain.
 
 **Le mutant — obligatoire** (première passe, 29/09) : les critères peuvent tous
 passer et la PR affaiblir l'existant. Pour chaque garantie que la PR touche ou
@@ -327,3 +331,5 @@ Suite : fusion dans dev/autonome + kanban-scribe | la fiche reste ouverte
 | 2026-09-29 | **Réécrit** (BRAIN-079, étape 4) : trois modes — aiguiller (l'existant), composer (la fiche prête, ses critères de fin), juger (le rendu, critère par critère ; fusion dans `dev/autonome` sur verdict favorable). Retirés : `todo/README.md` (renvoi mort), le `sends_to: "*"`. Le sprint multi-agents est marqué hérité, relu avec l'ancienne machinerie |
 | 2026-10-05 | Le worker part avec un **agent** qui déclare `zone_write` (Convention 6) : le quatrième point d'une fiche prête, une ligne `Agent` au brief et au format composer ; sans lui, pas de lancement |
 | 2026-10-05 | Mode juger : la zone de l'agent rejouée par `scripts/zone-du-diff.py` — un chemin hors de sa `zone_write`, et le verdict est défavorable |
+| 2026-10-06 | Le juge ne prend pour « dépôt de code » que le `repo:` d'une fiche projet (ou un satellite hors du brain) : un dépôt inconnu sort en 2, il passait en 0 |
+| 2026-10-06 | Le brief dit le personnel jamais lu par le worker (`zone_personal`, `zone_aucune`) |

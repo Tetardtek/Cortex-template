@@ -216,7 +216,8 @@ Quand le copywriter brief le content-writer ou travaille en session :
    → Checklist 10 principes
    → Test Blair Warren
    → Gate voix haute
-   → Sortir dans un fichier permanent (git commit, pas un chat ephemere)
+   → Sortir dans un fichier permanent (git commit, pas un chat ephemere) :
+     `contenu/atelier/<projet>/` — sa seule ecriture (zone_write: [instance])
 ```
 
 ---

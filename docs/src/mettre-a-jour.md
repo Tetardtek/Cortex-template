@@ -36,8 +36,8 @@ brain maj --appliquer      # la recevoir
 ```
 
 `brain maj` joue les étapes ci-dessous d'un bout à l'autre : il fusionne le
-tag, recalcule les fichiers que le brain génère, réinstalle les unités et
-déclare la version. Il ne se lance jamais seul.
+tag, recalcule les fichiers que le brain génère, réinstalle les unités,
+déclare la version et branche le garde de lecture. Il ne se lance jamais seul.
 
 - **Ce que tu as créé ne bouge pas** : tes pistes, ton profil, tes todos
   (git ne les voit pas), tes projets et tes agents (l'amont n'a pas ces
@@ -144,6 +144,32 @@ le dépôt. Relancer `brain-setup.sh` pour une étape ne touche pas à ton
 la nouvelle version. C'est la trace que les étapes après la fusion sont faites :
 au boot, un écart entre elle et la version du gabarit signale une mise à jour
 pas terminée.
+
+**8. Brancher le garde de lecture** : `python3 scripts/garde-lecture.py brancher`
+ajoute son hook à ton `.claude/settings.json`, que le dépôt ne suit pas — aucun
+sous-agent de Claude Code ne lira ton personnel. Il n'ajoute que son entrée, et
+ne fait rien s'il y est déjà ; `python3 scripts/garde-lecture.py etat` le dit.
+
+---
+
+## Une autre machine de la même instance : `brain aligne`
+
+Une instance sur plusieurs machines (elle déclare ses satellites dans
+`satellites.yml`) n'a qu'un endroit où la version se reçoit : la machine où tu
+lances `brain maj`. Les autres reprennent son tronc :
+
+```bash
+brain aligne
+```
+
+Il récupère la branche suivie et la fusionne en avance rapide — jamais
+`git pull`, jamais forcé. Sur une machine dont la posture refuse le noyau
+(`noyau/` en lecture seule), il lève le verrou le temps de la fusion, puis le
+repose en reconstruisant la vue des agents ; un agent que le tronc a retiré et
+que rien n'a pu effacer est signalé, jamais effacé. Il déclare la version
+reçue (`kernel_version`) et branche le garde de lecture. Comme `brain maj`,
+c'est l'`aligne.py` de la version reçue qui fait le travail : s'il diffère du
+tien, il prend la main.
 
 ---
 
