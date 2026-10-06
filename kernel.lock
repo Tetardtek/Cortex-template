@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.3.0"
-generated_at: "2026-10-06T13:58"
+kernel_version: "3.3.1"
+generated_at: "2026-10-06T15:05"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 78762b7958b7c647111a8ef03335b18be03ea7142bdcb2db486704df00b7bc17
+  brain-compose.yml: 57d444a92e00d7b96785ebad6aaf154136a54bf416bb94bc75874d3df3158cea
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 9d8873c425314ed9797a42cbdb29fee9c14deb0c04ba4f0edbe247569882a370
@@ -86,7 +86,7 @@ files:
   scripts/dolt-schema-gen.sh: 24795b978f4b9f1042ff1599a8cae7a40091193815b9c70dbd77df3ed687cc18
   scripts/dolt-setup.sh: f57375fae86e6df3a3edf208029da147e1b47e34ba269c4ab15bad35d578e566
   scripts/file-lock.sh: 25a57d3f58a9d873f0a4b0b24ba53de13e1ac9a635ef9afd5bd347b8cf113f41
-  scripts/garde-lecture.py: b766adc60e677c147222d9059e2ad5beef4b9148642a963a791fe080ba424cbb
+  scripts/garde-lecture.py: e3f8cf5238b12b98cbc3e2bc5960a813526686739a54ea1ab4c2985077c83868
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
   scripts/install-brain-hooks.sh: 65c594159c21f417e918135f2207888cc270bc3efa2aa2da06f02b6ee2dabcda

@@ -9639,6 +9639,19 @@ class TestGardeLecture(unittest.TestCase):
         self.assertEqual(f.read_text(encoding='utf-8'), '{ pas du json', 'rien n\'est écrit')
         self.assertEqual(self.brancher('etat').returncode, 1)
 
+    def test_une_exclusion_n_est_pas_une_lecture(self):
+        """Le 6/10 : l'orchestrator refusé sur `--exclude-dir=brain-secrets` — la règle d'audit même."""
+        for c in ('grep -rn x . --exclude-dir=brain-secrets', 'grep -rn x . --exclude-dir brain-secrets',
+                  "grep -rn x . --exclude-dir=vie --exclude-dir='profil/identity'",
+                  "git grep x -- . ':!vie/' ':(exclude)brain-secrets/'", "rg x --glob '!vie/**'",
+                  'find . -path ./brain-secrets -prune -o -name "*.md" -print'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+        self.assertFalse(self.refuse('Grep', {'pattern': 'x', 'glob': '!vie/**'}), 'un motif d\'exclusion')
+        # Ce qu'elle lit ailleurs se juge toujours.
+        for c in ('grep -rn x vie/ --exclude-dir=brain-secrets', 'cat brain-secrets/MYSECRETS',
+                  "git grep x -- vie/ ':!profil/'"):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+
     def test_une_erreur_laisse_passer_en_le_disant(self):
         r = subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), 'hook'],
                            input='pas du json', capture_output=True, text=True, timeout=30)

@@ -45,7 +45,8 @@ ceux du 6/10 par défaut :
   lit pas `.gitignore`, mesuré) — des noms, jamais un contenu. Le refuser
   arrêterait chaque recherche d'un sous-agent à la racine.
 - Bash : ce que la commande ne nomme pas (`cd profil && cat identity/x`), un
-  script qui lit pour elle. Ce n'est pas un pare-feu : c'est la règle présente
+  script qui lit pour elle. Une exclusion (`--exclude-dir=brain-secrets`,
+  `':!vie/'`, `-path … -prune`) ne compte pas : elle nomme pour ne pas lire. Ce n'est pas un pare-feu : c'est la règle présente
   au moment du geste.
 
 Sa propre erreur laisse passer, en le disant : un garde qui plante ne doit pas
@@ -107,6 +108,22 @@ def personnel(chemin: str, cwd: Path, brain: Path, prefs) -> str | None:
     return rel if any(dans(rel, x) for x in prefs) else None
 
 
+# Une EXCLUSION nomme un chemin pour ne PAS le lire : la règle d'audit veut même qu'on exclue
+# `brain-secrets/` explicitement. Le 6/10, l'orchestrator, en sous-agent, s'est vu refuser
+# `grep -rn … --exclude-dir=brain-secrets` — le garde punissait le bon geste. Ces formes sont
+# retirées de la commande avant de la juger ; ce qu'elle lit ailleurs se juge toujours.
+EXCLUSIONS = re.compile(
+    r"""--exclude(?:-dir)?(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)"""   # grep --exclude-dir=…, --exclude …
+    r"""|--glob(?:=|\s+)['"]?!\S+"""                          # rg --glob '!…'
+    r"""|-g\s+['"]?!\S+"""                                     # rg -g '!…'
+    r"""|['"]:(?:!|\(exclude\))[^'"]*['"]"""                   # git pathspec ':!…', ':(exclude)…'
+    r"""|-path\s+\S+\s+-prune""")                             # find … -path … -prune
+
+
+def sans_exclusions(commande: str) -> str:
+    return EXCLUSIONS.sub(' ', commande)
+
+
 def nomme(texte: str, prefs) -> str | None:
     """Un texte (commande, motif) qui nomme un chemin personnel."""
     for x in prefs:
@@ -127,11 +144,13 @@ def juger(outil: str, entree: dict, cwd: Path, brain: Path = BRAIN) -> str | Non
         if trouve:
             return trouve
         for cle in ('pattern', 'glob') if outil == 'Glob' else ('glob',):
-            if entree.get(cle) and (n := nomme(entree[cle], prefs)):
+            # `!vie/**` : un motif d'exclusion ne lit rien.
+            if entree.get(cle) and not str(entree[cle]).startswith('!') \
+                    and (n := nomme(entree[cle], prefs)):
                 return n
         return None
     if outil == 'Bash':
-        return nomme(entree.get('command') or '', prefs)
+        return nomme(sans_exclusions(entree.get('command') or ''), prefs)
     return None
 
 

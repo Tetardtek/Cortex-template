@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.3.0"
+version: "3.3.1"
 
 # ---
 # Ownership — kerneluser
@@ -196,3 +196,6 @@ changelog:
   - version: "3.3.0"
     date: "2026-10-06"
     notes: "Aucun sous-agent ne lit le personnel. Le garde de lecture (scripts/garde-lecture.py) est un hook PreToolUse de Claude Code : un appel d'outil venu d'un sous-agent - le worker de l'autonomie, un Explore, un general-purpose - est refuse sur zone_personal et zone_aucune de NIVEAUX.yml (Read, Grep, Glob, et Bash quand la commande nomme le chemin). Ta session lit librement. Il reconnait un sous-agent au champ agent_type que Claude Code lui passe (mesure sur la 2.1.282, non documente) : apres une mise a jour de Claude Code, verifie qu'un sous-agent est encore refuse. Limites dites dans le garde : un Glob ** lance a la racine liste les noms du personnel, jamais son contenu ; Bash ne voit que ce que la commande nomme. Le gabarit ne livre pas .claude/ : brain-setup.sh (etape 13), brain maj et brain aligne ajoutent son entree a ton .claude/settings.json, sans toucher au reste - tes hooks et tes permissions restent ; un fichier qui n'est pas du JSON n'est jamais reecrit. python3 scripts/garde-lecture.py etat dit s'il est branche, et brain doctor aussi (garde de lecture). Le juge de zone (zone-du-diff.py) : un depot qu'il ne connait pas sort en 2 au lieu de passer pour un depot de code - est de code le repo: d'une fiche projet, ou un satellite hors du brain ; --depot prend le nom que la forge donne ; une panne de l'outil sort en 2, jamais en 1 (hors zone) ; sans yaml ni CORE, il se relance dans le venv de brain-engine. Le brief du worker dit le personnel jamais lu. Les agents de contenu (content-strategist, scriptwriter, seo-youtube, copywriter) nomment ou ils ecrivent : contenu/atelier/<projet>/ ; tech-lead n'ecrit rien (zone_write: []). Rien a faire a la main : brain maj, puis brain doctor."
+  - version: "3.3.1"
+    date: "2026-10-06"
+    notes: "Le garde de lecture laisse passer une exclusion. Il refusait a un sous-agent grep --exclude-dir=brain-secrets : la commande nommait le chemin, pour ne PAS le lire - le bon geste, puni. Les formes d'exclusion (--exclude-dir, --exclude, rg --glob '!...' et -g '!...', les pathspec git ':!...' et ':(exclude)...', find -path ... -prune, un glob '!...' de Grep) sont retirees avant de juger ; ce que la commande lit ailleurs se juge toujours (grep -rn x vie/ --exclude-dir=brain-secrets reste refuse). Rien a faire a la main : brain maj, puis brain doctor."
