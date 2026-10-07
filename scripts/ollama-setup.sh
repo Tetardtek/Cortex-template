@@ -49,8 +49,10 @@ ko()   { echo "  ❌ $*"; }
 # sinon son défaut — et une clé vide vaut le défaut, comme dans le moteur.
 lire() {
   local cle="$1" defaut="$2" valeur="${!1:-}"
-  if [[ -z "$valeur" && -f "$BRAIN_ROOT/brain-engine/.env.local" ]]; then
-    valeur=$(grep -m1 "^${cle}=" "$BRAIN_ROOT/brain-engine/.env.local" | cut -d= -f2- || true)
+  local env="$BRAIN_ROOT/brain-engine/.env.local"
+  declare -F brain_env_local >/dev/null && env="$(brain_env_local "$BRAIN_ROOT")"   #
+  if [[ -z "$valeur" && -f "$env" ]]; then
+    valeur=$(grep -m1 "^${cle}=" "$env" | cut -d= -f2- || true)
   fi
   echo "${valeur:-$defaut}"
 }

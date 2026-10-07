@@ -14,7 +14,8 @@
 #
 #   BRAIN_ROOT, sinon le dossier courant en remontant jusqu'à
 #   brain-compose.local.yml, sinon le brain déclaré par `brain init`
-#   (${XDG_CONFIG_HOME:-~/.config}/cortex-brain/brain). Rien : une erreur.
+#   (${XDG_CONFIG_HOME:-~/.config}/brain-cortex/brain ; en repli `cortex-brain/`, le nom
+#   de la v3.5.0). Rien : une erreur.
 #
 # `brain_donnees` ne lit pas `BRAIN_ROOT` sans la marque : les scripts qui la
 # sourcent l'ignoraient, et un banc qui la pose pour un autre script ne doit
@@ -36,12 +37,29 @@ brain_donnees() {  # <racine du programme> → la racine de la data, sur stdout
     [[ "$d" == "/" || -z "$d" ]] && break
     d="$(dirname "$d")"
   done
-  pointeur="${XDG_CONFIG_HOME:-$HOME/.config}/cortex-brain/brain"
-  if [[ -f "$pointeur" ]]; then
-    declare="$(head -1 "$pointeur")"
-    declare="${declare/#\~/$HOME}"
-    if [[ -d "$declare" ]]; then printf '%s\n' "$declare"; return 0; fi
-  fi
+  for pointeur in "${XDG_CONFIG_HOME:-$HOME/.config}/brain-cortex/brain" \
+                  "${XDG_CONFIG_HOME:-$HOME/.config}/cortex-brain/brain"; do
+    if [[ -f "$pointeur" ]]; then
+      declare="$(head -1 "$pointeur")"
+      declare="${declare/#\~/$HOME}"
+      if [[ -d "$declare" ]]; then printf '%s\n' "$declare"; return 0; fi
+    fi
+  done
   echo "❌ programme installé à part ($prog) et aucun brain trouvé : poser BRAIN_ROOT, lancer depuis le dossier du brain, ou en créer un — brain init <nom> <dossier>." >&2
   return 1
+}
+
+brain_env_local() {  # <racine de la data> → le chemin de la config locale du moteur
+  # D'ordinaire `brain-engine/.env.local`. Quand `brain-engine/` de la data est un lien
+  # vers un programme installé à part (marqué), le programme ne s'écrit pas : la config
+  # est à la racine de la data (`.env.local`, tue par le `.gitignore` semé). L'équivalent
+  # de `env_local()` (brain-engine/donnees.py).
+  local d="$1" moteur prog
+  moteur="$(readlink -f "$d/brain-engine" 2>/dev/null || true)"
+  prog="${moteur%/*}"
+  if [[ -L "$d/brain-engine" && -n "$moteur" && -e "$prog/.cortex-programme" ]]; then
+    printf '%s\n' "$d/.env.local"
+  else
+    printf '%s\n' "$d/brain-engine/.env.local"
+  fi
 }

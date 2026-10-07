@@ -17,7 +17,7 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 3.5.0, kerneluser, postures)
+- `brain-compose.yml` — la configuration du programme (version 3.5.1, kerneluser, postures)
 - `noyau/agents/` — les 58 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
@@ -48,8 +48,16 @@ alors aucun fichier du programme : `KERNEL.md`, `noyau/`, `scripts/`,
 toi (`focus.md`, les `_template.md`, les dossiers des satellites) s'y copie une
 fois. La commande retrouve ton brain par `BRAIN_ROOT`, sinon depuis son dossier
 (en remontant jusqu'à `brain-compose.local.yml`), sinon par celui que `brain init`
-a déclaré (`~/.config/cortex-brain/brain`). Sans la marque — ton fork, cloné par
+a déclaré (`~/.config/brain-cortex/brain`). Sans la marque — ton fork, cloné par
 git —, rien de tout cela ne joue.
+
+**Le paquet `brain-cortex` — construit, pas encore publié.** Le programme s'emballe
+en une roue Python, construite depuis le gabarit rendu : `pipx install` la pose à part
+(la commande `brain`, le moteur, le noyau, le dashboard déjà construit), puis
+`brain init <nom> <dossier>` crée ton brain. Le programme installé ne s'écrit jamais :
+l'interpréteur est celui de pipx, la config locale du moteur va dans ton brain
+(`.env.local` à sa racine) et ses caches dans `.cache/`. Aucun registre ne la diffuse
+encore : elle se construit localement.
 
 ---
 

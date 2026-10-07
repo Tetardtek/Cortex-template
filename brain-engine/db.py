@@ -32,10 +32,11 @@ log = logging.getLogger('brain-db')
 
 # Deux racines, une source : `racines.py`. La data est reçue
 # (`BRAIN_ROOT`), le programme se sait où il est.
-from racines import DONNEES as BRAIN_ROOT, PROGRAMME
+from racines import DONNEES as BRAIN_ROOT, PROGRAMME, ENV_LOCAL
 
-# Auto-load .env.local si présent (desktop sans pm2) — à côté du PROGRAMME
-_env_local = PROGRAMME / '.env.local'
+# Auto-load .env.local si présent (desktop sans pm2) — à côté du PROGRAMME, ou dans
+# la data quand le programme est installé à part (`racines.ENV_LOCAL`)
+_env_local = ENV_LOCAL
 if _env_local.exists():
     for line in _env_local.read_text().splitlines():
         line = line.strip()

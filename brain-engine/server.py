@@ -153,7 +153,7 @@ _ws_clients: list[WebSocket] = []
 
 # Deux racines, une source : `racines.py`. BRAIN_ROOT est la DATA —
 # reçue par la variable du même nom, sinon le parent du programme.
-from racines import DONNEES as BRAIN_ROOT, PROGRAMME, annonce as _annonce_racines
+from racines import DONNEES as BRAIN_ROOT, PROGRAMME, CACHE as _CACHE, A_PART as _A_PART, annonce as _annonce_racines
 # La frontière d'un verrou, écrite une fois dans le CORE.
 from core.bsi import VERROU_ACTIF
 log.info(_annonce_racines())
@@ -595,7 +595,11 @@ def visualize(
     # Le cache etait indexe par palier commercial. Il l'est desormais par
     # l'ensemble des scopes visibles — ce qui determine reellement le contenu.
     cache_key  = '-'.join(sorted(scopes)) or 'public'
-    cache_path = BRAIN_ROOT / 'brain-engine' / f'viz_cache_{cache_key}.json'
+    # `brain-engine/` de la data — ou `.cache/` quand le programme est à part : là,
+    # `brain-engine/` est un lien vers le programme, qui ne s'écrit pas.
+    cache_dir = _CACHE if _A_PART else BRAIN_ROOT / 'brain-engine'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f'viz_cache_{cache_key}.json'
 
     import db as brain_db
     need_regen  = force or not cache_path.exists()

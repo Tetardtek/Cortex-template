@@ -155,6 +155,8 @@ fi
 
 # 5. le moteur ────────────────────────────────────────────────────────────────
 env_local="$BRAIN_ROOT/brain-engine/.env.local"
+# Installé à part, le programme ne s'écrit pas : la config est à la data.
+declare -F brain_env_local >/dev/null && env_local="$(brain_env_local "$BRAIN_ROOT")"
 if [[ ! -f "$env_local" && -f "$BRAIN_ROOT/brain-engine/.env.local.example" ]]; then
   cp "$BRAIN_ROOT/brain-engine/.env.local.example" "$env_local"
 fi
@@ -171,4 +173,4 @@ if [[ "$PORT" != "3307" ]]; then
     echo "BRAIN_DOLT_PORT=${PORT}" >> "$env_local"
   fi
 fi
-ok "brain-engine/.env.local — BRAIN_DB_BACKEND=dolt"
+ok "${env_local#"$BRAIN_ROOT"/} — BRAIN_DB_BACKEND=dolt"

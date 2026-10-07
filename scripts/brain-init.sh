@@ -54,6 +54,19 @@ if [[ -e "$PROGRAMME/.cortex-programme" ]]; then
   fi
   A_PART=true
 fi
+# Installé par un paquet : le programme vit dans un venv (celui de pipx, un parent
+# porte `pyvenv.cfg`) qui a déjà ses dépendances, et la roue a déjà construit le
+# dashboard — l'étape 6 n'a pas de venv à créer, l'étape 8 rien à construire, et
+# ni l'une ni l'autre n'écrit dans le programme.
+PAQUET=false
+if $A_PART; then
+  _d="$PROGRAMME"
+  while [[ "$_d" != "/" && -n "$_d" ]]; do
+    [[ -f "$_d/pyvenv.cfg" ]] && { PAQUET=true; break; }
+    _d="$(dirname "$_d")"
+  done
+  unset _d
+fi
 # Le nom de la MACHINE (desktop, laptop…), distinct du nom de l'instance : les
 # registres (`satellites.yml`, `secrets.yml`) déclarent par machine. Il valait
 # le nom de l'instance, et un laptop se déclarait `prod-laptop` quand la liste
@@ -91,7 +104,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   manque+=("python3 (>= $PY_MIN) — $(installer python python3 python3 python)")
 elif ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (${PY_MIN/./, }) else 1)" 2>/dev/null; then
   manque+=("python3 >= $PY_MIN (ici : $(python3 --version 2>&1 | awk '{print $2}')) — une version plus récente de Python")
-elif [[ ! -x "$PROGRAMME/brain-engine/.venv/bin/python3" ]] \
+elif ! $PAQUET && [[ ! -x "$PROGRAMME/brain-engine/.venv/bin/python3" ]] \
      && ! python3 -c "import venv, ensurepip" 2>/dev/null; then
   manque+=("le module venv de Python — $(installer python python3-venv python3 python)")
 fi
@@ -104,7 +117,7 @@ if (( ${#manque[@]} )); then
 fi
 recommandes=()
 command -v claude >/dev/null 2>&1 || recommandes+=("Claude Code — npm install -g @anthropic-ai/claude-code")
-{ command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; } \
+$PAQUET || { command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; } \
   || recommandes+=("Node.js ^20.19 ou >= 22.12, pour le dashboard — nvm install --lts")
 if $VERIFIER; then
   echo "✅ prérequis : python3 >= $PY_MIN, git — brain init peut tourner"
@@ -125,7 +138,7 @@ echo ""
 # Un dépôt git à lui (ses données gardent leur histoire), les liens du programme et
 # les semis — avant la première étape, qui lit déjà `profil/`, `brain-compose.yml`,
 # `scripts/` à travers eux. Puis le brain se DÉCLARE : la commande le retrouve
-# hors de son dossier (`${XDG_CONFIG_HOME:-~/.config}/cortex-brain/brain`).
+# hors de son dossier (`${XDG_CONFIG_HOME:-~/.config}/brain-cortex/brain`).
 if $A_PART; then
   echo "[ 0/$ETAPES ] Le dossier de données (programme installé à part : $PROGRAMME)..."
   mkdir -p "$BRAIN_ROOT"
@@ -135,7 +148,7 @@ if $A_PART; then
   else
     warn "la vue du programme n'a pas pu se poser entièrement (un fichier réel à sa place ?)"
   fi
-  _pointeur="${XDG_CONFIG_HOME:-$HOME/.config}/cortex-brain/brain"
+  _pointeur="${XDG_CONFIG_HOME:-$HOME/.config}/brain-cortex/brain"
   mkdir -p "$(dirname "$_pointeur")" && printf '%s\n' "$BRAIN_ROOT" > "$_pointeur"
   ok "brain déclaré : $_pointeur"
 fi
@@ -402,7 +415,9 @@ fi
 echo ""
 echo "[ 6/$ETAPES ] brain-engine..."
 VENV="$BRAIN_ROOT/brain-engine/.venv"
-if $PY_OK; then
+if $PAQUET; then
+  ok "le Python du paquet ($(command -v python3)) — pas de venv à créer"
+elif $PY_OK; then
   if [[ ! -x "$VENV/bin/python3" ]]; then
     python3 -m venv "$VENV" || warn "python3 -m venv a échoué — installer le module venv (Debian : python3-venv)"
   fi
@@ -442,7 +457,9 @@ echo "[ 8/$ETAPES ] brain-ui..."
 BRAIN_UI="$BRAIN_ROOT/brain-ui"
 ENV_UI="$BRAIN_UI/.env.local"
 ENV_UI_ANCIEN=$'VITE_USE_MOCK=true\nVITE_BRAIN_API='
-if [[ ! -f "$BRAIN_UI/package.json" ]]; then
+if $PAQUET && [[ -f "$PROGRAMME/brain-ui/dist/index.html" ]]; then
+  ok "brain-ui construit dans le paquet — rien à construire ici"
+elif [[ ! -f "$BRAIN_UI/package.json" ]]; then
   warn "brain-ui/package.json absent — skip"
 elif ! $NODE_OK; then
   warn "brain-ui non construit — Node manquant ou trop ancien (étape 5)"

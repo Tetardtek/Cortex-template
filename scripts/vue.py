@@ -235,7 +235,9 @@ def exclure_du_depot(brain: Path) -> None:
     if BLOC_EXCLUSION[0] in lignes:
         i, j = lignes.index(BLOC_EXCLUSION[0]), lignes.index(BLOC_EXCLUSION[1])
         lignes[i:j + 1] = []
-    lignes += [BLOC_EXCLUSION[0], *("/" + rel for rel in ENTREES_PROGRAMME), "/agents/", BLOC_EXCLUSION[1]]
+    # `.cache/` : les caches du moteur, quand le programme est à part (`donnees.cache`).
+    lignes += [BLOC_EXCLUSION[0], *("/" + rel for rel in ENTREES_PROGRAMME), "/agents/", "/.cache/",
+               BLOC_EXCLUSION[1]]
     f.write_text("\n".join(lignes) + "\n", encoding="utf-8")
 
 

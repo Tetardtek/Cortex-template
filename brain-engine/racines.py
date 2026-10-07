@@ -35,7 +35,8 @@ la data se TROUVE, dans cet ordre :
     le dossier courant         en remontant jusqu'à `brain-compose.local.yml`,
                                comme git cherche `.git`
     le brain déclaré           par `brain init`, dans
-                               `${XDG_CONFIG_HOME:-~/.config}/cortex-brain/brain`
+                               `${XDG_CONFIG_HOME:-~/.config}/brain-cortex/brain`
+                               (en repli `cortex-brain/`, la v3.5.0)
 
 Rien de trouvé : une erreur qui dit quoi faire — jamais le programme servi comme
 un brain. Sans la marque (un brain cloné par git, chaque fork, chaque banc d'essai), RIEN ne
@@ -52,7 +53,17 @@ from pathlib import Path
 PROGRAMME = Path(__file__).parent
 try:
     from donnees import MARQUE, REPERE, est_a_part, pointeur, trouver_donnees  # noqa: F401 — une seule définition
+    from donnees import cache as _cache, env_local as _env_local
 except ImportError:
+    def _env_local(racine_programme, donnees):  # noqa: ARG001
+        return Path(racine_programme) / 'brain-engine' / '.env.local'
+
+    def _cache(racine_programme, donnees):  # noqa: ARG001
+        return Path(donnees) / 'brain-engine'
+
+    def est_a_part(racine):  # noqa: ARG001
+        return False
+
     # Un banc (ou un outil du doctor) qui copie `racines.py` seul n'a pas `donnees.py` :
     # la règle d'avant — `BRAIN_ROOT`, sinon la position. Un programme sans `donnees.py`
     # ne porte pas la marque : il n'a rien d'autre à trouver.
@@ -69,6 +80,11 @@ except ImportError:
 
 
 DONNEES, ORIGINE = trouver_donnees(PROGRAMME.parent)
+# La config locale et les caches : à côté du moteur d'ordinaire, dans la data quand
+# le programme est installé à part — il ne s'écrit pas.
+ENV_LOCAL = _env_local(PROGRAMME.parent, DONNEES)
+CACHE = _cache(PROGRAMME.parent, DONNEES)
+A_PART = est_a_part(PROGRAMME.parent)
 
 
 def annonce() -> str:

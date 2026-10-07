@@ -5475,9 +5475,9 @@ class TestDonneesSeparees(unittest.TestCase):
     def _marquer(self):
         (self.prog / '.cortex-programme').touch()
 
-    def _declarer(self, ou: Path):
-        (self.conf / 'cortex-brain').mkdir(parents=True, exist_ok=True)
-        (self.conf / 'cortex-brain' / 'brain').write_text(f'{ou}\n')
+    def _declarer(self, ou: Path, nom: str = 'brain-cortex'):
+        (self.conf / nom).mkdir(parents=True, exist_ok=True)
+        (self.conf / nom / 'brain').write_text(f'{ou}\n')
 
     def test_sans_la_marque_la_position_fait_foi(self):
         """Un brain cloné et les forks : ni le dossier courant, ni le brain déclaré, ni (pour les
@@ -5500,6 +5500,23 @@ class TestDonneesSeparees(unittest.TestCase):
         self._marquer()
         self._declarer(self.data)
         self.assertEqual(self._py(self.tmp), str(self.data))
+
+    def test_marque_le_pointeur_de_la_350_en_repli(self):
+        """La v3.5.0 déclarait le brain dans `cortex-brain/` (le nom d'avant, pris sur PyPI) :
+        un brain créé par elle se retrouve encore."""
+        self._marquer()
+        self._declarer(self.data, nom='cortex-brain')
+        self.assertEqual(self._py(self.tmp), str(self.data))
+        self.assertEqual(self._sh(self.tmp), str(self.data))
+
+    def test_marque_le_nom_du_paquet_passe_avant_l_ancien(self):
+        autre = self.tmp / 'ancien-brain'
+        autre.mkdir()
+        self._marquer()
+        self._declarer(autre, nom='cortex-brain')
+        self._declarer(self.data)
+        self.assertEqual(self._py(self.tmp), str(self.data))
+        self.assertEqual(self._sh(self.tmp), str(self.data))
 
     def test_marque_sans_rien_trouver_refuse(self):
         """Jamais le programme servi comme un brain."""
@@ -5679,6 +5696,144 @@ class TestLaSuiteNeJouePasUnProgrammeInstalle(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
         self.assertTrue(r.stdout.startswith('SKIP'), r.stdout[:500])
         self.assertIsNone(moteur.poll())
+
+
+class TestLaRoueNEcritPasLeProgramme(unittest.TestCase):
+    """Installé par la roue, le programme vit dans un site-packages : il ne s'écrit pas.
+    La config locale (`.env.local`) et les caches vont à la data ; l'interpréteur est celui
+    du venv qui porte le paquet (pipx). Sans la marque, rien ne change."""
+
+    SH = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'donnees.sh'
+    PY_SH = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'python.sh'
+
+    def setUp(self):
+        import donnees
+        self.donnees = donnees
+        self.tmp = Path(tempfile.mkdtemp(prefix='roue-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog = self.tmp / 'venv' / 'lib' / 'site' / 'brain_cortex' / 'programme'
+        (self.prog / 'brain-engine').mkdir(parents=True)
+        (self.prog / 'scripts' / 'lib').mkdir(parents=True)
+        shutil.copy(self.SH, self.prog / 'scripts' / 'lib' / 'donnees.sh')
+        shutil.copy(self.PY_SH, self.prog / 'scripts' / 'lib' / 'python.sh')
+        self.data = self.tmp / 'MonBrain'
+        self.data.mkdir()
+        (self.data / 'brain-engine').symlink_to(self.prog / 'brain-engine')
+
+    def _marquer(self):
+        (self.prog / '.cortex-programme').touch()
+
+    def _sh_env_local(self) -> str:
+        r = subprocess.run(['bash', '-c', f'source "{self.prog}/scripts/lib/donnees.sh"; '
+                            f'brain_env_local "{self.data}"'], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def test_sans_marque_la_config_et_le_cache_restent_ou_ils_etaient(self):
+        self.assertEqual(self.donnees.env_local(self.prog, self.data), self.prog / 'brain-engine' / '.env.local')
+        self.assertEqual(self.donnees.cache(self.prog, self.data), self.data / 'brain-engine')
+
+    def test_installe_a_part_la_config_et_le_cache_vont_a_la_data(self):
+        self._marquer()
+        self.assertEqual(self.donnees.env_local(self.prog, self.data), self.data / '.env.local')
+        self.assertEqual(self.donnees.cache(self.prog, self.data), self.data / '.cache')
+
+    def test_le_shell_dit_la_meme_config_que_python(self):
+        self.assertEqual(self._sh_env_local(), str(self.data / 'brain-engine' / '.env.local'),
+                         'sans marque : à côté du moteur')
+        self._marquer()
+        self.assertEqual(self._sh_env_local(), str(self.data / '.env.local'), 'marqué : à la data')
+
+    def _python3_vu(self) -> str:
+        r = subprocess.run(['bash', '-c', f'source "{self.prog}/scripts/lib/python.sh"; command -v python3'],
+                           capture_output=True, text=True,
+                           env={k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'})
+        return r.stdout.strip()
+
+    def test_python_sh_prend_le_python_du_venv_qui_porte_le_paquet(self):
+        venv = self.tmp / 'venv'
+        (venv / 'bin').mkdir()
+        (venv / 'pyvenv.cfg').write_text('home = /usr/bin\n')
+        faux = venv / 'bin' / 'python3'
+        faux.write_text('#!/bin/sh\nexit 0\n')
+        faux.chmod(0o755)
+        self.assertNotEqual(self._python3_vu(), str(faux), 'sans marque : le venv parent ne compte pas')
+        self._marquer()
+        self.assertEqual(self._python3_vu(), str(faux))
+
+    def test_le_cache_du_tableau_est_lu_dans_la_data(self):
+        """Marqué, `/visualize` sert le cache rangé dans `.cache/` de la data — pas sous
+        `brain-engine/`, un lien vers le programme."""
+        import db as brain_db
+        cache = self.data / '.cache'
+        cache.mkdir()
+        scopes = srv._SCOPE_ACCESS['owner']
+        (cache / f"viz_cache_{'-'.join(sorted(scopes))}.json").write_text(json.dumps({
+            'points': [{'filepath': 'f.md', 'zone': 'kernel', 'x': 0.0, 'y': 0.0, 'z': 0.0}] * 3,
+            'generated_at': '2099-01-01T00:00:00+00:00', 'cached': True}))
+
+        def query_one(sql, params=None):
+            if 'MAX(updated_at)' in sql:
+                return {'m': datetime(2026, 1, 1)}
+            if 'COUNT(*)' in sql:
+                return {'n': 3}
+            return None
+
+        with patch.object(srv, 'BRAIN_ROOT', self.data), \
+             patch.object(srv, '_A_PART', True), patch.object(srv, '_CACHE', cache), \
+             patch.object(srv, '_is_localhost', return_value=True), \
+             patch.object(brain_db, 'query_one', side_effect=query_one), \
+             patch.object(brain_db, 'table_exists', return_value=True), \
+             patch.object(brain_db, 'query', return_value=[]):
+            resp = TestClient(srv.app, client=LOCAL).get('/visualize')
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('stale', resp.json())
+        self.assertEqual(len(resp.json()['points']), 3)
+        self.assertFalse((self.prog / 'brain-engine' / f"viz_cache_{'-'.join(sorted(scopes))}.json").exists())
+
+    def test_la_vue_tait_le_cache_au_depot(self):
+        sys.path.insert(0, str(BRAIN_ROOT_PATH / 'scripts'))
+        try:
+            import vue
+        finally:
+            sys.path.pop(0)
+        subprocess.run(['git', 'init', '-q', str(self.data)], check=True)
+        vue.exclure_du_depot(self.data)
+        self.assertIn('/.cache/', (self.data / '.git' / 'info' / 'exclude').read_text().splitlines())
+
+
+class TestConstruireLaRoue(unittest.TestCase):
+    """La roue se décrit depuis le rendu : sa version, ses dépendances, sa commande."""
+
+    OUTIL = BRAIN_ROOT_PATH / 'scripts' / 'construire-roue.py'
+
+    def setUp(self):
+        if not self.OUTIL.is_file():
+            self.skipTest('construire-roue.py absent — un outil de la forge, il ne part pas au gabarit')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('construire_roue', self.OUTIL)
+        self.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.m)
+        self.tmp = Path(tempfile.mkdtemp(prefix='roue-desc-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        (self.tmp / 'brain-engine').mkdir()
+        (self.tmp / 'brain-compose.yml').write_text('name: x\nversion: "9.8.7"\n')
+
+    def test_la_version_et_les_dependances_viennent_du_rendu(self):
+        (self.tmp / 'brain-engine' / 'requirements.txt').write_text(
+            '# un commentaire\nfastapi>=0.110.0\nmcp[cli]>=1.0.0,<2   # gel\n\nPyMySQL>=1.1.0\n')
+        self.assertEqual(self.m.version_du_programme(self.tmp), '9.8.7')
+        deps = self.m.dependances(self.tmp)
+        self.assertEqual(deps, ['fastapi>=0.110.0', 'mcp[cli]>=1.0.0,<2', 'PyMySQL>=1.1.0'])
+        pp = self.m.pyproject('9.8.7', deps)
+        self.assertIn('requires-python = ">=3.12"', pp)
+        self.assertIn('brain = "brain_cortex.commande:main"', pp)
+        self.assertIn('"programme/**/.*"', pp, 'les fichiers cachés (la marque, .gitignore) partent')
+
+    def test_une_ligne_de_machine_est_refusee(self):
+        (self.tmp / 'brain-engine' / 'requirements.txt').write_text('-e ../myeline\n')
+        with self.assertRaises(SystemExit):
+            self.m.dependances(self.tmp)
 
 
 class TestUnitesDuProgrammeAPart(unittest.TestCase):
@@ -6919,6 +7074,204 @@ class TestForgeMergeAvanceRapide(unittest.TestCase):
         self.assertEqual(list(params), ['method', 'path', 'payload'])
         self.assertIs(params['payload'].default, None)
         self.assertIs(params['path'].default, inspect.Parameter.empty)
+
+
+class TestForgePaquet(unittest.TestCase):
+    """`paquet <roue.whl>` publie la roue sur le registre PyPI de la forge.
+
+    Elle paraît sous le nom de l'humain : refusée en autonomie. Sa version a une
+    provenance : le tag `v<version>` signé ici (`git tag -v`) et présent sur la forge au
+    même commit. Création seulement. Le fichier publié est relu : sha256 identique à la
+    roue, sinon sortie 1. Joué contre une FAUSSE forge à état : `conf` lève ; `call`,
+    `envoyer_roue` et `tag_signe_ici` sont remplacés — ni réseau, ni jeton, ni git."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+    COMMIT = 'c0ffee' * 6 + 'c0ff'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_paquet', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+
+        def conf_interdite():
+            raise AssertionError('conf() réelle appelée — le test atteindrait MYSECRETS')
+        self.bf.conf = conf_interdite
+        self.bf.SECRETS = Path(tempfile.gettempdir()) / 'forge-paquet-absent' / 'MYSECRETS'
+        self.bf.AUTONOME = False
+        self.d = Path(tempfile.mkdtemp(prefix='forge-paquet-'))
+        self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
+        self.roue = self._roue('1.2.3')
+        self.appels, self.envois = [], []
+        self.tags = {'v1.2.3': self.COMMIT}          # sur la forge : tag → commit
+        self.signe = (True, self.COMMIT)             # ce que `git tag -v` dit ici
+        self.publies = {}                            # version → [fichiers]
+        self.code_envoi = 201
+        self.alterer = None                          # ce que la forge fait du sha
+
+    def _roue(self, version, version_meta=None, nom='brain_cortex'):
+        import zipfile
+        roue = self.d / f'{nom}-{version}-py3-none-any.whl'
+        with zipfile.ZipFile(roue, 'w') as z:
+            z.writestr(f'{nom}-{version}.dist-info/METADATA',
+                       f"Metadata-Version: 2.1\nName: brain-cortex\nVersion: {version_meta or version}\n"
+                       "Requires-Python: >=3.12\nSummary: le brain\n\nle corps\n")
+            z.writestr('brain_cortex/__init__.py', '')
+        return roue
+
+    def _forge(self):
+        import hashlib
+        depot = '/repos/Owner/depot'
+        paquet = '/packages/Owner/pypi/brain-cortex/'
+
+        def call(method, path, payload=None):
+            self.appels.append((method, path))
+            if method == 'GET' and path.startswith(depot + '/tags/'):
+                tag = path[len(depot + '/tags/'):]
+                return ((200, {'name': tag, 'commit': {'sha': self.tags[tag]}})
+                        if tag in self.tags else (404, {'message': 'not found'}))
+            if method == 'GET' and path.startswith(paquet) and path.endswith('/files'):
+                v = path[len(paquet):-len('/files')]
+                return (200, self.publies[v]) if v in self.publies else (404, {'message': 'nope'})
+            if method == 'GET' and path.startswith(paquet):
+                v = path[len(paquet):]
+                if self.existence is not None:
+                    return self.existence
+                return (200, {'version': v}) if v in self.publies else (404, {'message': 'nope'})
+            return 500, {'message': f'route inattendue {method} {path}'}
+
+        def envoyer(proprietaire, roue, champs):
+            self.envois.append((proprietaire, roue.name, dict(champs)))
+            if self.code_envoi != 201:
+                return self.code_envoi, 'refusé'
+            sha = hashlib.sha256(roue.read_bytes()).hexdigest()
+            self.publies[champs['version']] = [{'name': roue.name,
+                                                'sha256': self.alterer(sha) if self.alterer else sha}]
+            return 201, ''
+        self.bf.call = call
+        self.bf.envoyer_roue = envoyer
+        self.bf.tag_signe_ici = lambda tag: self.signe if tag in ('v1.2.3', 'v9.9.9') else (False, '')
+
+    existence = None
+
+    def _paquet(self, roue=None):
+        self._forge()
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = self.bf.cmd_paquet('Owner/depot', str(roue or self.roue))
+        return code, sortie.getvalue()
+
+    def test_elle_publie_et_relit_le_sha(self):
+        import hashlib
+        code, sortie = self._paquet()
+        self.assertEqual(code, 0, sortie)
+        self.assertIn('sha256 relu', sortie)
+        self.assertEqual(len(self.envois), 1)
+        prop, nom, champs = self.envois[0]
+        self.assertEqual((prop, nom), ('Owner', 'brain_cortex-1.2.3-py3-none-any.whl'))
+        self.assertEqual((champs['name'], champs['version'], champs['requires_python']),
+                         ('brain-cortex', '1.2.3', '>=3.12'))
+        self.assertEqual(champs['sha256_digest'], hashlib.sha256(self.roue.read_bytes()).hexdigest())
+
+    def test_refusee_en_autonomie_sans_un_appel(self):
+        self.bf.AUTONOME = True
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('jamais en autonomie', sortie)
+        self.assertEqual((self.appels, self.envois), ([], []))
+
+    def test_une_roue_dont_le_nom_et_le_metadata_divergent_est_refusee(self):
+        code, sortie = self._paquet(self._roue('1.2.3', version_meta='1.2.4'))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('roue illisible', sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_refusee_si_le_tag_n_est_pas_signe_ici(self):
+        self.signe = (False, self.COMMIT)
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("n'est pas signé ici", sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_refusee_si_le_tag_n_est_pas_sur_la_forge(self):
+        self.tags = {}
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("n'est pas sur Owner/depot", sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_refusee_si_le_tag_designe_un_autre_commit(self):
+        self.tags = {'v1.2.3': 'beef' * 10}
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('pas le même commit', sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_une_version_deja_publiee_n_est_pas_touchee(self):
+        self.publies['1.2.3'] = [{'name': 'x', 'sha256': 'y'}]
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('déjà sur le registre', sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_refusee_si_l_existence_est_illisible(self):
+        self.existence = (500, {'message': 'panne'})
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('impossible de savoir', sortie)
+        self.assertEqual(self.envois, [])
+
+    def test_un_envoi_refuse_sort_1(self):
+        self.code_envoi = 409
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('roue non publiée : HTTP 409', sortie)
+
+    def test_un_sha_altere_par_la_forge_sort_1(self):
+        self.alterer = lambda sha: '0' * 64
+        code, sortie = self._paquet()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('sha256 diffère', sortie)
+
+    def test_un_fichier_non_liste_sort_1(self):
+        def envoyer(proprietaire, roue, champs):
+            self.envois.append(1)
+            return 201, ''                      # accepté… et rien de listé
+        self._forge()
+        self.bf.envoyer_roue = envoyer
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = self.bf.cmd_paquet('Owner/depot', str(self.roue))
+        self.assertEqual(code, 1, sortie.getvalue())
+        self.assertIn('ne liste pas', sortie.getvalue())
+
+    def test_un_fichier_qui_n_est_pas_une_roue_est_refuse(self):
+        archive = self.d / 'brain_cortex-1.2.3.zip'
+        shutil.copy(self.roue, archive)                 # même contenu, pas une roue
+        code, sortie = self._paquet(archive)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("n'est pas une roue", sortie)
+        self.assertEqual((self.appels, self.envois), ([], []))
+
+    def test_la_ligne_de_commande_le_lance_et_refuse_en_autonome(self):
+        """Par `main()` : la commande existe, et `--autonome` la refuse sans un envoi."""
+        self._forge()
+        argv = sys.argv
+        sys.argv = ['brain-forge.py', '--autonome', '--repo', 'Owner/depot', 'paquet', str(self.roue)]
+        sortie = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(sortie), self.assertRaises(SystemExit) as e:
+                self.bf.main()
+        finally:
+            sys.argv = argv
+        self.assertEqual(e.exception.code, 1)
+        self.assertIn('jamais en autonomie', sortie.getvalue())
+        self.assertEqual(self.envois, [])
+
+    def test_l_aide_la_dit(self):
+        self.assertIn('brain-forge.py paquet <roue.whl>', self.bf.__doc__)
 
 
 class TestForgeRelease(unittest.TestCase):

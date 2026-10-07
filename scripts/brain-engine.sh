@@ -50,9 +50,13 @@ ENGINE_DIR="$PROGRAMME/brain-engine"
 # Seul le port de Dolt se lit ici : ceux des deux portes viennent de `serve.py`
 # (plus bas), qui les déclare une fois — les exporter d'ici les aurait fait
 # passer pour « posés par l'environnement », devant MYSECRETS.
+# Installé à part, la config locale est à la data (`brain_env_local`).
+ENV_LOCAL="$ENGINE_DIR/.env.local"
+declare -F brain_env_local >/dev/null && [[ "$PROGRAMME" != "$BRAIN_ROOT" ]] \
+  && ENV_LOCAL="$(brain_env_local "$BRAIN_ROOT")"
 for _var in BRAIN_DOLT_PORT; do
-  if [[ -z "${!_var:-}" && -f "$ENGINE_DIR/.env.local" ]]; then
-    _val=$(grep -sE "^${_var}=" "$ENGINE_DIR/.env.local" | tail -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
+  if [[ -z "${!_var:-}" && -f "$ENV_LOCAL" ]]; then
+    _val=$(grep -sE "^${_var}=" "$ENV_LOCAL" | tail -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
     [[ -n "$_val" ]] && export "$_var=$_val"
   fi
 done
@@ -215,7 +219,7 @@ start_dolt_server() {
   # Le défaut est `dolt`, comme dans db.py. `|| echo …` ne rattrapait
   # rien : dans `$(grep | cut)`, c'est `cut` qui répond, et il réussit sur une
   # entrée vide — le backend valait "" quand la ligne manquait.
-  backend=$(grep -s '^BRAIN_DB_BACKEND=' "${BRAIN_ROOT}/brain-engine/.env.local" | cut -d= -f2)
+  backend=$(grep -s '^BRAIN_DB_BACKEND=' "$ENV_LOCAL" | cut -d= -f2)
   backend="${backend:-dolt}"
   if [[ "$backend" != "dolt" ]]; then
     return 0  # pas de dolt sql-server nécessaire

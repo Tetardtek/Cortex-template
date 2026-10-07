@@ -186,7 +186,11 @@ def declarer(environ: dict[str, str], donnees: Path, programme: Path) -> Declara
     l'environnement de départ, la racine des données, celle du programme."""
     mode = mode_de(environ, donnees)
     final = dict(DEFAUTS)
-    final.update(lire_fichier_env(programme / '.env.local'))
+    # Installé à part, la config locale est à la data (`donnees.env_local`).
+    if (programme.parent / '.cortex-programme').exists():
+        final.update(lire_fichier_env(donnees / '.env.local'))
+    else:
+        final.update(lire_fichier_env(programme / '.env.local'))
     secrets_chemin = donnees / 'brain-secrets' / 'MYSECRETS'
     if mode == 'demo':
         secrets = 'non requis (demo)'

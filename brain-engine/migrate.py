@@ -58,7 +58,8 @@ def backend_declare() -> str:
     depuis_env = os.getenv('BRAIN_DB_BACKEND')
     if depuis_env:
         return depuis_env.strip()
-    env = os.path.join(_PROGRAMME, '.env.local')
+    from racines import ENV_LOCAL      # la data, si le programme est à part
+    env = str(ENV_LOCAL)
     if os.path.isfile(env):
         for ligne in open(env, encoding='utf-8', errors='replace'):
             if ligne.startswith('BRAIN_DB_BACKEND'):

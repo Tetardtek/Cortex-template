@@ -14,8 +14,22 @@
 # On met le venv en tete du PATH : tous les `python3` du script (et de ses
 # enfants) le trouvent. Sans venv (fork, machine neuve), rien ne change.
 
-_brain_venv="${BRAIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/brain-engine/.venv"
+# Installé par un paquet (`pipx install brain-cortex`), le programme vit DANS un venv —
+# celui de pipx, qui porte ses dépendances : le programme est marqué, et un parent
+# porte `pyvenv.cfg`. C'est son python3 qui sert ; il n'y a pas de venv à côté du
+# moteur, et il ne s'en crée pas. Sans la marque, rien ne change.
+_brain_prog="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
+_brain_venv=""
+if [[ -e "$_brain_prog/.cortex-programme" ]]; then
+  _d="$_brain_prog"
+  while [[ "$_d" != "/" && -n "$_d" ]]; do
+    if [[ -f "$_d/pyvenv.cfg" && -x "$_d/bin/python3" ]]; then _brain_venv="$_d"; break; fi
+    _d="$(dirname "$_d")"
+  done
+  unset _d
+fi
+[[ -n "$_brain_venv" ]] || _brain_venv="${BRAIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/brain-engine/.venv"
 if [[ -x "$_brain_venv/bin/python3" ]]; then
   PATH="$_brain_venv/bin:$PATH"
 fi
-unset _brain_venv
+unset _brain_venv _brain_prog
