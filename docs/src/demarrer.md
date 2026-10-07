@@ -14,7 +14,7 @@ ordre: 1
 ## Ce qu'il faut sur la machine
 
 - **git**
-- **Python 3** avec son module `venv` (sur Debian : le paquet `python3-venv`)
+- **Python ≥ 3.12** avec son module `venv` (sur Debian : le paquet `python3-venv`)
 - **Node.js ^20.19 ou ≥ 22.12**, avec npm — le dashboard (vite 8) ne se construit pas avant
 - **Claude Code** — `npm install -g @anthropic-ai/claude-code`
 - **systemd en session utilisateur**, pour que la base démarre toute seule. Sans
@@ -39,11 +39,17 @@ cd ~/Dev/Brain
 ## 2. Installer
 
 ```bash
-bash scripts/brain-setup.sh <nom-de-ton-brain>
+bash scripts/brain init --verifier          # les prérequis seulement — rien n'est écrit
+bash scripts/brain init <nom-de-ton-brain>
 ```
 
-Il installe le brain **où il est cloné** (un second argument choisit un autre
-dossier). Le script est idempotent : relance-le si une étape a échoué. Ses treize étapes :
+`brain init` vérifie d'abord les prérequis : sans git, sans Python ≥ 3.12 ou sans
+son module `venv`, il s'arrête **avant d'écrire quoi que ce soit** et dit comment
+les installer ; Claude Code et Node manquants se signalent sans arrêter. Puis il
+installe le brain **où il est cloné** (un second argument choisit un autre
+dossier). Il est idempotent : relancé, il ne change rien ; relance-le si une étape
+a échoué. L'ancien nom, `bash scripts/brain-setup.sh <nom>`, fait la même chose.
+Ses treize étapes :
 
 | Étape | Ce qu'elle fait |
 |---|---|
@@ -81,7 +87,7 @@ dossier). Le script est idempotent : relance-le si une étape a échoué. Ses tr
 Sans systemd utilisateur (conteneur, machine partagée) :
 
 ```bash
-bash scripts/brain-setup.sh <nom-de-ton-brain> --sans-service
+bash scripts/brain init <nom-de-ton-brain> --sans-service
 ```
 
 ## 3. Vérifier le moteur

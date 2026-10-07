@@ -3,6 +3,8 @@
 # brain — le point d'entrée unique du brain.
 #
 # Usage :
+#   brain init [nom] [--sans-service]  créer un brain sur cette machine (les 13 étapes)
+#   brain init --verifier        les prérequis seulement — rien n'est écrit
 #   brain serve [http|mcp]       les portes réseau (HTTP + MCP), une seule déclaration
 #   brain serve --declaration    ce qui serait lancé, sans rien lancer
 #   brain doctor                 ce qui se dégrade en silence — le brain se contrôle
@@ -22,7 +24,23 @@ set -euo pipefail
 _ici="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 source "$_ici/lib/python.sh"   # python3 = celui du venv de brain-engine
 
+# Un programme installé à part (la marque `.cortex-programme`) sert un brain situé
+# ailleurs : la data se trouve (BRAIN_ROOT, le dossier courant, le brain déclaré par
+# `brain init`) et chaque verbe la reçoit par `BRAIN_ROOT`. Sans la marque, rien ne
+# change. `init` crée la data : il ne la cherche pas.
+source "$_ici/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
+_donnees=""
+if [[ "${1:-}" != "init" && -e "$_ici/../.cortex-programme" ]]; then
+  _donnees="$(brain_donnees "$(cd "$_ici/.." && pwd)")" || exit 1
+  export BRAIN_ROOT="$_donnees"
+fi
+
 case "${1:-}" in
+  init)
+    # Créer un brain : les prérequis d'abord, puis les 13 étapes.
+    shift
+    exec bash "$_ici/brain-init.sh" "$@"
+    ;;
   serve)
     shift
     exec python3 "$_ici/../brain-engine/serve.py" "$@"
@@ -35,7 +53,7 @@ case "${1:-}" in
     _brain="$(cd "$_ici/.." && pwd)"
     if [ -f "$_brain/brain-engine/doctor/brain_doctor.py" ]; then
       PYTHONPATH="$_brain/brain-engine${PYTHONPATH:+:$PYTHONPATH}" \
-        exec python3 "$_brain/brain-engine/doctor/brain_doctor.py" --brain "$_brain" --portee gabarit "$@"
+        exec python3 "$_brain/brain-engine/doctor/brain_doctor.py" --brain "${_donnees:-$_brain}" --portee gabarit "$@"
     fi
     if [ -n "${MYELINE_ROOT:-}" ] && [ -f "$MYELINE_ROOT/tools/brain_doctor.py" ]; then
       exec python3 "$MYELINE_ROOT/tools/brain_doctor.py" --brain "$_brain" "$@"
@@ -65,10 +83,10 @@ case "${1:-}" in
     exec python3 "$_ici/briefing.py" "$@"
     ;;
   ""|-h|--help|help)
-    sed -n '4,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '4,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
-    echo "brain : verbe inconnu « $1 » — connus : serve, doctor, maj, vue, aligne, briefing" >&2
+    echo "brain : verbe inconnu « $1 » — connus : init, serve, doctor, maj, vue, aligne, briefing" >&2
     exit 2
     ;;
 esac

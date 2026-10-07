@@ -1,6 +1,6 @@
 # brain-compose.local.yml — Registre machine
 # NON VERSIONNÉ — gitignored. Spécifique à cette machine.
-# `brain-setup.sh` l'écrit pour toi ; cet exemple montre la même forme.
+# `brain init` l'écrit pour toi ; cet exemple montre la même forme.
 
 kernel_path: <BRAIN_ROOT>
 # La version du gabarit INSTALLÉE — écrite par le setup. À la fin d'une mise à

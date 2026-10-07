@@ -130,6 +130,10 @@ def motif_de(r) -> str:
 AUTRES_KERNEL = ("brain-compose.yml",)
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _programme_a_part import programme_a_part  # noqa: E402 — le programme installé à part
+
+
 def cible_kernel(racine: Path, server) -> str | None:
     """Un fichier de zone kernel que le témoin peut ÉCRIRE — un agent d'abord (`coach`).
 
@@ -147,7 +151,12 @@ def cible_kernel(racine: Path, server) -> str | None:
         f = racine / rel
         if not f.is_file() or not os.access(f.resolve(), os.W_OK):
             continue
-        reel = str(f.resolve().relative_to(racine.resolve()))
+        # Un lien vers le programme installé à part mène hors du brain : l'API ne
+        # l'écrit jamais (« path traversal »), ce n'est pas une cible.
+        try:
+            reel = str(f.resolve().relative_to(racine.resolve()))
+        except ValueError:
+            continue
         if server._write_zone(reel) == "kernel":
             return rel
     return None
@@ -289,6 +298,13 @@ def refus_et_temoin(server, racine: Path, client, demandes: list, verrous: list,
         # « invariant » pour la zone du meme nom ; « claims ouverts » pour la
         # garde de claim BSI. Le mot dit QUELLE branche a refuse.
         attendu_mot = "invariant" if zone == "invariant" else "claim"
+        # Dans un brain servi par un programme installé à part, l'invariant est un
+        # lien vers le programme : hors du brain, il est refusé par la garde de chemin,
+        # avant toute zone — plus fort qu'une zone, et c'est ce refus-là qu'on exige
+        #. Le mot change, le code attendu non.
+        if programme_a_part(racine / chemin) is not None:
+            zone, attendu_mot = "chemin", "traversal"
+            quoi = f"{quoi} (dans le programme, hors du brain)"
         ok = r.status_code == code_attendu and attendu_mot in motif.lower()
         print(f"  {'✅' if ok else '❌'} {r.status_code} attendu {code_attendu}  "
               f"{chemin:24} {quoi}")
@@ -429,6 +445,13 @@ def refus_et_temoin(server, racine: Path, client, demandes: list, verrous: list,
                   file=sys.stderr)
             return 1
         print(f"  ✅ filet kernel — {kernel_cible} inchangé")
+    else:
+        # Rien de la zone kernel que l'API puisse écrire : le témoin du claim (409 puis
+        # 200) n'a rien à exercer. Il s'abstient, et le dit.
+        print("  ⏭  témoin du claim — aucun fichier de zone kernel inscriptible dans ce brain"
+              + (" (le noyau vit dans le programme installé à part)"
+                 if programme_a_part(racine / "kernel.lock") is not None else "")
+              + " : rien à exercer")
 
     if manquants:
         print(f"  ℹ️  {len(manquants)} invariant(s) déclaré(s) et absent(s) du "

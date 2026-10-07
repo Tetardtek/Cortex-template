@@ -74,7 +74,7 @@ Un dépôt dont le brain dépend sans le contenir se déclare avec un `chemin:`
 absolu ou en `~/…` : il est suivi et cloné là, et sa clé n'est plus qu'un nom.
 
 Sans `satellites.yml`, il ne fait rien : les satellites restent des dossiers.
-Avec lui, l'installation (`scripts/brain-setup.sh`) clone ceux de la machine.
+Avec lui, l'installation (`brain init`) clone ceux de la machine.
 
 ---
 

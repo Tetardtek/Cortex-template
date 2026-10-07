@@ -18,7 +18,27 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-DEFAUT = Path(__file__).resolve().parent.parent.parent / "brain-compose.local.yml"
+
+def _racine_des_donnees(env_d_abord: bool = False) -> Path:
+    """La data de ce script, par `brain-engine/donnees.py` du programme : sans la
+    marque d'un programme installé à part, la position (et `BRAIN_ROOT` si `env_d_abord`),
+    comme avant. Un banc qui ne copie que ce script n'a pas `donnees.py` : la position."""
+    import os as _os
+    ici = Path(__file__).resolve().parent.parent.parent
+    src = ici / "brain-engine" / "donnees.py"
+    if not src.is_file():
+        return Path(_os.environ.get("BRAIN_ROOT") or ici) if env_d_abord else ici
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_brain_donnees", src)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        return mod.trouver_donnees(ici, env_d_abord=env_d_abord)[0]
+    except RuntimeError as exc:
+        raise SystemExit(f"❌ {exc}")
+
+
+DEFAUT = _racine_des_donnees() / "brain-compose.local.yml"   # la data
 
 
 class IdentiteIllisible(RuntimeError):

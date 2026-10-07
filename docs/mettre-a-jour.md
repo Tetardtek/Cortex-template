@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.4.3.
+> travail. Kernel v3.5.0.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -143,7 +143,7 @@ peut-être les tiennes. Exporte-les, vide la table, puis relance.
 
 **6. Lire les notes de version** : elles disent ce qui se fait à la main, par
 exemple une ligne à corriger dans ton `~/.claude/CLAUDE.md`, qui n'est pas dans
-le dépôt. Relancer `brain-setup.sh` pour une étape ne touche pas à ton
+le dépôt. Relancer `brain init` pour une étape ne touche pas à ton
 `~/.claude/CLAUDE.md` : s'il diffère du modèle, le modèle est posé à côté
 (`CLAUDE.md.modele`), à comparer et fusionner à la main.
 

@@ -14,20 +14,22 @@ clé ni palier.
 
 ## Démarrer
 
-Il faut : git, Python 3 (avec `venv`), Node.js ^20.19 ou ≥ 22.12, et Claude Code.
+Il faut : git, Python ≥ 3.12 (avec `venv`), Node.js ^20.19 ou ≥ 22.12, et Claude Code —
+`bash scripts/brain init --verifier` le vérifie sans rien écrire.
 
 ```bash
 git clone <URL_DE_TON_FORK> ~/Dev/Brain
 cd ~/Dev/Brain
-bash scripts/brain-setup.sh <nom-de-ton-brain>
+bash scripts/brain init <nom-de-ton-brain>
 bash scripts/brain-engine.sh start
 claude mcp add --transport http brain http://127.0.0.1:7701/mcp
 ```
 
 Puis `claude`, et tape `brain boot`.
 
-> ⚠️ L'installation **remplace `~/.claude/CLAUDE.md`** — l'ancien est gardé en
-> `CLAUDE.md.bak-<date>`. Le détail de chaque étape : [docs/demarrer.md](docs/demarrer.md).
+> L'installation écrit `~/.claude/CLAUDE.md` s'il n'existe pas ; s'il existe et diffère,
+> elle n'y touche pas et pose le modèle à côté (`CLAUDE.md.modele`). Le détail de chaque
+> étape : [docs/demarrer.md](docs/demarrer.md).
 
 ---
 

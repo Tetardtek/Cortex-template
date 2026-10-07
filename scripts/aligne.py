@@ -49,6 +49,26 @@ import sys
 from pathlib import Path
 
 
+def _racine_des_donnees(env_d_abord: bool = False) -> Path:
+    """La data de ce script, par `brain-engine/donnees.py` du programme : sans la
+    marque d'un programme installé à part, la position (et `BRAIN_ROOT` si `env_d_abord`),
+    comme avant. Un banc qui ne copie que ce script n'a pas `donnees.py` : la position."""
+    import os as _os
+    ici = Path(__file__).resolve().parent.parent
+    src = ici / "brain-engine" / "donnees.py"
+    if not src.is_file():
+        return Path(_os.environ.get("BRAIN_ROOT") or ici) if env_d_abord else ici
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_brain_donnees", src)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        return mod.trouver_donnees(ici, env_d_abord=env_d_abord)[0]
+    except RuntimeError as exc:
+        raise SystemExit(f"❌ {exc}")
+
+
+
 def git(brain: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(brain), *args], capture_output=True, text=True)
 
@@ -99,7 +119,7 @@ def declarer(brain: Path) -> str:
 
 
 def main() -> int:
-    brain = Path(os.environ.get("BRAIN_ROOT") or Path(__file__).resolve().parent.parent)
+    brain = _racine_des_donnees(env_d_abord=True)
     amont = git(brain, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
     if amont.returncode != 0:
         print("brain aligne : la branche courante ne suit aucune branche distante — rien à aligner.")

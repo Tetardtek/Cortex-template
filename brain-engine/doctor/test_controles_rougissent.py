@@ -971,6 +971,65 @@ def cmd_close_stale():
         garantie("niveaux→git / une vue suivie rougit",
                  joue("niveaux_vs_git.py", b), 1)
 
+    # ── Un brain servi par un programme installé à part — ─────────
+    #
+    # Le programme porte la marque `.cortex-programme` ; le brain n'en a que des
+    # liens (la vue). Mesuré le 7/10 (`essai-separe --doctor`) : le lock rougissait
+    # sur les liens de `agents/` (« jamais vus »), « niveaux vs git » sur chaque
+    # entrée du programme (« déclaré versionné, gitignoré »). Le programme se juge
+    # là où il vit — et une vraie dérive y rougit toujours.
+    with tempfile.TemporaryDirectory(prefix="temoin-a-part-") as tmp:
+        prog = brain_jetable(Path(tmp) / "programme")
+        lock_pour(prog)
+        (prog / "noyau" / "agents").mkdir(parents=True)
+        for i in range(12):
+            (prog / "noyau" / "agents" / f"a{i}.md").write_text(f"# a{i}\n", encoding="utf-8")
+        (prog / "NIVEAUX.yml").write_text(
+            "entrees:\n  noyau/: programme\n  contexts/: programme\n"
+            "  projets/:\n    niveau: donnee\n    versionne: ici\n",
+            encoding="utf-8")
+        (prog / ".cortex-programme").touch()
+        data = Path(tmp) / "MonBrain"
+        (data / "agents").mkdir(parents=True)
+        (data / "projets").mkdir()
+        for nom in ("kernel.lock", "KERNEL.md", "brain-compose.yml", "brain-constitution.md",
+                    "scripts", "noyau", "NIVEAUX.yml"):
+            (data / nom).symlink_to(prog / nom)
+        for i in range(12):
+            (data / "agents" / f"a{i}.md").symlink_to(prog / "noyau" / "agents" / f"a{i}.md")
+        (data / "agents" / "coach.md").symlink_to(prog / "agents" / "coach.md")
+        (data / ".gitignore").write_text(
+            "/agents/\n/kernel.lock\n/KERNEL.md\n/brain-compose.yml\n/brain-constitution.md\n"
+            "/scripts\n/noyau\n/NIVEAUX.yml\n", encoding="utf-8")
+        (data / "contexts").mkdir()
+        (data / "contexts" / "x.yml").write_text("a: 1\n", encoding="utf-8")
+        # Le dépôt d'un brain que `brain init` vient de créer : aucun commit, `git ls-files`
+        # vide — le contrôle du lock retombe sur le disque, et les liens de la vue y sont.
+        subprocess.run(["git", "init", "-q"], cwd=data, capture_output=True)
+        garantie("à part / le lock juge le programme",
+                 joue("derive_du_lock.py", data), 0)
+        lock_pour(prog, version="0.9.0")
+        garantie("à part / une dérive du programme rougit",
+                 joue("derive_du_lock.py", data), 1)
+        lock_pour(prog)
+        shutil.rmtree(data / ".git")
+        git_init(data)
+        garantie("à part / niveaux→git : le programme est versionné ailleurs",
+                 joue("niveaux_vs_git.py", data), 0)
+        gi = (data / ".gitignore").read_text(encoding="utf-8")
+        (data / ".gitignore").write_text(gi.replace("/noyau\n", ""), encoding="utf-8")
+        shutil.rmtree(data / ".git")
+        git_init(data)
+        garantie("à part / niveaux→git : un lien vers le programme, suivi, rougit",
+                 joue("niveaux_vs_git.py", data), 1)
+        (data / ".gitignore").write_text(gi, encoding="utf-8")
+        (data / ".gitignore").write_text(
+            (data / ".gitignore").read_text(encoding="utf-8") + "/contexts/\n", encoding="utf-8")
+        shutil.rmtree(data / ".git")      # un fichier déjà suivi ne se dit pas ignoré
+        git_init(data)
+        garantie("à part / niveaux→git : une vraie entrée ignorée rougit",
+                 joue("niveaux_vs_git.py", data), 1)
+
     # ── Le BSI d'avant BRAIN-042 — ────────────────────────────────
     #
     # Le premier cas est l'incident : l'etape 7 de session-orchestrator d'avant
@@ -2291,6 +2350,11 @@ def cmd_close_stale():
         "@app.put('/brain/{chemin:path}')\n"
         "def ecrire(chemin: str, corps: Corps):\n"
         "    _trace('put')\n"
+        "    if ALTERE != 'traversal_muet':\n"
+        "        try:\n"
+        "            (BRAIN_ROOT / chemin).resolve().relative_to(BRAIN_ROOT.resolve())\n"
+        "        except ValueError:\n"
+        "            raise HTTPException(403, 'path traversal interdit')\n"
         "    check_auth(None)\n"
         "    z = _write_zone(chemin)\n"
         "    if z == 'invariant':\n"
@@ -2336,15 +2400,33 @@ def cmd_close_stale():
             (g / "brain-engine").mkdir(parents=True)
             (g / "brain-engine" / "server.py").write_text(faux_serveur, encoding="utf-8")
 
+            prog = Path(tmp) / "programme"
+            prog.mkdir()
+            (prog / "KERNEL.md").write_text("# KERNEL\n", encoding="utf-8")
+            (prog / ".cortex-programme").touch()
+            (prog / "noyau" / "agents").mkdir(parents=True)
+            (prog / "noyau" / "agents" / "coach.md").write_text("---\nname: coach\n---\n",
+                                                               encoding="utf-8")
+
             def gardes(avec: int = 200, altere: str = "",
-                       racine_moteur: Path | None = None) -> tuple[int, set[str]]:
+                       racine_moteur: Path | None = None,
+                       a_part: bool | str = False) -> tuple[int, set[str]]:
                 """Le code de sortie de l'outil, et les traces que le faux moteur a
-                laissées dans la racine qu'il sert. Brain remis à neuf à chaque passe."""
+                laissées dans la racine qu'il sert. Brain remis à neuf à chaque passe.
+                `a_part` : son KERNEL.md est un lien vers un programme installé à part."""
                 servie = racine_moteur or g
                 for b in (g, autre):
                     (b / "agents").mkdir(parents=True, exist_ok=True)
-                    (b / "KERNEL.md").write_text("# KERNEL\n", encoding="utf-8")
-                    (b / "agents" / "coach.md").write_text("---\nname: coach\n---\n", encoding="utf-8")
+                    (b / "KERNEL.md").unlink(missing_ok=True)
+                    (b / "agents" / "coach.md").unlink(missing_ok=True)
+                    if a_part and b == g:
+                        (b / "KERNEL.md").symlink_to(prog / "KERNEL.md")
+                    else:
+                        (b / "KERNEL.md").write_text("# KERNEL\n", encoding="utf-8")
+                    if a_part == "agents" and b == g:
+                        (b / "agents" / "coach.md").symlink_to(prog / "noyau" / "agents" / "coach.md")
+                    else:
+                        (b / "agents" / "coach.md").write_text("---\nname: coach\n---\n", encoding="utf-8")
                     shutil.rmtree(b / "brain-engine" / "traces", ignore_errors=True)
                 env = {k: v for k, v in os.environ.items() if k != "BRAIN_ROOT"}
                 env.update(FAUX_AVEC=str(avec), FAUX_ALTERE=altere)
@@ -2375,6 +2457,18 @@ def cmd_close_stale():
             # Une autre racine : refusée, et AVANT tout PUT (aucune trace là-bas).
             code, vues = gardes(racine_moteur=autre)
             garantie("gardes / BRAIN_ROOT ≠ --brain", code if code < 0 or not vues else 2, 1)
+            # Un brain servi par un programme installé à part : son KERNEL.md mène
+            # hors du brain — la garde de chemin le refuse, et c'est ce refus qu'on exige.
+            garantie("gardes / à part : l'invariant du programme refusé hors du brain",
+                     gardes(a_part=True)[0], 0)
+            garantie("gardes / à part : refusé par la zone seulement, pas par le chemin",
+                     gardes(a_part=True, altere="traversal_muet")[0], 1)
+            # Le noyau aussi dans le programme : aucune cible kernel inscriptible dans le
+            # brain — le témoin du claim s'abstient et le dit, il ne plante pas.
+            garantie("gardes / à part : sans cible kernel, le témoin du claim s'abstient",
+                     gardes(a_part="agents")[0], 0)
+            (g / "KERNEL.md").unlink(missing_ok=True)
+            (g / "agents" / "coach.md").unlink(missing_ok=True)
 
     # Le garde de lecture : son branchement, mesuré par le garde lui-même.
     garde_src = VRAI_BRAIN / "scripts" / "garde-lecture.py"

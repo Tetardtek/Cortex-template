@@ -24,6 +24,20 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+# ── 🔴 Jamais depuis un programme installé à part ──────────────────────
+# La suite éprouve le programme là où il se forge (un dépôt git). Installé à part
+# (la marque `.cortex-programme`), ses scripts trouvent le brain de l'utilisateur par
+# la découverte — et ses bancs y agissaient : lancée par le doctor d'un brain séparé,
+# elle a arrêté le moteur qui tournait (mesuré le 7/10). Un paquet s'éprouve à sa
+# construction. `resolve()` : le doctor la lance par le lien `brain-engine/` du brain.
+if (Path(__file__).resolve().parent.parent / '.cortex-programme').exists():
+    _RAISON = ("SKIP programme installé à part (.cortex-programme) — sa suite s'éprouve à la "
+               "construction du paquet, jamais contre le brain qu'il sert")
+    if __name__ == '__main__':
+        print(_RAISON)
+        sys.exit(0)
+    raise unittest.SkipTest(_RAISON)
+
 # ── Import des modules sous test ───────────────────────────────────────────────
 # Les modules ont un guardrail EMBED_MODEL au niveau module — nomic-embed-text
 # (défaut) passe ; on s'assure de ne pas avoir de variable bloquante.
@@ -2316,7 +2330,7 @@ class TestSetupResoutPaths(unittest.TestCase):
                  '| `home/` | `<HOME>` |\n')
 
     def _etape(self):
-        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
         return script[script.index('# ── Étape 3.1'):script.index('# ── Lock kernel push')]
 
     def _jouer(self, paths, **env):
@@ -2364,7 +2378,7 @@ class TestSetupDeclareLeNoyau(unittest.TestCase):
 
     def _jouer(self, satellites: bool) -> dict:
         import yaml
-        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
         etape = script[script.index('# ── Étape 3 — brain-compose'):script.index('# ── Étape 3 (suite)')]
         with tempfile.TemporaryDirectory() as tmp:
             b = Path(tmp)
@@ -2402,7 +2416,7 @@ class TestSetupGardeClaudeMd(unittest.TestCase):
     MODELE = '# CLAUDE.md\nbrain_root: <BRAIN_ROOT>\nbrain_name: <BRAIN_NAME>\n'
 
     def _etape(self):
-        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
         return script[script.index('# ── Étape 2'):script.index('# La skill `brain`')]
 
     def _jouer(self, existant=None, reecrire=False):
@@ -5416,6 +5430,408 @@ class TestClesVides(unittest.TestCase):
         self.assertEqual(r.stdout.split()[-3:], ['3307', 'dolt', 'brain-dolt'])
 
 
+class TestDonneesSeparees(unittest.TestCase):
+    """Le programme installé à part trouve SA data ; sans la marque, rien ne change.
+
+    `.cortex-programme` à la racine du programme : la data se trouve par `BRAIN_ROOT`,
+    puis le dossier courant (jusqu'à `brain-compose.local.yml`), puis le brain déclaré
+    par `brain init`. Sans la marque — un brain cloné, chaque fork, chaque banc —, la position.
+    `scripts/lib/donnees.sh` doit rendre exactement ce que `donnees.py` rend."""
+
+    SH = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'donnees.sh'
+
+    def setUp(self):
+        import donnees
+        self.d = donnees
+        self.tmp = Path(tempfile.mkdtemp(prefix='donnees-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog = self.tmp / 'programme'
+        self.data = self.tmp / 'MonBrain'
+        (self.prog).mkdir()
+        (self.data / 'projets').mkdir(parents=True)
+        (self.data / 'brain-compose.local.yml').write_text('instances: {}\n')
+        self.conf = self.tmp / 'conf'
+        self.env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_ROOT', 'XDG_CONFIG_HOME')}
+        self.env['XDG_CONFIG_HOME'] = str(self.conf)
+
+    def _py(self, cwd: Path, brain_root: str | None = None, env_d_abord: bool = False):
+        env = dict(self.env)
+        if brain_root:
+            env['BRAIN_ROOT'] = brain_root
+        with patch.dict(os.environ, env, clear=True):
+            try:
+                return str(self.d.trouver_donnees(self.prog, cwd=cwd, env_d_abord=env_d_abord)[0])
+            except RuntimeError:
+                return 'ERREUR'
+
+    def _sh(self, cwd: Path, brain_root: str | None = None):
+        env = dict(self.env)
+        if brain_root:
+            env['BRAIN_ROOT'] = brain_root
+        r = subprocess.run(['bash', '-c', f'source "{self.SH}"; brain_donnees "{self.prog}"'],
+                           cwd=cwd, env=env, capture_output=True, text=True, timeout=30)
+        return r.stdout.strip() if r.returncode == 0 else 'ERREUR'
+
+    def _marquer(self):
+        (self.prog / '.cortex-programme').touch()
+
+    def _declarer(self, ou: Path):
+        (self.conf / 'cortex-brain').mkdir(parents=True, exist_ok=True)
+        (self.conf / 'cortex-brain' / 'brain').write_text(f'{ou}\n')
+
+    def test_sans_la_marque_la_position_fait_foi(self):
+        """Un brain cloné et les forks : ni le dossier courant, ni le brain déclaré, ni (pour les
+        scripts) une BRAIN_ROOT posée ne détournent la position."""
+        self._declarer(self.data)
+        self.assertEqual(self._py(self.data / 'projets'), str(self.prog))
+        self.assertEqual(self._py(self.data, brain_root=str(self.data)), str(self.prog))
+        self.assertEqual(self._py(self.data, brain_root=str(self.data), env_d_abord=True), str(self.data),
+                         'le moteur, lui, honore BRAIN_ROOT comme avant')
+
+    def test_marque_brain_root_fait_foi(self):
+        self._marquer()
+        self.assertEqual(self._py(self.tmp, brain_root=str(self.data)), str(self.data))
+
+    def test_marque_le_dossier_courant_en_remontant(self):
+        self._marquer()
+        self.assertEqual(self._py(self.data / 'projets'), str(self.data))
+
+    def test_marque_le_brain_declare_par_init(self):
+        self._marquer()
+        self._declarer(self.data)
+        self.assertEqual(self._py(self.tmp), str(self.data))
+
+    def test_marque_sans_rien_trouver_refuse(self):
+        """Jamais le programme servi comme un brain."""
+        self._marquer()
+        self.assertEqual(self._py(self.tmp), 'ERREUR')
+
+    def test_le_shell_rend_ce_que_python_rend(self):
+        cas = [('sans marque, dossier courant', False, None, self.data / 'projets', None),
+               ('marque, BRAIN_ROOT', True, None, self.tmp, str(self.data)),
+               ('marque, dossier courant', True, None, self.data / 'projets', None),
+               ('marque, déclaré', True, self.data, self.tmp, None),
+               ('marque, rien', True, None, self.tmp, None)]
+        for nom, marque, declare, cwd, root in cas:
+            with self.subTest(nom):
+                (self.prog / '.cortex-programme').unlink(missing_ok=True)
+                shutil.rmtree(self.conf, ignore_errors=True)
+                if marque:
+                    self._marquer()
+                if declare:
+                    self._declarer(declare)
+                self.assertEqual(self._sh(cwd, root), self._py(cwd, root))
+
+
+class TestVueDuProgramme(unittest.TestCase):
+    """Un programme installé à part se RELIE dans le dossier de données ; il y sème ce qui
+    est à l'utilisateur ; il ne touche jamais un fichier réel."""
+
+    VUE = BRAIN_ROOT_PATH / 'scripts' / 'vue.py'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='vue-prog-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog = self.tmp / 'programme'
+        (self.prog / 'scripts').mkdir(parents=True)
+        shutil.copy(self.VUE, self.prog / 'scripts' / 'vue.py')
+        (self.prog / '.cortex-programme').touch()
+        (self.prog / 'noyau' / 'agents').mkdir(parents=True)
+        (self.prog / 'noyau' / 'agents' / 'coach.md').write_text('# coach\n')
+        (self.prog / 'KERNEL.md').write_text('# noyau\n')
+        (self.prog / 'profil' / 'specs').mkdir(parents=True)
+        (self.prog / 'profil' / 'specs' / 'collaboration.md').write_text('règles\n')
+        (self.prog / 'projets').mkdir()
+        (self.prog / 'projets' / '_template.md').write_text('modèle\n')
+        (self.prog / 'focus.md').write_text('focus livré\n')
+        self.data = self.tmp / 'MonBrain'
+        self.data.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.data)], check=True)
+
+    def _relier(self):
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        env['BRAIN_ROOT'] = str(self.data)
+        return subprocess.run([sys.executable, str(self.prog / 'scripts' / 'vue.py'), '--relier'],
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def test_les_entrees_du_programme_sont_des_liens(self):
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for rel in ('KERNEL.md', 'noyau', 'scripts', 'profil/specs'):
+            with self.subTest(rel):
+                self.assertTrue((self.data / rel).is_symlink(), rel)
+                self.assertEqual((self.data / rel).resolve(), (self.prog / rel).resolve())
+
+    def test_les_semis_sont_copies_et_jamais_ecrases(self):
+        (self.data / 'focus.md').write_text('mon focus\n')
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((self.data / 'projets' / '_template.md').is_symlink())
+        self.assertEqual((self.data / 'projets' / '_template.md').read_text(), 'modèle\n')
+        self.assertEqual((self.data / 'focus.md').read_text(), 'mon focus\n', 'un semis a écrasé')
+        self.assertFalse((self.data / '.cortex-programme').exists(), 'la marque a été semée')
+
+    def test_un_fichier_reel_a_la_place_d_un_lien_n_est_jamais_touche(self):
+        (self.data / 'KERNEL.md').write_text('le mien\n')
+        r = self._relier()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('KERNEL.md est réel', r.stdout)
+        self.assertEqual((self.data / 'KERNEL.md').read_text(), 'le mien\n')
+
+    def test_git_du_brain_tait_les_liens_une_seule_fois(self):
+        self._relier()
+        self._relier()
+        exclude = (self.data / '.git' / 'info' / 'exclude').read_text()
+        self.assertEqual(exclude.count('brain vue : le programme, relié'), 1)
+        st = subprocess.run(['git', '-C', str(self.data), 'status', '--porcelain'],
+                            capture_output=True, text=True).stdout
+        self.assertNotIn('KERNEL.md', st)
+        self.assertNotIn('noyau', st)
+
+    def test_sans_la_marque_rien_n_est_relie(self):
+        (self.prog / '.cortex-programme').unlink()
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("n'est pas installé à part", r.stdout)
+        self.assertFalse((self.data / 'KERNEL.md').exists())
+
+
+class TestInitAPart(unittest.TestCase):
+    """`brain init` d'un programme installé à part exige un dossier, hors du programme."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='init-a-part-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog = self.tmp / 'programme'
+        for rel in ('scripts/brain-init.sh', 'scripts/lib/python.sh'):
+            src = script_d_instance(BRAIN_ROOT_PATH / rel)
+            (self.prog / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(src, self.prog / rel)
+        (self.prog / '.cortex-programme').touch()
+
+    def _init(self, *args):
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        env['HOME'] = str(self.tmp / 'home')
+        return subprocess.run(['bash', str(self.prog / 'scripts' / 'brain-init.sh'), *args],
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def test_sans_dossier_il_le_demande_et_n_ecrit_rien(self):
+        r = self._init('essai')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('dis où créer le brain', r.stderr)
+        self.assertFalse((self.tmp / 'home').exists(), 'init a écrit avant de refuser')
+
+    def test_un_dossier_dans_le_programme_est_refuse(self):
+        r = self._init('essai', str(self.prog / 'mon-brain'))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('est dans le programme', r.stderr)
+        self.assertFalse((self.prog / 'mon-brain').exists())
+
+
+class TestLaSuiteNeJouePasUnProgrammeInstalle(unittest.TestCase):
+    """🔴 La suite ne se joue jamais depuis un programme installé à part.
+
+    Mesuré le 7/10 (`essai-separe --doctor`) : lancée par le doctor d'un brain séparé,
+    elle a arrêté le moteur qui tournait. Ses bancs lancent les scripts du programme ;
+    installé à part (la marque `.cortex-programme`), un script trouve le brain de
+    l'utilisateur par la découverte (`BRAIN_ROOT`, le dossier courant, `~/.config`) — et
+    `install systemd` (`TestInstallSystemd`) y arrête « l'instance manuelle ». La suite
+    éprouve le programme là où il se forge ; un paquet s'éprouve à sa construction.
+
+    Le témoin : un programme marqué (des liens vers celui-ci, la suite copiée), un
+    dossier de données dont le fichier de PID désigne un moteur qui dort, et
+    `TestInstallSystemd` lancé depuis ce programme avec `BRAIN_ROOT` sur ces données."""
+
+    def test_la_suite_s_abstient_et_le_moteur_survit(self):
+        tmp = Path(tempfile.mkdtemp(prefix='suite-installee-'))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        prog, data = tmp / 'programme', tmp / 'MonBrain'
+        (prog / 'brain-engine').mkdir(parents=True)
+        data.mkdir()
+        for e in BRAIN_ROOT_PATH.iterdir():
+            if e.name not in ('.brain-engine.pid', '.git', 'brain-engine', '.cortex-programme',
+                              'brain-compose.local.yml'):
+                (prog / e.name).symlink_to(e)
+        for e in (BRAIN_ROOT_PATH / 'brain-engine').iterdir():
+            if e.name not in ('test_brain_engine.py', '__pycache__'):
+                (prog / 'brain-engine' / e.name).symlink_to(e)
+        shutil.copy(Path(__file__).resolve(), prog / 'brain-engine' / 'test_brain_engine.py')
+        (prog / '.cortex-programme').touch()
+        (data / 'brain-compose.local.yml').write_text(
+            'instances:\n  essai:\n    active: true\n    posture: master\n')
+        moteur = subprocess.Popen(['bash', '-c',
+                                   f"exec -a 'python3 {prog}/brain-engine/server.py' sleep 120"])
+        self.addCleanup(lambda: (moteur.kill(), moteur.wait()))
+        (data / '.brain-engine.pid').write_text(str(moteur.pid))
+        time.sleep(0.3)
+        env = {**os.environ, 'BRAIN_ROOT': str(data), 'HOME': str(tmp / 'home'),
+               'XDG_CONFIG_HOME': str(tmp / 'config')}
+        r = subprocess.run([sys.executable, '-m', 'unittest', 'test_brain_engine.TestInstallSystemd'],
+                           cwd=prog / 'brain-engine', env=env, capture_output=True, text=True,
+                           timeout=300)
+        self.assertIsNone(moteur.poll(), "le moteur du brain servi a été arrêté par la suite\n"
+                          + r.stdout[-1500:] + r.stderr[-1500:])
+        self.assertTrue((data / '.brain-engine.pid').exists(), 'son fichier de PID a disparu')
+        self.assertIn('programme installé à part', r.stdout + r.stderr)
+        # Lancée comme le doctor la lance : une abstention déclarée, sortie 0.
+        r = subprocess.run([sys.executable, 'test_brain_engine.py'], cwd=prog / 'brain-engine',
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
+        self.assertTrue(r.stdout.startswith('SKIP'), r.stdout[:500])
+        self.assertIsNone(moteur.poll())
+
+
+class TestUnitesDuProgrammeAPart(unittest.TestCase):
+    """Les unités d'un programme installé à part le désignent par SON chemin ; la data
+    par `BRAIN_ROOT` et le dossier de travail.
+
+    Le programme est physiquement à part : `scripts/` copié (sa racine réelle porte la
+    marque), le reste relié au brain ; la data, un dossier voisin. Faux `systemctl`,
+    HOME et XDG_CONFIG_HOME jetables, ports d'un bac — rien de la machine."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='unites-a-part-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog = self.tmp / 'programme'
+        self.prog.mkdir()
+        for e in BRAIN_ROOT_PATH.iterdir():
+            if e.name in ('.brain-engine.pid', '.git', 'scripts', 'brain-compose.local.yml',
+                          '.cortex-programme'):
+                continue
+            (self.prog / e.name).symlink_to(e)
+        shutil.copytree(BRAIN_ROOT_PATH / 'scripts', self.prog / 'scripts', symlinks=True)
+        (self.prog / '.cortex-programme').touch()
+        self.data = self.tmp / 'MonBrain'
+        self.data.mkdir()
+        (self.data / 'brain-compose.local.yml').write_text(
+            'instances:\n  essai:\n    active: true\n    posture: master\n')
+        for rel in ('brain-engine', 'scripts', 'NIVEAUX.yml', 'brain-compose.yml'):
+            (self.data / rel).symlink_to(self.prog / rel)
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        faux = self.bin / 'systemctl'
+        faux.write_text(f'#!/bin/sh\necho "$*" >> {self.tmp}/appels\nexit 0\n')
+        faux.chmod(0o755)
+
+    def test_execstart_vise_le_programme_et_la_data_par_brain_root(self):
+        env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
+               'HOME': str(self.tmp / 'home'), 'XDG_CONFIG_HOME': str(self.tmp / 'config'),
+               'BRAIN_ROOT': str(self.data), 'BRAIN_MODE': 'prod',
+               'BRAIN_PORT': '17797', 'BRAIN_MCP_PORT': '17796'}
+        r = subprocess.run(['bash', str(self.prog / 'scripts' / 'brain-engine.sh'), 'install', 'systemd'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        unites = self.tmp / 'config' / 'systemd' / 'user'
+        for u in ('brain-engine.service', 'brain-mcp.service', 'brain-embed.service'):
+            with self.subTest(u):
+                texte = (unites / u).read_text()
+                execs = [l for l in texte.splitlines() if l.startswith('ExecStart=')]
+                self.assertTrue(execs and all(str(self.prog) in l for l in execs), execs)
+                self.assertFalse(any(str(self.data) in l for l in execs), execs)
+                self.assertIn(f'Environment=BRAIN_ROOT={self.data}', texte)
+        lien = self.tmp / 'home' / '.local' / 'bin' / 'brain'
+        self.assertEqual(os.readlink(lien), str(self.prog / 'scripts' / 'brain'))
+
+
+class TestBrainInit(unittest.TestCase):
+    """`brain init` crée un brain : les prérequis d'abord, AVANT toute écriture.
+
+    Le setup découvrait un prérequis manquant au milieu — sans `python3 -m venv`,
+    l'étape 6 avertissait et la suite tournait sur un brain sans moteur ; sans git,
+    les hooks manquaient en silence. Joué dans un brain jetable, avec un PATH réduit
+    à ce que l'amorçage appelle : git, python3 (vrai ou faux), rien d'autre. Que
+    l'installation complète marche par `brain init` et par l'ancien nom, et qu'elle
+    soit idempotente : `essai-fork.sh` le prouve, dans un bac à sable."""
+
+    COPIES = ('scripts/brain', 'scripts/brain-init.sh', 'scripts/brain-setup.sh',
+              'scripts/lib/python.sh')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-init-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.b = self.tmp / 'brain'
+        if not (BRAIN_ROOT_PATH / 'scripts' / 'brain').is_file():
+            self.skipTest('scripts/brain absent de ce brain')
+        for rel in self.COPIES:
+            if not (BRAIN_ROOT_PATH / rel).is_file():
+                continue        # un brain d'avant init : le témoin rougit, il ne s'abstient pas
+            (self.b / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(BRAIN_ROOT_PATH / rel, self.b / rel)
+        self.home = self.tmp / 'home'
+        self.home.mkdir()
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        for outil in ('bash', 'dirname', 'readlink', 'awk', 'sed'):
+            vrai = shutil.which(outil)
+            if vrai:
+                (self.bin / outil).symlink_to(vrai)
+
+    def _poser(self, git=True, python='vrai'):
+        if git and shutil.which('git'):
+            (self.bin / 'git').symlink_to(shutil.which('git'))
+        if python == 'vrai':
+            (self.bin / 'python3').symlink_to(sys.executable)
+        elif python is not None:
+            (self.bin / 'python3').write_text(python, encoding='utf-8')
+            (self.bin / 'python3').chmod(0o755)
+
+    def _arbre(self) -> list[str]:
+        return sorted(str(p.relative_to(self.tmp)) for p in self.tmp.rglob('*')
+                      if not str(p).startswith(str(self.bin)))
+
+    def _jouer(self, *commande: str):
+        env = {'PATH': str(self.bin), 'HOME': str(self.home), 'LANG': 'C.UTF-8'}
+        avant = self._arbre()
+        r = subprocess.run([str(self.bin / 'bash'), *commande], cwd=self.b, capture_output=True,
+                           text=True, env=env, timeout=60)
+        return r, avant, self._arbre()
+
+    def test_sans_git_init_s_arrete_avant_toute_ecriture(self):
+        self._poser(git=False)
+        r, avant, apres = self._jouer('scripts/brain', 'init', 'essai')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('git', r.stderr)
+        self.assertIn("rien n'a été écrit", r.stderr)
+        self.assertEqual(avant, apres, 'init a écrit avant de vérifier ses prérequis')
+
+    def test_un_python_trop_ancien_arrete_et_dit_sa_version(self):
+        # Un 3.11.9 : il ne refuse QUE le seuil de 3.12 — le reste (venv, ensurepip) passe.
+        self._poser(python='#!/bin/sh\n[ "$1" = --version ] && { echo "Python 3.11.9"; exit 0; }\n'
+                           'case "$2" in *"(3, 12)"*) exit 1;; esac\nexit 0\n')
+        r, avant, apres = self._jouer('scripts/brain', 'init', 'essai')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('python3 >= 3.12 (ici : 3.11.9)', r.stderr)
+        self.assertEqual(avant, apres)
+
+    def test_sans_le_module_venv_arrete(self):
+        """Debian sans python3-venv : le venv de l'étape 6 ne se créerait pas."""
+        self._poser(python='#!/bin/sh\ncase "$2" in *ensurepip*) exit 1;; esac\nexit 0\n')
+        r, avant, apres = self._jouer('scripts/brain', 'init', 'essai')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('le module venv de Python', r.stderr)
+        self.assertEqual(avant, apres)
+
+    def test_l_ancien_nom_s_arrete_aussi(self):
+        self._poser(git=False)
+        r, avant, apres = self._jouer('scripts/brain-setup.sh', 'essai')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("rien n'a été écrit", r.stderr)
+        self.assertEqual(avant, apres, "brain-setup.sh a écrit avant l'amorçage")
+
+    def test_verifier_n_ecrit_rien_et_dit_les_recommandes(self):
+        self._poser()
+        r, avant, apres = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('brain init peut tourner', r.stdout)
+        self.assertIn('recommandé : Claude Code', r.stdout)
+        self.assertEqual(avant, apres)
+
+    def test_l_aide_dit_init(self):
+        self._poser()
+        r, _, _ = self._jouer('scripts/brain', '--help')
+        self.assertIn('brain init', r.stdout)
+
+
 class TestExempleConfigLocale(unittest.TestCase):
     """`brain-compose.local.yml.example` a la forme de ce que le setup écrit.
 
@@ -5425,7 +5841,7 @@ class TestExempleConfigLocale(unittest.TestCase):
 
     def _setup_ecrit(self) -> dict:
         import yaml
-        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text()
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text()
         m = re.search(r'cat > "\$LOCAL_COMPOSE" << EOF\n(.*?)\nEOF\n', texte, re.S)
         self.assertIsNotNone(m, "le bloc écrit par le setup n'a pas été trouvé")
         corps = re.sub(r'\$\([^)]*\)', 'x', m.group(1))         # $(date …)
@@ -5675,7 +6091,9 @@ class TestInstallSystemd(unittest.TestCase):
         self.racine = self.tmp / 'brain'
         self.racine.mkdir()
         for e in BRAIN_ROOT_PATH.iterdir():
-            if e.name not in ('.brain-engine.pid', '.git'):
+            # Jamais la marque : la racine jetable se croirait un programme à part, et
+            # chercherait le brain de l'utilisateur pour y arrêter son moteur.
+            if e.name not in ('.brain-engine.pid', '.git', '.cortex-programme'):
                 (self.racine / e.name).symlink_to(e)
         self.SCRIPT = self.racine / 'scripts' / 'brain-engine.sh'
         self.bin = self.tmp / 'bin'
@@ -8332,7 +8750,7 @@ class TestLaVueSuitLeCheckout(unittest.TestCase):
         self.assertTrue((b / 'agents' / 'nouveau.md').is_symlink(), 'le post-merge le pose')
 
     def _etape_12(self, b: Path) -> subprocess.CompletedProcess:
-        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-setup.sh').read_text(encoding='utf-8')
+        script = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
         etape = script[script.index('# ── Étape 12'):script.index('# ── Résumé')]
         return subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; warn(){ echo "warn $*"; }; '
                                'info(){ echo "info $*"; }\n' + etape],

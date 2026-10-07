@@ -24,30 +24,68 @@ importe déduiraient la leur, et rien ne signalerait l'écart.
 
 Une `BRAIN_ROOT` posée qui ne désigne pas un dossier ARRÊTE l'import : deviner
 une racine de repli servirait un brain que personne n'a demandé.
+
+── Un programme installé à part ──────────────────────────────────────
+
+Un programme qui porte la marque `.cortex-programme` à sa racine n'est PAS un
+brain : il en sert un, ailleurs. Sa racine ne vaut alors jamais pour la data, et
+la data se TROUVE, dans cet ordre :
+
+    BRAIN_ROOT                 posée : elle fait foi
+    le dossier courant         en remontant jusqu'à `brain-compose.local.yml`,
+                               comme git cherche `.git`
+    le brain déclaré           par `brain init`, dans
+                               `${XDG_CONFIG_HOME:-~/.config}/cortex-brain/brain`
+
+Rien de trouvé : une erreur qui dit quoi faire — jamais le programme servi comme
+un brain. Sans la marque (un brain cloné par git, chaque fork, chaque banc d'essai), RIEN ne
+change : `BRAIN_ROOT`, sinon la position. La marque est posée par ce qui installe
+le programme à part (la roue du paquet ; `essai-separe.sh` d'ici là),
+jamais par le gabarit. La recherche vit dans `donnees.py` (importable sans rien
+calculer) ; `scripts/lib/donnees.sh` en est l'équivalent shell — un test les tient
+d'accord.
 """
 
 import os
 from pathlib import Path
 
 PROGRAMME = Path(__file__).parent
+try:
+    from donnees import MARQUE, REPERE, est_a_part, pointeur, trouver_donnees  # noqa: F401 — une seule définition
+except ImportError:
+    # Un banc (ou un outil du doctor) qui copie `racines.py` seul n'a pas `donnees.py` :
+    # la règle d'avant — `BRAIN_ROOT`, sinon la position. Un programme sans `donnees.py`
+    # ne porte pas la marque : il n'a rien d'autre à trouver.
+    def trouver_donnees(racine_programme, cwd=None, env_d_abord=True):  # noqa: ARG001
+        recue = (os.getenv('BRAIN_ROOT') or '').strip()
+        if recue and env_d_abord:
+            racine = Path(recue).expanduser()
+            if not racine.is_dir():
+                raise RuntimeError(
+                    f"BRAIN_ROOT={recue} ne désigne pas un dossier — le brain refuse de deviner une "
+                    f"autre racine. Corriger la variable, ou la retirer.")
+            return racine, 'BRAIN_ROOT'
+        return Path(racine_programme), 'position du programme'
 
 
-def _donnees() -> tuple[Path, str]:
-    recue = (os.getenv('BRAIN_ROOT') or '').strip()
-    if not recue:
-        return PROGRAMME.parent, 'position du programme'
-    racine = Path(recue).expanduser()
-    if not racine.is_dir():
-        raise RuntimeError(
-            f"BRAIN_ROOT={recue} ne désigne pas un dossier — le moteur refuse "
-            f"de deviner une autre racine. Corriger la variable, ou la retirer "
-            f"pour servir le brain qui contient le programme ({PROGRAMME.parent}).")
-    return racine, 'BRAIN_ROOT'
-
-
-DONNEES, ORIGINE = _donnees()
+DONNEES, ORIGINE = trouver_donnees(PROGRAMME.parent)
 
 
 def annonce() -> str:
     """La ligne que les services écrivent au démarrage : quelle racine, et d'où."""
     return f'racine des données : {DONNEES} ({ORIGINE}) · programme : {PROGRAMME}'
+
+
+if __name__ == '__main__':
+    # `python3 racines.py --donnees <racine du programme>` : la data, une ligne —
+    # ce que l'équivalent shell doit rendre (le test d'accord la compare) ; comme lui,
+    # `BRAIN_ROOT` n'y compte qu'avec la marque.
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == '--donnees':
+        try:
+            print(trouver_donnees(Path(sys.argv[2]), env_d_abord=False)[0])
+        except RuntimeError as exc:
+            print(exc, file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(annonce())

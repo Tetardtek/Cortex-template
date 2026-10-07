@@ -22,7 +22,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"  # python3 = celui du venv
 
 set -euo pipefail
 
-BRAIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# La data, quand le programme est ailleurs ; un banc qui copie ce script seul
+# n'a pas `lib/donnees.sh` : la position, comme avant.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
+BRAIN_ROOT="$(brain_donnees "$(cd "$(dirname "$0")/.." && pwd)")" || exit 1
 MIGRATE="$BRAIN_ROOT/brain-engine/migrate.py"
 LOG_FILE="$BRAIN_ROOT/brain-engine/sync.log"
 QUIET=false

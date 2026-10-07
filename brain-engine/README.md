@@ -49,7 +49,7 @@ Dolt            la base — installé par scripts/dolt-setup.sh s'il manque
 Ollama          FACULTATIF — la recherche sémantique ; modèle réglé par EMBED_MODEL
 ```
 
-`scripts/brain-setup.sh` fait tout : le venv (`brain-engine/.venv`), les
+`bash scripts/brain init` fait tout : le venv (`brain-engine/.venv`), les
 dépendances, la base. À la main :
 
 ```bash

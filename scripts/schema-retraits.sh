@@ -40,7 +40,10 @@
 # siennes. Les entrées ne s'effacent pas : un fork peut sauter plusieurs versions.
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"  # python3 = celui du venv brain-engine
-BRAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# La data, quand le programme est ailleurs ; un banc qui copie ce script seul
+# n'a pas `lib/donnees.sh` : la position, comme avant.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
+BRAIN_ROOT="$(brain_donnees "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)")" || exit 1
 
 python3 - "$BRAIN_ROOT" "$@" <<'PYEOF'
 import sys

@@ -38,6 +38,8 @@ tort — et c'est un défaut à signaler, pas à contourner.*
 - lire ou écrire la base ;
 - écrire ou corriger la doc du brain ;
 - publier le gabarit ;
+- installer un brain sur une machine : `brain init` (`brain init --verifier` : les
+  prérequis seulement, rien n'est écrit) ;
 - savoir si le brain est sain : `brain doctor`.
 
 ## Les règles qui ne se discutent pas

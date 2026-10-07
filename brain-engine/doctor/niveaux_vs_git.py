@@ -50,6 +50,10 @@ VERSIONNE = ("invariant", "programme", "moteur")
 JAMAIS = ("etat", "artefact")
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _programme_a_part import programme_a_part  # noqa: E402 — le programme installé à part
+
+
 def gitignore(racine: Path, chemin: str) -> bool:
     return subprocess.run(["git", "-C", str(racine), "check-ignore", "-q", chemin],
                           capture_output=True).returncode == 0
@@ -74,7 +78,7 @@ def main() -> int:
         return 1
     entrees = yaml.safe_load(source.read_text(encoding="utf-8")).get("entrees", {})
 
-    fautifs, depots, ici, non_declares, vues = [], 0, 0, [], 0
+    fautifs, depots, ici, non_declares, vues, a_part = [], 0, 0, [], 0, 0
     for nom, val in sorted(entrees.items()):
         niveau = val.get("niveau") if isinstance(val, dict) else val
         court = nom.rstrip("/")
@@ -88,6 +92,16 @@ def main() -> int:
                 vues += 1
             else:
                 fautifs.append((nom, "vue", f"une vue de {sources[0]}, pourtant suivie par git"))
+            continue
+
+        # Un lien vers le programme installé à part : versionné avec le programme, pas
+        # ici — ignoré par le git du brain, comme il se doit ; suivi, il rougit.
+        if programme_a_part(cible) is not None:
+            if gitignore(racine, court):
+                a_part += 1
+            else:
+                fautifs.append((nom, str(niveau), "un lien vers le programme installé à part, "
+                                "pourtant suivi par git"))
             continue
 
         depot_propre = (cible / ".git").exists()
@@ -129,7 +143,8 @@ def main() -> int:
 
     print("\nNIVEAUX → GIT — ce que le dépôt garde\n")
     print(f"  {len(entrees)} entrées · {depots} dépôts séparés · {ici} suivies ici"
-          + (f" · {vues} vue(s), ignorée(s) comme il se doit" if vues else ""))
+          + (f" · {vues} vue(s), ignorée(s) comme il se doit" if vues else "")
+          + (f" · {a_part} dans le programme installé à part" if a_part else ""))
 
     if fautifs or non_declares:
         print()

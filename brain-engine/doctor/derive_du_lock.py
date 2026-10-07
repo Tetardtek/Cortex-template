@@ -35,6 +35,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _programme_a_part import programme_du_brain  # noqa: E402 — le programme installé à part
+
 # Au-delà, l'écart cesse d'être le train-train d'une semaine de travail. Dix est
 # un choix, pas une mesure : assez large pour ne pas crier sur une session
 # ordinaire, assez étroit pour ne jamais laisser s'installer les 123 du 13/08.
@@ -122,6 +125,12 @@ def main() -> int:
     args = p.parse_args()
 
     racine = args.brain.expanduser().resolve()
+    # Un brain servi par un programme installé à part : le lock décrit le programme,
+    # il se juge là où le programme vit — pas sur les liens de la vue.
+    programme = programme_du_brain(racine)
+    if programme is not None:
+        print(f"\n  le noyau vit dans le programme installé à part : {programme}")
+        racine = programme
     lock = racine / "kernel.lock"
     if not lock.is_file():
         print("\n  ❌ kernel.lock absent — le noyau n'a aucune empreinte.\n")

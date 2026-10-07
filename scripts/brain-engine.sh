@@ -29,8 +29,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/python.sh"  # python3 = celui du venv
 
 set -euo pipefail
 
-BRAIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE_DIR="$BRAIN_ROOT/brain-engine"
+# La data, quand le programme est ailleurs ; un banc qui copie ce script seul
+# n'a pas `lib/donnees.sh` : la position, comme avant.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
+BRAIN_ROOT="$(brain_donnees "$(cd "$(dirname "$0")/.." && pwd)")" || exit 1
+# Le programme : la data, d'ordinaire — sa racine physique quand il est installé à
+# part. Les unités systemd et la commande `brain` le désignent par SON chemin, jamais
+# par un lien du dossier de données.
+PROGRAMME="$BRAIN_ROOT"
+_prog_reel="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+[[ -e "$_prog_reel/.cortex-programme" ]] && PROGRAMME="$_prog_reel"
+unset _prog_reel
+ENGINE_DIR="$PROGRAMME/brain-engine"
 
 # Les ports déclarés dans `brain-engine/.env.local` — comme `db.py` les lit.
 # `dolt-setup.sh` y écrit BRAIN_DOLT_PORT quand il n'est pas 3307 ; ce script ne
@@ -731,7 +741,7 @@ Type=oneshot
 WorkingDirectory=$BRAIN_ROOT
 $env_file
 Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=/usr/bin/env bash $BRAIN_ROOT/scripts/brain-engine.sh embed
+ExecStart=/usr/bin/env bash $PROGRAMME/scripts/brain-engine.sh embed
 Nice=10
 SVCEOF
     cat > "$unites/brain-embed.timer" << SVCEOF
@@ -760,7 +770,7 @@ Description=Brain — une version plus récente existe-t-elle chez l'amont ?
 Type=oneshot
 WorkingDirectory=$BRAIN_ROOT
 Environment=BRAIN_ROOT=$BRAIN_ROOT
-ExecStart=$py $BRAIN_ROOT/scripts/maj-disponible.py
+ExecStart=$py $PROGRAMME/scripts/maj-disponible.py
 Nice=10
 SVCEOF
     cat > "$unites/brain-maj.timer" << SVCEOF
@@ -808,7 +818,7 @@ verifier_unites() {
 # brain. Un lien déjà là est remplacé (un autre brain, une version
 # d'avant) ; un VRAI fichier ne l'est jamais : il n'est pas à nous.
 poser_la_commande_brain() {
-  local bin="$HOME/.local/bin" cible="$BRAIN_ROOT/scripts/brain"
+  local bin="$HOME/.local/bin" cible="$PROGRAMME/scripts/brain"
   [[ -x "$cible" ]] || return 0
   mkdir -p "$bin"
   if [[ -e "$bin/brain" && ! -L "$bin/brain" ]]; then

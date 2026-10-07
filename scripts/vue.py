@@ -85,10 +85,31 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _racine_des_donnees(env_d_abord: bool = False) -> Path:
+    """La data de ce script, par `brain-engine/donnees.py` du programme : sans la
+    marque d'un programme installé à part, la position (et `BRAIN_ROOT` si `env_d_abord`),
+    comme avant. Un banc qui ne copie que ce script n'a pas `donnees.py` : la position."""
+    import os as _os
+    ici = Path(__file__).resolve().parent.parent
+    src = ici / "brain-engine" / "donnees.py"
+    if not src.is_file():
+        return Path(_os.environ.get("BRAIN_ROOT") or ici) if env_d_abord else ici
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_brain_donnees", src)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        return mod.trouver_donnees(ici, env_d_abord=env_d_abord)[0]
+    except RuntimeError as exc:
+        raise SystemExit(f"❌ {exc}")
+
 
 CALCULES = {Path("CATALOG.yml")}        # écrits dans la vue, jamais liés
 COMPLEMENT = ".complement.md"            # instance/agents/X.complement.md → s'ajoute à agents/X.md
@@ -133,6 +154,107 @@ def construire_pages(brain: Path) -> str:
     if e == "a_poser":
         lien.symlink_to(os.path.relpath(brain / SOURCE_PAGES, lien.parent))
     return e
+
+
+# ── Le programme installé ailleurs ──────────────────────────────────
+#
+# Un programme qui porte la marque `.cortex-programme` sert un brain situé ailleurs :
+# le dossier de données ne contient alors AUCUN fichier du programme. La vue s'étend :
+# chaque entrée du programme y paraît comme un lien vers lui — ce que `CLAUDE.md` et
+# les manifests font lire (`KERNEL.md`, `BRAIN-INDEX.md`, `profil/specs/`, `agents/` par
+# `noyau/`), ce que les scripts et le moteur ouvrent (`scripts/`, `brain-engine/`,
+# `NIVEAUX.yml`, `brain-compose.yml`). Les liens d'`agents/` (relatifs, vers `noyau/`)
+# passent par le lien de `noyau/` sans changer. Ce que le programme SÈME (les dossiers
+# des satellites et leurs README, `focus.md`, `PATHS.md`, les `_template.md`) se copie
+# une fois, s'il manque : c'est à l'utilisateur. Sans la marque, rien de tout cela.
+
+MARQUE_PROGRAMME = ".cortex-programme"
+ENTREES_PROGRAMME = (
+    "brain-engine", "scripts", "noyau", "contexts", "docs", "skills", "brain-ui",
+    "KERNEL.md", "NIVEAUX.yml", "brain-compose.yml", "brain-constitution.md", "kernel.lock",
+    "BRAIN-INDEX.md", "ARCHITECTURE.md", "LICENSE.md", "README.md", "MYSECRETS.example",
+    "brain-compose.local.yml.example", "profil/specs", "profil/CLAUDE.md.example",
+    "profil/identity.exemple",
+)
+EXCLUS_DU_SEMIS = {"profil"}   # caché (dont la marque) : jamais semé, sauf .gitignore
+BLOC_EXCLUSION = ("# brain vue : le programme, relié — pas des données",
+                  "# fin brain vue")
+
+
+def programme() -> Path:
+    """Le programme de ce script : sa racine physique."""
+    return Path(__file__).resolve().parent.parent
+
+
+def programme_a_part(brain: Path) -> bool:
+    """Le brain servi est-il un dossier de données, le programme installé ailleurs ?"""
+    prog = programme()
+    return (prog / MARQUE_PROGRAMME).exists() and prog != Path(brain).resolve()
+
+
+def etat_programme(brain: Path) -> dict:
+    """Les liens du programme dans le dossier de données : justes, à poser, réels (jamais touchés)."""
+    prog = programme()
+    e = {"justes": [], "a_poser": [], "reels": []}
+    for rel in ENTREES_PROGRAMME:
+        src, dst = prog / rel, Path(brain) / rel
+        if not src.exists():
+            continue
+        if dst.is_symlink():
+            (e["justes"] if dst.resolve() == src.resolve() else e["a_poser"]).append(rel)
+        elif dst.exists():
+            e["reels"].append(rel)
+        else:
+            e["a_poser"].append(rel)
+    return e
+
+
+def relier_programme(brain: Path) -> dict:
+    """Poser (ou corriger) les liens du programme ; un fichier réel n'est jamais touché."""
+    prog, brain = programme(), Path(brain)
+    e = etat_programme(brain)
+    for rel in e["a_poser"]:
+        dst = brain / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.is_symlink():
+            dst.unlink()
+        dst.symlink_to(prog / rel)
+    exclure_du_depot(brain)
+    return e
+
+
+def exclure_du_depot(brain: Path) -> None:
+    """Les liens du programme ne sont pas des données : `.git/info/exclude` du dépôt de
+    données les tait, dans un bloc que la vue tient (réécrit, jamais dupliqué)."""
+    info = Path(brain) / ".git" / "info"
+    if not info.parent.is_dir():
+        return
+    info.mkdir(exist_ok=True)
+    f = info / "exclude"
+    lignes = f.read_text(encoding="utf-8").splitlines() if f.is_file() else []
+    if BLOC_EXCLUSION[0] in lignes:
+        i, j = lignes.index(BLOC_EXCLUSION[0]), lignes.index(BLOC_EXCLUSION[1])
+        lignes[i:j + 1] = []
+    lignes += [BLOC_EXCLUSION[0], *("/" + rel for rel in ENTREES_PROGRAMME), "/agents/", BLOC_EXCLUSION[1]]
+    f.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+
+
+def semer(brain: Path) -> list[str]:
+    """Copier, s'il manque, ce que le programme sème : tout ce qui, à sa racine, n'est ni
+    une entrée du programme ni caché (sauf `.gitignore`). Rien n'est écrasé."""
+    prog, brain = programme(), Path(brain)
+    semes = []
+    for src in sorted(prog.iterdir()):
+        nom = src.name
+        if nom in ENTREES_PROGRAMME or nom in EXCLUS_DU_SEMIS or (nom.startswith(".") and nom != ".gitignore"):
+            continue
+        for f in ([src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())):
+            dst = brain / f.relative_to(prog)
+            if not dst.exists() and not dst.is_symlink():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
+                semes.append(str(f.relative_to(prog)))
+    return semes
 
 
 def donnee(rel: Path) -> bool:
@@ -459,10 +581,32 @@ def droit_d_ecrire(brain: Path, ecrire: bool) -> None:
 def main() -> int:
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     a.add_argument("--construire", action="store_true")
+    a.add_argument("--relier", action="store_true",
+                   help="programme installé à part : poser ses liens et semer, sans la vue des agents (brain init)")
     a.add_argument("--deverrouiller", action="store_true",
                    help="rendre le noyau modifiable le temps d'une mise à jour (brain maj)")
     o = a.parse_args()
-    brain = Path(os.environ.get("BRAIN_ROOT") or Path(__file__).resolve().parent.parent)
+    brain = _racine_des_donnees(env_d_abord=True)
+    if o.relier:
+        if not programme_a_part(brain):
+            print("brain vue --relier : le programme n'est pas installé à part — rien à relier.")
+            return 0
+        ep, semes = relier_programme(brain), semer(brain)
+        print(f"brain vue --relier : {len(ep['a_poser'])} lien(s) du programme posé(s), "
+              f"{len(semes)} fichier(s) semé(s)")
+        for rel in ep["reels"]:
+            print(f"  ⚠️ {rel} est réel dans le dossier de données — jamais touché")
+        return 1 if ep["reels"] else 0
+    if programme_a_part(brain):
+        ep = relier_programme(brain) if o.construire else etat_programme(brain)
+        semes = semer(brain) if o.construire else []
+        print(f"\nBRAIN VUE — le programme, installé à part : {programme()}")
+        print(f"  liens du programme {'posés' if o.construire else 'à poser'} : {len(ep['a_poser'])}, "
+              f"justes : {len(ep['justes'])}" + (f", semés : {len(semes)}" if semes else ""))
+        for rel in ep["reels"]:
+            print(f"  ⚠️ {rel} est réel dans le dossier de données, là où le programme se relie — jamais touché")
+        if ep["a_poser"] and not o.construire:
+            print("  `brain vue --construire` pour les poser")
     noyau, _, _ = racines(brain)
     if not noyau.is_dir():
         print("brain vue : pas de noyau/agents/ — ce brain n'a pas de vue à construire.")
@@ -472,7 +616,10 @@ def main() -> int:
         print("noyau/ modifiable — `brain vue --construire` le rendra à sa posture")
         return 0
     e = construire(brain) if o.construire else etat(brain)
-    pages = construire_pages(brain) if o.construire else etat_pages(brain)
+    # Le lien des pages d'instance vit DANS `skills/brain/` : chez un programme installé à
+    # part, ce serait écrire dans le programme. Pas de pages d'instance là.
+    pages = ("a_part" if programme_a_part(brain)
+             else construire_pages(brain) if o.construire else etat_pages(brain))
     verbe = "posés" if o.construire else "à poser"
     print(f"\nBRAIN VUE — {e['justes']} juste(s)")
     if pages == "a_poser":

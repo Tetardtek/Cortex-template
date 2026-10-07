@@ -17,7 +17,7 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 3.4.3, kerneluser, postures)
+- `brain-compose.yml` — la configuration du programme (version 3.5.0, kerneluser, postures)
 - `noyau/agents/` — les 58 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
@@ -38,6 +38,18 @@ partagées, `profil/specs/`.
 - `brain-engine/.env.local` — le backend de la base, les ports, les jetons
 - `brain-dolt/` — la base
 - `brain-secrets/MYSECRETS` — tes secrets de projets
+
+**Le programme installé à part — en préparation.** Aujourd'hui le noyau et ta
+mémoire vivent dans le même dossier. Le programme sait déjà servir un brain situé
+ailleurs : marqué `.cortex-programme` à sa racine, il ne se prend jamais pour un
+brain, et `brain init <nom> <dossier>` crée le tien à part. Ce dossier ne contient
+alors aucun fichier du programme : `KERNEL.md`, `noyau/`, `scripts/`,
+`brain-engine/`… y sont des **liens** vers lui (la vue, étendue), et ce qui est à
+toi (`focus.md`, les `_template.md`, les dossiers des satellites) s'y copie une
+fois. La commande retrouve ton brain par `BRAIN_ROOT`, sinon depuis son dossier
+(en remontant jusqu'à `brain-compose.local.yml`), sinon par celui que `brain init`
+a déclaré (`~/.config/cortex-brain/brain`). Sans la marque — ton fork, cloné par
+git —, rien de tout cela ne joue.
 
 ---
 

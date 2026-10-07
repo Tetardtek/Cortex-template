@@ -142,7 +142,7 @@ peut-être les tiennes. Exporte-les, vide la table, puis relance.
 
 **6. Lire les notes de version** : elles disent ce qui se fait à la main, par
 exemple une ligne à corriger dans ton `~/.claude/CLAUDE.md`, qui n'est pas dans
-le dépôt. Relancer `brain-setup.sh` pour une étape ne touche pas à ton
+le dépôt. Relancer `brain init` pour une étape ne touche pas à ton
 `~/.claude/CLAUDE.md` : s'il diffère du modèle, le modèle est posé à côté
 (`CLAUDE.md.modele`), à comparer et fusionner à la main.
 
