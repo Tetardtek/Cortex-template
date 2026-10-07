@@ -1,0 +1,143 @@
+#!/bin/bash
+# brain-distribuable: oui
+# pre-commit-posture — Hook git refusant les commits kernel:/feat:/fix: sur paths kernel
+# en posture replica-nomad sauf BRAIN_KERNEL_OVERRIDE=1 (BRAIN-069)
+# — et, chez un fork qui déclare `noyau: lecture`, les commits qui touchent `noyau/`
+# (son `instance/` passe : c'est là que vont ses retouches)
+#
+# Installation : `scripts/install-brain-hooks.sh` pose le lanceur de `pre-commit`, qui
+# appelle ce garde en premier. Il part avec le gabarit : chez un fork `noyau: lecture`,
+# c'est lui qui refuse le commit — le verrou de fichiers (`chmod -w`) se lève d'une
+# commande.
+#
+# Returns 0 (commit autorisé) / 1 (commit refusé)
+
+set -uo pipefail
+
+# La posture est celle de l'INSTANCE — le dépôt principal, où vit
+# brain-compose.local.yml (gitignoré). Dans un worktree, la racine du commit ne
+# l'a pas : posture-gate-check rendait « master » et le garde laissait tout
+# passer. `BRAIN_MAIN` est posé par `_racines.sh`.
+BRAIN_ROOT="${BRAIN_MAIN:-$(git rev-parse --show-toplevel)}"
+
+# --- Posture courante ---
+POSTURE=$(bash "$BRAIN_ROOT/scripts/posture-gate-check.sh" --posture 2>/dev/null || echo "master")
+
+# La clé `noyau:` de l'instance — pas une posture : seul `noyau/` est figé.
+NOYAU=$(bash "$BRAIN_ROOT/scripts/posture-gate-check.sh" --noyau 2>/dev/null || true)
+
+# Master ou posture inconnue (fail open), sans `noyau: lecture` → laisser passer
+if [ "$POSTURE" != "replica-nomad" ] && [ "$NOYAU" != "lecture" ]; then
+  exit 0
+fi
+
+# --- Override exception ---
+if [ "${BRAIN_KERNEL_OVERRIDE:-0}" = "1" ]; then
+  echo "⚠️ pre-commit-posture : BRAIN_KERNEL_OVERRIDE=1 actif — commit kernel autorisé exceptionnellement (BRAIN-069)" >&2
+  exit 0
+fi
+
+# --- Un fork qui lit son noyau : `noyau/` seul est refusé ---
+if [ "$POSTURE" != "replica-nomad" ]; then
+  NOYAU_FILES=$(git diff --cached --name-only | grep -E '^noyau/' || true)
+  [ -z "$NOYAU_FILES" ] && exit 0
+  # Une version reçue à la main (`git merge <version>`, quand `brain maj` laisse un conflit) :
+  # le commit qui clôt la fusion porte tout le noyau reçu. Un fichier identique à celui de
+  # `MERGE_HEAD` est reçu, pas retouché — il passe ; un fichier qui en diffère reste refusé.
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    RETOUCHES=""
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      ici=$(git rev-parse -q --verify ":$f" 2>/dev/null || echo absent)
+      recu=$(git rev-parse -q --verify "MERGE_HEAD:$f" 2>/dev/null || echo absent)
+      [ "$ici" = "$recu" ] || RETOUCHES="$RETOUCHES$f"$'\n'
+    done <<< "$NOYAU_FILES"
+    NOYAU_FILES=$(printf '%s' "$RETOUCHES" | sed '/^$/d')
+    [ -z "$NOYAU_FILES" ] && exit 0
+  fi
+  cat >&2 <<EOF
+
+🚦 pre-commit-posture — COMMIT REFUSÉ
+
+Ce brain lit son noyau (noyau: lecture, brain-compose.local.yml) :
+noyau/ se reçoit par brain maj, il ne se commite pas ici.
+
+Fichiers du noyau staged :
+$(echo "$NOYAU_FILES" | sed 's/^/  • /')
+
+Options :
+  1. Ta retouche va dans instance/ : instance/agents/<agent>.md (surcharge)
+     ou instance/agents/<agent>.complement.md (complément)
+     → git reset HEAD <fichiers>
+  2. Exception assumée :
+     → BRAIN_KERNEL_OVERRIDE=1 git commit ...
+  3. Garder le noyau modifiable : noyau: ouvert dans brain-compose.local.yml
+
+EOF
+  exit 1
+fi
+
+# --- Détecter les paths kernel staged ---
+# Les fichiers kernel : la MÊME règle que le garde de zone — `NIVEAUX.yml` lu par
+# `declarations()`, tranché par le `Registre` du CORE. Une liste écrite ici en était
+# une troisième copie, et elle ignorait `noyau/` : en posture replica-nomad, un agent
+# du noyau se commitait sans un mot (vu le 3/10).
+source "$BRAIN_ROOT/scripts/lib/python.sh" 2>/dev/null || true
+KERNEL_FILES=$(git diff --cached --name-only | python3 -c '
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+racine = Path(sys.argv[1])
+zone = SourceFileLoader("garde_de_zone", str(racine / "scripts/hooks/pre-commit-zone")).load_module()
+sys.path.insert(0, str(racine / "brain-engine"))
+from core.zones import KERNEL, Registre
+niveaux, exceptions = zone.declarations()
+if not niveaux:
+    raise SystemExit(3)
+r = Registre(niveaux=niveaux, exceptions=exceptions)
+for chemin in sys.stdin.read().split():
+    if r.zone(chemin) == KERNEL:
+        print(chemin)
+' "$BRAIN_ROOT" 2>/dev/null)
+if [ $? -ne 0 ]; then
+  # Sans le CORE ou sans `NIVEAUX.yml` : une liste de secours. Elle recopie chaque
+  # entrée kernel ou invariant de `NIVEAUX.yml` (plus `CLAUDE.md.example`), en
+  # préfixe ; `wiki` sans barre finale, pour refuser aussi son gitlink. Une entrée
+  # kernel ajoutée à `NIVEAUX.yml` s'ajoute ici : `TestLeRepliDuHookDePostureSuitNiveaux`
+  # (test_brain_engine.py) joue le hook en repli et rougit sinon.
+  echo "⚠️ pre-commit-posture : NIVEAUX.yml ou le CORE illisible — liste de secours des chemins kernel" >&2
+  KERNEL_PATHS_REGEX='^(agents/|noyau/|profil/|scripts/|KERNEL\.md|brain-compose\.yml|CLAUDE\.md\.example|NIVEAUX\.yml|BRAIN-INDEX\.md|PATHS\.md|brain-constitution\.md|brain-compose\.local\.yml\.example|contexts/|docs/|gabarit/|kernel\.lock|LICENSE|MYSECRETS\.example|README\.md|skills/|toolkit/|vie/|wiki)'
+  KERNEL_FILES=$(git diff --cached --name-only | grep -E "$KERNEL_PATHS_REGEX" || true)
+fi
+
+if [ -z "$KERNEL_FILES" ]; then
+  # Aucun path kernel touché → commit autorisé (projet/instance/satellite OK)
+  exit 0
+fi
+
+# --- Lire le message de commit en cours (si dispo) ---
+# Note : pre-commit hook n'a pas accès au message via env standard.
+# On vérifie le path uniquement — un commit replica-nomad sur path kernel = refus
+# (la nature du commit type kernel:/feat:/fix: sera implicite vu les paths)
+
+cat >&2 <<EOF
+
+🚦 pre-commit-posture — COMMIT REFUSÉ (BRAIN-069)
+
+Posture courante : replica-nomad
+Cette instance ne fait pas de brain build par défaut.
+
+Fichiers kernel staged détectés :
+$(echo "$KERNEL_FILES" | sed 's/^/  • /')
+
+Options :
+  1. Annuler le commit, faire la modif depuis la machine master (celle qui forge le noyau)
+     → git reset HEAD <fichiers>
+  2. Override exception (déplacement long + truc cassé) :
+     → BRAIN_KERNEL_OVERRIDE=1 git commit ...
+     → Penser à chmod +w sur les fichiers d'abord (verrou 1)
+     → Sync vers master dès que possible
+
+EOF
+
+exit 1

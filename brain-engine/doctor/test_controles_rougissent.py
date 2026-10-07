@@ -133,6 +133,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
 import shutil
 import subprocess
 import sys
@@ -2391,6 +2392,36 @@ def cmd_close_stale():
             subprocess.run([sys.executable, str(g / "scripts" / "garde-lecture.py"), "brancher",
                             "--brain", str(g)], capture_output=True)
             garantie("garde de lecture / branché", joue("garde_de_lecture.py", g), 0)
+            # La version éprouvée : un avertissement, jamais un rouge — la sortie
+            # reste 0, c'est la phrase qui se garantit (0 : dite comme attendu, 1 : non).
+            essai_src = VRAI_BRAIN / "scripts" / "essai-garde-lecture.sh"
+            if essai_src.is_file():
+                shutil.copy(essai_src, g / "scripts" / "essai-garde-lecture.sh")
+                faux = g / "faux-claude"
+                note = g / "note.json"
+
+                def version(installee: str, eprouvee: str | None, attendu: str,
+                            absent: str = "⚠️") -> int:
+                    faux.write_text(f"#!/bin/sh\necho '{installee} (Claude Code)'\n", encoding="utf-8")
+                    faux.chmod(0o755)
+                    note.unlink(missing_ok=True)
+                    if eprouvee:
+                        note.write_text(json.dumps({"claude_code": eprouvee}), encoding="utf-8")
+                    r = subprocess.run([sys.executable, str(OUTILS / "garde_de_lecture.py"),
+                                        "--brain", str(g), "--claude", str(faux), "--note", str(note)],
+                                       capture_output=True, text=True)
+                    dit = attendu in r.stdout and (absent not in r.stdout if absent else True)
+                    return r.returncode if r.returncode else (0 if dit else 1)
+
+                garantie("garde / jamais éprouvé : le dit",
+                         version("2.1.300", None, "jamais éprouvé", absent=""), 0)
+                garantie("garde / plus récent : rejouer",
+                         version("2.1.300", "2.1.292", "rejouer l'essai", absent=""), 0)
+                garantie("garde / même version : rien à rejouer",
+                         version("2.1.292", "2.1.292", "éprouvé sur Claude Code 2.1.292"), 0)
+            else:
+                print("  ⏭  garde de lecture / scripts/essai-garde-lecture.sh absent du vrai brain — "
+                      "la version éprouvée n'est pas éprouvée")
     else:
         print("  ⏭  garde de lecture / scripts/garde-lecture.py (avec brancher) absent du vrai brain — rien à éprouver")
 

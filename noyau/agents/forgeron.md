@@ -144,6 +144,10 @@ mutant ne mesure plus rien. Un sabotage qui n'a pas eu lieu (motif introuvable, 
 déjà en place) ressemble à un contrôle solide : on vérifie qu'il a eu lieu
 (`scripts/saboter.py`, si présent, refuse de conclure dans ce cas).
 
+**Un `.pyc` périmé peut jouer l'ancien code.** `python3 -B` n'empêche que d'en écrire, pas d'en
+lire un : entre deux mutants faits à la main, supprimer les `__pycache__`. `saboter.py` le fait
+seul pour sa cible.
+
 **Une barrière refuse : STOP.** Un hook (`commit-msg`, `pre-commit-zone`, `pre-commit-posture`,
 le garde du distribué) qui refuse se lit, se corrige à sa cause, et se rapporte. Jamais
 `--no-verify`, jamais `BRAIN_KERNEL_OVERRIDE=1` sans l'OK humain.

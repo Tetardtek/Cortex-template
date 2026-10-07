@@ -6503,6 +6503,178 @@ class TestForgeMergeAvanceRapide(unittest.TestCase):
         self.assertIs(params['path'].default, inspect.Parameter.empty)
 
 
+class TestForgeRelease(unittest.TestCase):
+    """`release <tag> "<titre>" <notes.md>` publie une release, sans `call()` à la
+    main.
+
+    Elle paraît sous le nom de l'humain : refusée en autonomie. Elle ne crée jamais
+    de tag (aucun `target_commitish`, et refusée si le tag n'existe pas). Création
+    seulement : une release déjà là pour ce tag n'est pas touchée. Le corps publié
+    est relu et comparé au fichier : sortie 1 s'ils diffèrent.
+    Joué contre une FAUSSE forge à état : `conf` lève, `call` est remplacé —
+    ni réseau, ni jeton."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+    NOTES = "## Le titre\n\nUne note — avec des accents, et `du code`.\n"
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_release', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+
+        def conf_interdite():
+            raise AssertionError('conf() réelle appelée — le test atteindrait MYSECRETS')
+        self.bf.conf = conf_interdite
+        self.bf.SECRETS = Path(tempfile.gettempdir()) / 'forge-release-absent' / 'MYSECRETS'
+        self.bf.AUTONOME = False
+        self.d = Path(tempfile.mkdtemp(prefix='forge-release-'))
+        self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
+        self.notes = self.d / 'notes.md'
+        self.notes.write_text(self.NOTES, encoding='utf-8')
+        self.appels = []
+        self.tags = {'v1.2.3'}
+        self.releases = {}          # tag → release
+        self.alterer = None         # ce que la forge fait du corps qu'elle reçoit
+
+    def _forge(self):
+        import urllib.parse
+        depot = '/repos/Owner/depot'
+
+        def call(method, path, payload=None):
+            self.appels.append((method, path, payload))
+            if method == 'GET' and path.startswith(depot + '/tags/'):
+                tag = urllib.parse.unquote(path[len(depot + '/tags/'):])
+                return (200, {'name': tag}) if tag in self.tags else (404, {'message': 'not found'})
+            if method == 'GET' and path.startswith(depot + '/releases/tags/'):
+                tag = urllib.parse.unquote(path[len(depot + '/releases/tags/'):])
+                r = self.releases.get(tag)
+                return (200, r) if r else (404, {'message': 'not found'})
+            if method == 'GET' and path.startswith(depot + '/releases/'):
+                rid = int(path.rsplit('/', 1)[1])
+                r = next((r for r in self.releases.values() if r['id'] == rid), None)
+                return (200, r) if r else (404, {'message': 'not found'})
+            if method == 'POST' and path == depot + '/releases':
+                corps = payload['body'] if self.alterer is None else self.alterer(payload['body'])
+                r = {'id': 41 + len(self.releases), 'tag_name': payload['tag_name'],
+                     'name': payload['name'], 'body': corps, 'draft': False,
+                     'html_url': 'https://forge/Owner/depot/releases/tag/' + payload['tag_name']}
+                self.releases[payload['tag_name']] = r
+                return 201, r
+            return 500, {'message': f'route inattendue {method} {path}'}
+        self.bf.call = call
+
+    def _release(self, tag='v1.2.3', titre='v1.2.3 — un titre'):
+        self._forge()
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = self.bf.cmd_release('Owner/depot', tag, titre, str(self.notes))
+        return code, sortie.getvalue()
+
+    def _posts(self):
+        return [p for m, _, p in self.appels if m == 'POST']
+
+    def test_elle_publie_et_relit_le_corps(self):
+        code, sortie = self._release()
+        self.assertEqual(code, 0, sortie)
+        self.assertEqual(self._posts(), [{'tag_name': 'v1.2.3', 'name': 'v1.2.3 — un titre',
+                                          'body': self.NOTES}])
+        relus = [p for m, p, _ in self.appels if m == 'GET' and p.endswith('/releases/41')]
+        self.assertTrue(relus, 'la release créée n’a pas été relue')
+        self.assertIn('corps identique', sortie)
+
+    def test_jamais_de_target_commitish(self):
+        self._release()
+        for p in self._posts():
+            self.assertNotIn('target_commitish', p, 'un target_commitish crée un tag')
+
+    def test_refusee_en_autonomie_sans_un_appel(self):
+        self.bf.AUTONOME = True
+        code, sortie = self._release()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.appels, [], 'aucun appel à la forge en autonomie')
+        self.assertIn('autonom', sortie)
+
+    def test_refusee_par_la_ligne_de_commande_en_autonome(self):
+        self._forge()
+        argv = sys.argv
+        sys.argv = ['brain-forge.py', '--autonome', '--repo', 'Owner/depot', 'release',
+                    'v1.2.3', 'titre', str(self.notes)]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as e:
+                self.bf.main()
+        finally:
+            sys.argv = argv
+        self.assertEqual(e.exception.code, 1)
+        self.assertEqual(self._posts(), [])
+
+    def test_refusee_si_le_tag_n_existe_pas(self):
+        code, sortie = self._release(tag='v9.9.9')
+        self.assertEqual(code, 1)
+        self.assertEqual(self._posts(), [], 'aucune release ne doit partir')
+        self.assertIn("le tag `v9.9.9` n'existe pas", sortie)
+        self.assertIn('jamais ici', sortie)
+
+    def test_refusee_si_le_tag_est_illisible(self):
+        self._forge()
+        dorigine = self.bf.call
+        def call(method, path, payload=None):
+            if method == 'GET' and '/tags/' in path and '/releases/' not in path:
+                self.appels.append((method, path, payload))
+                return 500, {'message': 'panne'}
+            return dorigine(method, path, payload)
+        self.bf.call = call
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = self.bf.cmd_release('Owner/depot', 'v1.2.3', 't', str(self.notes))
+        self.assertEqual(code, 1)
+        self.assertEqual(self._posts(), [])
+
+    def test_une_release_deja_la_n_est_pas_touchee(self):
+        self.releases['v1.2.3'] = {'id': 7, 'tag_name': 'v1.2.3', 'name': 'ancienne',
+                                   'body': 'ancien corps', 'draft': False}
+        code, sortie = self._release()
+        self.assertEqual(code, 1)
+        self.assertEqual(self._posts(), [], 'création seulement')
+        self.assertEqual(self.releases['v1.2.3']['body'], 'ancien corps')
+        self.assertIn('existe déjà', sortie)
+
+    def test_refusee_si_l_existence_d_une_release_est_illisible(self):
+        self._forge()
+        dorigine = self.bf.call
+        def call(method, path, payload=None):
+            if method == 'GET' and '/releases/tags/' in path:
+                self.appels.append((method, path, payload))
+                return 500, {'message': 'panne'}
+            return dorigine(method, path, payload)
+        self.bf.call = call
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = self.bf.cmd_release('Owner/depot', 'v1.2.3', 't', str(self.notes))
+        self.assertEqual(code, 1)
+        self.assertEqual(self._posts(), [], 'dans le doute, aucune création')
+
+    def test_un_corps_altere_par_la_forge_sort_1(self):
+        self.alterer = lambda corps: corps.replace('—', '-')
+        code, sortie = self._release()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('diffère', sortie)
+
+    def test_le_slash_d_un_tag_reste_en_clair_dans_le_chemin(self):
+        """Mesuré sur la forge le 7/10 (Gitea 1.27) : `GET …/tags/programme/v3.4.2` → 200,
+        `…/tags/programme%2Fv3.4.2` → 404. Encodé, un tag `programme/vX.Y.Z` existant se
+        disait « n'existe pas »."""
+        self.tags.add('programme/v1.2.3')
+        code, sortie = self._release(tag='programme/v1.2.3')
+        self.assertEqual(code, 0, sortie)
+        chemins = [p for m, p, _ in self.appels if m == 'GET' and '/tags/' in p]
+        self.assertTrue(chemins and all(p.endswith('/programme/v1.2.3') for p in chemins), chemins)
+
+    def test_l_aide_la_dit(self):
+        doc = self.bf.__doc__
+        self.assertIn('release <tag> "<titre>" <notes.md>', doc)
+
+
 class TestHookMarqueursDeConflit(unittest.TestCase):
     """Le pre-commit refuse un marqueur de conflit git ajouté par le commit.
 
@@ -6841,6 +7013,9 @@ class TestSuffixeDeMachine(unittest.TestCase):
         # cwd hérité ne prête plus le vrai racines.py.
         for f in ('db.py', 'racines.py'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
+        # Chez un fork, le CORE n'est que dans `brain-engine/core/` : ce garde y joue
+        # depuis que `posture-gate-check.sh` part au gabarit.
+        avec_le_core(self.brain / 'brain-engine')
         (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
         subprocess.run(['git', 'init', '-q'], cwd=self.brain, check=True)
 
@@ -7541,8 +7716,9 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
              'scripts/posture-gate-check.sh')
 
     def setUp(self):
-        # Les gardes de posture ne partent pas au gabarit : chez un fork, rien à
-        # jouer — s'abstenir, pas échouer sur un fichier absent.
+        # Le garde de zone ne part pas au gabarit — le hook de posture et sa lecture, si
+        # : chez un fork, rien à jouer ici — s'abstenir, pas échouer sur un
+        # fichier absent.
         absents = [r for r in self.HOOKS if not (BRAIN_ROOT_PATH / r).is_file()]
         if absents:
             self.skipTest(f'garde de posture absente de ce brain ({absents[0]})')
@@ -7604,6 +7780,49 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
         self.assertEqual(self._jouer('master', 'instance/agents/x.md', noyau='lecture'), 0)
         self.assertEqual(self._jouer('master', 'scripts/un-outil.sh', noyau='lecture'), 0,
                          'seul noyau/ est verrouillé')
+
+    def _fusion(self, retouche: bool) -> int:
+        """Un fork `noyau: lecture` qui reçoit une version À LA MAIN (`git merge <version>`,
+        la doc le dit quand `brain maj` laisse un conflit) : le conflit est résolu, puis
+        `git commit` passe par le hook — avec tout le `noyau/` reçu dans l'index."""
+        with tempfile.TemporaryDirectory(prefix='brain-posture-fusion-') as tmp:
+            b = Path(tmp)
+            for rel in ('scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
+                        'scripts/lib/python.sh', 'scripts/posture-gate-check.sh', 'NIVEAUX.yml'):
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+            (b / 'brain-engine').mkdir()
+            (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+            (b / 'brain-compose.local.yml').write_text(
+                'instances:\n  ici:\n    active: true\n    posture: master\n    noyau: lecture\n')
+            g = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                                          cwd=b, capture_output=True, text=True)
+            ecrire = lambda rel, texte: ((b / rel).parent.mkdir(parents=True, exist_ok=True),
+                                         (b / rel).write_text(texte))
+            g('init', '-q', '-b', 'main')
+            ecrire('noyau/agents/x.md', 'v1\n'); ecrire('focus.md', 'base\n')
+            g('add', '-A'); g('commit', '-q', '-m', 'v1')
+            g('checkout', '-q', '-b', 'amont')
+            ecrire('noyau/agents/x.md', 'v2\n'); ecrire('focus.md', 'amont\n')
+            g('commit', '-q', '-am', 'v2')
+            g('checkout', '-q', 'main')
+            ecrire('focus.md', 'le mien\n'); g('commit', '-q', '-am', 'le mien')
+            r = g('merge', 'amont')
+            self.assertNotEqual(r.returncode, 0, 'le témoin : la fusion devait faire un conflit')
+            ecrire('focus.md', 'le mien et l amont\n'); g('add', 'focus.md')
+            if retouche:
+                ecrire('noyau/agents/x.md', 'v2, retouché\n'); g('add', 'noyau/agents/x.md')
+            env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_MAIN', 'BRAIN_KERNEL_OVERRIDE')}
+            return subprocess.run(['bash', str(b / 'scripts/hooks/pre-commit-posture')], cwd=b,
+                                  capture_output=True, text=True, env=env, timeout=120).returncode
+
+    def test_une_version_recue_a_la_main_passe(self):
+        """Le noyau reçu tel quel (identique à `MERGE_HEAD`) : la fusion se commite."""
+        self.assertEqual(self._fusion(retouche=False), 0)
+
+    def test_une_fusion_ne_couvre_pas_une_retouche_du_noyau(self):
+        """Pendant la fusion, un fichier du noyau qui diffère de la version reçue reste refusé."""
+        self.assertEqual(self._fusion(retouche=True), 1)
 
     def test_l_override_leve_le_refus_du_noyau(self):
         self.assertEqual(self._jouer('master', 'noyau/agents/x.md', noyau='lecture', override=True), 0)
@@ -7747,12 +7966,12 @@ class TestSaboter(unittest.TestCase):
         (self.tmp / 'verif.py').write_text(
             "import jouet, sys\nsys.exit(0 if 'b' in jouet.ROLES else 1)\n", encoding='utf-8')
 
-    def _saboter(self, motif: str, par: str, *commande: str):
+    def _saboter(self, motif: str, par: str, *commande: str, env=None):
         commande = commande or (sys.executable, 'verif.py')
         return subprocess.run(
             [sys.executable, str(self.outil), '--motif', motif, '--par', par,
              str(self.cible), '--', *commande],
-            capture_output=True, text=True, cwd=self.tmp, timeout=60)
+            capture_output=True, text=True, cwd=self.tmp, timeout=60, env=env)
 
     def _rendu_intact(self, r):
         self.assertEqual(self.cible.read_text(encoding='utf-8'), self.ORIGINAL, r.stdout + r.stderr)
@@ -7840,6 +8059,61 @@ class TestSaboter(unittest.TestCase):
                 for instr in essai.finalbody:
                     fouiller(ast.Module(body=[instr], type_ignores=[]), False)
         self.assertEqual(trouves, [], 'sortie de flot dans un finally')
+
+    # ── Le `.pyc` d'à côté ──────────────────────────────────────────
+    # Python valide un `.pyc` par la taille et la SECONDE de modification de sa source.
+    # Un sabotage de même taille écrit dans la même seconde que le `.pyc` : l'ancien code
+    # tourne, le mutant paraît survivre. Et après la restauration (`copy2` rend le mtime
+    # d'origine), le `.pyc` du mutant, s'il en a laissé un de même seconde, sert le mutant
+    # à la place du code sain. « La même seconde » se fixe ici par `os.utime` : la
+    # commande remet au fichier saboté le mtime de l'original, à la seconde près.
+
+    MEME_SECONDE = ("import os, sys\n"
+                    "t = float(sys.argv[1])\n"
+                    "os.utime('jouet.py', (t, t))\n"
+                    "import jouet\n"
+                    "sys.exit(0 if 'b' in jouet.ROLES else 1)\n")
+
+    def _env_qui_ecrit_les_pyc(self):
+        env = dict(os.environ)
+        env.pop('PYTHONDONTWRITEBYTECODE', None)
+        env.pop('PYTHONPYCACHEPREFIX', None)
+        return env
+
+    def _importer_jouet(self, env):
+        return subprocess.run([sys.executable, '-c', "import jouet, sys; "
+                               "sys.exit(0 if 'b' in jouet.ROLES else 1)"],
+                              capture_output=True, text=True, cwd=self.tmp, env=env, timeout=60)
+
+    def test_un_pyc_de_meme_seconde_ne_masque_pas_le_mutant(self):
+        """Le `.pyc` de l'original, de même taille et même seconde, ne doit pas servir
+        l'ancien code au mutant : sans l'effacer, la commande reste verte."""
+        env = self._env_qui_ecrit_les_pyc()
+        (self.tmp / 'verif_seconde.py').write_text(self.MEME_SECONDE, encoding='utf-8')
+        self.assertEqual(self._importer_jouet(env).returncode, 0)       # pose le .pyc de l'original
+        self.assertTrue(list((self.tmp / '__pycache__').glob('jouet.*.pyc')), 'pas de .pyc posé')
+        t = str(self.cible.stat().st_mtime)
+        r = self._saboter("'b'", "'x'", sys.executable, 'verif_seconde.py', t, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('a rougi', r.stdout)
+        self._rendu_intact(r)
+
+    def test_le_pyc_du_mutant_ne_survit_pas_a_la_restauration(self):
+        """Le mutant compilé dans la même seconde laisse un `.pyc` valide pour l'original
+        restauré : l'import suivant servirait le mutant à la place du code sain."""
+        env = self._env_qui_ecrit_les_pyc()
+        (self.tmp / 'verif_seconde.py').write_text(self.MEME_SECONDE, encoding='utf-8')
+        # Celui d'un autre interpréteur : la commande n'est pas forcément lancée par ce Python.
+        (self.tmp / '__pycache__').mkdir()
+        (self.tmp / '__pycache__' / 'jouet.cpython-299.pyc').write_bytes(b'autre')
+        t = str(self.cible.stat().st_mtime)
+        r = self._saboter("'b'", "'x'", sys.executable, 'verif_seconde.py', t, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self._rendu_intact(r)
+        self.assertEqual(sorted(p.name for p in (self.tmp / '__pycache__').glob('jouet.*.pyc')), [],
+                         'un .pyc de la cible survit à la restauration')
+        apres = self._importer_jouet(env)
+        self.assertEqual(apres.returncode, 0, "l'import après restauration a servi le mutant")
 
 
 class TestIsolationVoitLaVue(unittest.TestCase):
@@ -10791,6 +11065,135 @@ class TestGardeLecture(unittest.TestCase):
                            input='pas du json', capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0)
         self.assertIn('lecture non jugée', r.stdout)
+
+
+class TestEssaiGardeLecture(unittest.TestCase):
+    """L'essai de bout en bout du garde de lecture juge ce que Claude Code a passé aux hooks.
+
+    Le vrai essai appelle un modèle. Ici, un faux `claude` dans le PATH joue le rôle de
+    Claude Code : il lit `.claude/settings.json` du projet jetable, passe chaque appel
+    d'outil aux hooks déclarés — le vrai garde et le journal de l'essai — et respecte
+    leur refus. Seul ce qu'il simule change : `agent_type` porté ou non, la délégation
+    faite ou non. Aucun appel de modèle."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'essai-garde-lecture.sh'
+    GARDE = BRAIN_ROOT_PATH / 'scripts' / 'garde-lecture.py'
+    FAUX = r"""#!/usr/bin/env python3
+import json, os, subprocess, sys
+if '--version' in sys.argv:
+    print('9.8.7 (Claude Code)'); sys.exit(0)
+mode = os.environ.get('FAUX_MODE', 'normal')
+projet = os.getcwd()
+canari = os.path.join(projet, 'vie', 'canari.md')
+reglages = json.load(open(os.path.join(projet, '.claude', 'settings.json')))
+def appel(outil, entree, sous_agent):
+    e = {'tool_name': outil, 'tool_input': entree, 'cwd': projet, 'hook_event_name': 'PreToolUse'}
+    if sous_agent:
+        e['agent_type'] = 'lecteur'
+    refuse = False
+    for bloc in reglages['hooks']['PreToolUse']:
+        for h in bloc['hooks']:
+            r = subprocess.run(h['command'], shell=True, input=json.dumps(e), capture_output=True,
+                               text=True, env={**os.environ, 'CLAUDE_PROJECT_DIR': projet})
+            if '"deny"' in r.stdout:
+                refuse = True
+    if mode == 'refus_ignore_relais_omis' and sous_agent:
+        refuse = False          # une version qui n'honore plus le refus
+    if not refuse and mode != 'sans_post':   # l'outil a tourné : PostToolUse
+        e['hook_event_name'] = 'PostToolUse'
+        for bloc in reglages['hooks'].get('PostToolUse', []):
+            for h in bloc['hooks']:
+                subprocess.run(h['command'], shell=True, input=json.dumps(e), capture_output=True,
+                               text=True, env={**os.environ, 'CLAUDE_PROJECT_DIR': projet})
+    return refuse
+def lire(sous_agent):
+    if appel('Read', {'file_path': canari}, sous_agent):
+        return 'refusé par un hook'
+    return open(canari).read()
+if '--agents' not in sys.argv:
+    print(lire(mode == 'session_marquee'))
+elif mode == 'pas_delegue':
+    print(lire(False))
+elif mode == 'delegue_sans_lire':
+    appel('Agent', {'subagent_type': 'lecteur'}, False)
+    print('le lecteur n a rien lu')
+elif mode == 'refus_ignore_relais_omis':
+    appel('Agent', {'subagent_type': 'lecteur'}, False)
+    lire(True)
+    print('le lecteur a fini')   # la session ne recopie pas ce qu'il a lu
+else:
+    appel('Agent', {'subagent_type': 'lecteur'}, False)
+    print(lire(mode != 'sans_agent_type'))
+"""
+
+    def _jouer(self, mode: str):
+        script = script_d_instance(self.SCRIPT)
+        with tempfile.TemporaryDirectory(prefix='essai-garde-') as tmp:
+            b = Path(tmp) / 'Brain'
+            (b / 'scripts').mkdir(parents=True)
+            shutil.copy(script, b / 'scripts' / script.name)
+            shutil.copy(self.GARDE, b / 'scripts' / 'garde-lecture.py')
+            binaires = Path(tmp) / 'bin'
+            binaires.mkdir()
+            (binaires / 'claude').write_text(self.FAUX, encoding='utf-8')
+            (binaires / 'claude').chmod(0o755)
+            etat = Path(tmp) / 'etat'
+            env = {**os.environ, 'PATH': f'{binaires}:{os.environ["PATH"]}', 'FAUX_MODE': mode,
+                   'XDG_STATE_HOME': str(etat), 'TMPDIR': tmp}
+            r = subprocess.run(['bash', str(b / 'scripts' / script.name)], capture_output=True,
+                               text=True, env=env, timeout=120)
+            note = etat / 'brain' / 'garde-lecture.json'
+            return r, (json.loads(note.read_text(encoding='utf-8')) if note.is_file() else None)
+
+    def test_le_garde_tient_et_la_version_est_notee(self):
+        r, note = self._jouer('normal')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('tient sur Claude Code 9.8.7', r.stdout)
+        self.assertEqual((note or {}).get('claude_code'), '9.8.7')
+
+    def test_sans_agent_type_le_sous_agent_passe_et_l_essai_rougit(self):
+        """Ce que l'essai existe pour voir : une version qui ne passe plus `agent_type`."""
+        r, note = self._jouer('sans_agent_type')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('ne voit plus les sous-agents', r.stdout)
+        self.assertIsNone(note, 'une version notée alors que le garde ne tient pas')
+
+    def test_la_session_marquee_rougit(self):
+        r, note = self._jouer('session_marquee')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('la session elle-même porte agent_type', r.stdout)
+        self.assertIsNone(note)
+
+    def test_sans_delegation_rien_n_est_conclu(self):
+        r, note = self._jouer('pas_delegue')
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn('non concluant', r.stdout)
+        self.assertIsNone(note)
+
+    def test_sans_post_tool_use_l_essai_ne_juge_pas(self):
+        """Une version qui ne passerait plus PostToolUse rendrait le juge du refus aveugle :
+        l'essai le voit sur la lecture de la session, et s'abstient (2)."""
+        r, note = self._jouer('sans_post')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("PostToolUse n'a pas vu", r.stdout)
+        self.assertIsNone(note)
+
+    def test_une_lecture_qui_a_tourne_rougit_meme_sans_relais(self):
+        """Le refus se mesure en PostToolUse, pas au silence de la réponse : le sous-agent a
+        lu (la lecture a tourné, agent_type présent), la session ne l'a pas recopié — ce
+        n'est pas un garde qui tient."""
+        r, note = self._jouer('refus_ignore_relais_omis')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('le garde ne refuse plus', r.stdout)
+        self.assertIsNone(note)
+
+    def test_un_sous_agent_qui_ne_lit_rien_ne_prouve_rien(self):
+        """Délégué, mais aucune lecture du canari : le canari n'est pas sorti, et pourtant
+        le garde n'a rien eu à refuser — pas un vert."""
+        r, note = self._jouer('delegue_sans_lire')
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn('aucune lecture du canari par un sous-agent', r.stdout)
+        self.assertIsNone(note)
 
 
 class TestGardeCommandes(unittest.TestCase):

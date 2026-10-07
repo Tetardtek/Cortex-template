@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.4.2"
-generated_at: "2026-10-07T14:42"
+kernel_version: "3.4.3"
+generated_at: "2026-10-07T16:15"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 9f9cce257978b1702e4149339f202cca36aa77904a988f6ae346414099b3d3cc
+  brain-compose.yml: 43f2cda24333102e3dc449d7368eaa9fe52f3b81577fa352245da1ef8da303fe
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -31,7 +31,7 @@ files:
   noyau/agents/database-architect.md: 8fa97c61d2f6bc73ab4d89d845a169fa8e25ebb53a86b3fc0b8ca97c6c8ba680
   noyau/agents/debug.md: 85b825b31611f15993357240351e488b5389c2ff6c5c223abc2079b542ba2c26
   noyau/agents/doc.md: 84b80287807869d520f3ed2f23929b561ac522b38ca4a36509af92fc12aae15a
-  noyau/agents/forgeron.md: 1a5427d65153175f1ec04eeaffb40f65f8188d4363c47f09cae808b742fd71e2
+  noyau/agents/forgeron.md: ef9fd5af59807e9ff2d8542bd57f62aac389adc00789ba5fb714b872f9327cfc
   noyau/agents/french-teacher.md: 2a3eb16440f9ad55723f5ba12b7e6c698b240232224e67a88cbcafd5d57a2ace
   noyau/agents/frontend-stack.md: 58b18a63978e1fe02c674395c9b76c600aae9d22085571a756859c03f924b61a
   noyau/agents/game-designer.md: a61ed5c0df341b159c08c6fb3ae42ea73fc084b88f73f2e9b26c68ce6a6cf588
@@ -101,8 +101,9 @@ files:
   scripts/maj-disponible.py: c772464d72a49fc5ee22e5b16d82c129ebd4eb650d5c94ff31fad57fe7b8e061
   scripts/maj.py: 2ed527ae99d15a2bf96757342fd42378d7f881c6b169f155169138bef02fd559
   scripts/ollama-setup.sh: 90e93f2dafac9e948b4350865308fa46148201ff00e65da596a68244aedc2b23
+  scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
   scripts/schema-retraits.sh: 3b8bbf8bf04975ca1e48c2b8cfaf9bcbc54c20b7e9fbb312ef689fed851968d8
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: b99f52706b128c29eed7b4320f67535f39e353bae9fdc05392ac4db8da8d4082
-  scripts/vue.py: c1a0401d7114752e7630e013b7010602fd447afae7fcf320fe24078c1a631abe
+  scripts/vue.py: 4e8a5a446cf2a9311c337c60a60d31aa1c802f57743dfe4c1d36ce2edac10544
   scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

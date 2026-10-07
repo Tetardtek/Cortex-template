@@ -537,8 +537,8 @@ def main() -> int:
 
 def dit_le_worktree(depot: Path) -> str:
     """Un worktree n'est pas verrouillé ; le garde de posture du dépôt principal garde le
-    commit. Il ne part pas au gabarit : un fork `noyau: lecture` ne l'a pas, et la
-    promesse d'un commit refusé y serait fausse — elle n'est faite que là où il est."""
+    commit. Il part avec le gabarit ; la promesse d'un commit refusé n'est faite
+    que là où il est — un brain qui l'aurait retiré ne l'entend pas."""
     if ecrit_le_kernel(depot):
         return "  noyau/ modifiable (un worktree ; la posture de l'instance écrit le kernel)"
     if (noyau_declare(depot) != "lecture"

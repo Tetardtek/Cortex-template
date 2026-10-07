@@ -17,7 +17,7 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 3.4.2, kerneluser, postures)
+- `brain-compose.yml` — la configuration du programme (version 3.4.3, kerneluser, postures)
 - `noyau/agents/` — les 58 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
@@ -96,8 +96,10 @@ vue vers la zone privée ou hors du brain n'est jamais indexé.
 **Un fork lit son noyau.** Le setup déclare `noyau: lecture` dans l'instance active
 de `brain-compose.local.yml` (à côté de `posture:`), et la vue pose alors `noyau/`
 en lecture seule : tes retouches vont dans `instance/`, une surcharge ou un
-complément. Le hook de posture, là où il est installé, refuse un commit qui touche
-`noyau/` (`BRAIN_KERNEL_OVERRIDE=1` pour l'exception) ; `instance/` passe. Ce n'est
+complément. Le hook de posture, posé avec les autres par `install-brain-hooks.sh`,
+refuse un commit qui touche `noyau/` (`BRAIN_KERNEL_OVERRIDE=1` pour l'exception) ;
+`instance/` passe. Le verrou de fichiers se lève d'une commande : c'est le hook qui
+refuse au moment du commit. Ce n'est
 pas une posture : ni le mode du moteur ni tes sessions ne changent, et seul
 `noyau/` est figé. `brain maj` lève le verrou le temps de la fusion, puis le
 repose. `noyau: ouvert` garde le noyau modifiable ; sans la clé, rien ne change

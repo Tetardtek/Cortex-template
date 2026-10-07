@@ -463,7 +463,7 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
                  "un hook écrit à la main, absent ailleurs, ou un garde qui ne voit pas la base",
                  [sys.executable, str(OUTILS / "hooks_installes.py"), "--brain", str(brain)]),
         Controle("garde de lecture",
-                 "un sous-agent qui lit le personnel sans que rien ne l'arrête",
+                 "un sous-agent qui lit le personnel sans que rien ne l'arrête — ou un Claude Code plus récent que la dernière épreuve du garde",
                  [sys.executable, str(OUTILS / "garde_de_lecture.py"), "--brain", str(brain)]),
         Controle("index du backlog",
                  "un index écrit à la main, qui ne dit plus ce que les fiches disent",

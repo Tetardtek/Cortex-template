@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.4.2.
+> travail. Kernel v3.4.3.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -156,6 +156,13 @@ pas terminée.
 ajoute son hook à ton `.claude/settings.json`, que le dépôt ne suit pas — aucun
 sous-agent de Claude Code ne lira ton personnel. Il n'ajoute que son entrée, et
 ne fait rien s'il y est déjà ; `python3 scripts/garde-lecture.py etat` le dit.
+
+**Après une mise à jour de Claude Code** : `bash scripts/essai-garde-lecture.sh`.
+Le garde reconnaît un sous-agent à un champ que Claude Code passe à ses hooks, et
+que sa doc ne promet pas : une version qui le retire, et le garde laisse tout
+passer. L'essai le vérifie de bout en bout, dans un projet jetable (deux appels
+de modèle, haiku), et note la version sur laquelle il a tenu ; `brain doctor`
+dit quand ton Claude Code est plus récent que cette version.
 
 ---
 
