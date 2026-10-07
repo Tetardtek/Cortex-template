@@ -133,7 +133,9 @@ calculée depuis les tableaux « Compétence | Niveau | Preuve » de ce dossier 
 progression (`resume` après le dossier : les seuls comptes) — une seule vérité, qui ne
 joue que sur le calibrage des réponses de l'agent. Pour le **remplacer**
 entièrement, copie-le dans `instance/agents/<nom>.md` : ta version l'emporte, mais
-les corrections du noyau ne lui arrivent plus — tu la tiens alignée. `agent-review` audite un agent existant : ce qu'il promet,
+les corrections du noyau ne lui arrivent plus — tu la tiens alignée. Une surcharge
+comme un complément restent à toi : le moteur ne les sert pas au jeton `public`, qui
+ne lit dans `agents/` que les agents du noyau livré. `agent-review` audite un agent existant : ce qu'il promet,
 ce qu'il fait, ce qui chevauche un autre.
 
 Certains agents renvoient à des agents que ce brain n'a pas : ceux de l'instance

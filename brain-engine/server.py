@@ -788,12 +788,34 @@ def state_get(request: Request = None):
 
 # Invariants : jamais écrits par l'API. CLAUDE.md exige une confirmation humaine
 # explicite pour ces fichiers — une requête HTTP ne peut pas la fournir.
+#
+# Ces listes ne servent qu'au REPLI de `_write_zone` (`NIVEAUX.yml` absent ou
+# illisible, `yaml` ou le CORE manquants). Elles recopient chaque entrée racine
+# que `NIVEAUX.yml` met en zone kernel ou invariant, jamais moins : un repli
+# plus permissif que la source laissait `noyau/`, `contexts/`, `docs/`… et
+# `NIVEAUX.yml` lui-même s'écrire sans claim. Une entrée kernel ajoutée à
+# `NIVEAUX.yml` se recopie ici, sinon `TestLeRepliDesZonesSuitNiveaux` rougit.
+# `instance/`, `workspace/`, `projets/` restent libres : la surcharge et la donnée.
 KERNEL_INVARIANT: frozenset[str] = frozenset({
     'KERNEL.md', 'CLAUDE.md', 'PATHS.md', 'brain-constitution.md', 'BRAIN-INDEX.md',
+    'NIVEAUX.yml',
 })
 
-KERNEL_ZONE_PREFIXES: tuple[str, ...] = ('agents/', 'profil/', 'scripts/')
-KERNEL_ZONE_FILES:    frozenset[str]  = frozenset({'brain-compose.yml'})
+KERNEL_ZONE_PREFIXES: tuple[str, ...] = (
+    'agents/', 'contexts/', 'docs/', 'gabarit/', 'noyau/', 'profil/', 'scripts/',
+    'skills/', 'toolkit/', 'vie/', 'wiki/',
+)
+# `ARCHITECTURE.md` et `LICENSE.md` : la vitrine que le gabarit publie à sa racine,
+# que le `NIVEAUX.yml` d'un fork déclare en programme. Cette source ne les déclare
+# pas : c'est la synchro du gabarit qui les ajoute au `NIVEAUX.yml` rendu. Ce qui
+# tient la copie alignée : `TestNiveauxDuGabarit`, qui rend le gabarit et joue ce
+# repli, celui du rendu, contre chaque entrée kernel ou invariant du `NIVEAUX.yml`
+# rendu. La copie reste en dur : un repli sert quand `NIVEAUX.yml` est illisible,
+# il ne peut pas dépendre d'un fichier.
+KERNEL_ZONE_FILES: frozenset[str] = frozenset({
+    'brain-compose.yml', 'brain-compose.local.yml.example', 'kernel.lock', 'LICENSE',
+    'MYSECRETS.example', 'README.md', 'ARCHITECTURE.md', 'LICENSE.md',
+})
 
 
 def _resolve_in_brain(path: str) -> Path:
@@ -894,7 +916,8 @@ def _write_zone(rel_path: str) -> str:
             zone = Registre(niveaux=niveaux, exceptions=exceptions).zone(rel_path)
             return 'kernel' if zone == KERNEL else 'libre'
 
-    # Repli — les listes en dur, conservées pour ça et pour rien d'autre.
+    # Repli — les listes en dur, conservées pour ça et pour rien d'autre. Elles
+    # couvrent tout ce que `NIVEAUX.yml` met en kernel ou invariant.
     if rel_path in KERNEL_INVARIANT:
         return 'invariant'
     if rel_path in KERNEL_ZONE_FILES or rel_path.startswith(KERNEL_ZONE_PREFIXES):
@@ -956,7 +979,7 @@ async def brain_get(
             raise HTTPException(status_code=403, detail='zone privée — owner seulement')
         # Hors zone privée, la lecture suit les zones du rôle, comme l'écriture
         # (tranché le 1/10) : `public` → `public`, `mcp` → tout sauf `kernel`.
-        if embed.resolve_scope(rel) not in scopes:
+        if embed.resolve_scope(rel, BRAIN_ROOT) not in scopes:
             raise HTTPException(status_code=403, detail='zone hors de la portée du jeton')
     if not safe.exists() or not safe.is_file():
         raise HTTPException(status_code=404, detail=f'{path} introuvable')
@@ -980,9 +1003,13 @@ async def brain_put(
     L'écriture passe par les gardes que le brain possédait déjà mais que cette
     route ne consultait pas :
 
-      invariant  KERNEL.md, CLAUDE.md, PATHS.md… → refus systématique
-      kernel     agents/, profil/, scripts/, brain-compose.yml → claim BSI ouvert requis
+      invariant  KERNEL.md, NIVEAUX.yml, PATHS.md… → refus systématique
+      kernel     le programme (noyau/, agents/, contexts/, docs/…), profil/,
+                 scripts/ → claim BSI ouvert requis
       libre      le reste → lock BSI respecté
+
+    La zone d'un chemin se dérive de `NIVEAUX.yml` (`_write_zone`) : ces lignes
+    n'en donnent que des exemples, pas la liste.
 
     body: { content: str, sess_id?: str }  — ou en-tête `X-Brain-Session`.
     """

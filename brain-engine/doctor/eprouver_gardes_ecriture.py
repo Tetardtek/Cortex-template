@@ -50,8 +50,27 @@ empreinte et n'a regénéré aucun chunk (mesuré : 0 fichier réindexé). Mais 
 tenait à une coïncidence, pas à une garantie.
 
 Il éprouve donc désormais les trois branches de refus qui NE dépendent pas de
-l'état des claims, en neutralisant `_open_claims` en mémoire — et il n'envoie
-plus jamais un PUT qui pourrait aboutir.
+l'état des claims, en neutralisant `_open_claims` en mémoire — et aucun de ces
+refus n'envoie plus un PUT qui pourrait aboutir. Seul le témoin en joue un, et
+celui-là DOIT aboutir : réécriture à l'identique, empreinte vérifiée.
+
+── Ce que le PUT qui aboutit touche du moteur, et ce qu'on en neutralise ────
+
+Une écriture acceptée lit les verrous du réseau en base (`_foreign_lock`), puis
+dépose une réindexation dans la file du moteur (`_demander_reindex`), qui la
+mène à son terme : appel au modèle d'embedding, écritures en base. Intercepter
+`Popen` ne neutralisait plus rien depuis que la réindexation passe par cette
+file. Pendant TOUS les PUT, ces deux fonctions sont donc remplacées en mémoire
+par des compteurs (rendues en `finally`, comme `_open_claims`) ; l'interception
+de `Popen` reste, pour un moteur qui y reviendrait. Après le PUT qui aboutit,
+on exige exactement une réindexation et une lecture de verrous interceptées :
+zéro voudrait dire que la route réindexe ou lit les verrous par un détour que
+ce contrôle ne neutralise pas. Un moteur sans ces fonctions est refusé, pas
+sauté.
+
+Et la racine : `server.BRAIN_ROOT` suit la variable `BRAIN_ROOT`, pas
+`--brain`. Posée ailleurs, le contrôle écrirait dans un autre brain que celui
+qu'il annonce : il refuse avant tout PUT.
 
 Corollaire conservé : le MCP n'envoie jamais de `sess_id`, donc `brain_write` en
 zone kernel est impossible dès qu'il y a plus d'un claim ouvert.
@@ -96,6 +115,15 @@ ATTENDU = [
 def empreinte(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
+
+def motif_de(r) -> str:
+    """Le `detail` d'une réponse, ou rien : un 200 rend `{"ok": …}`, une panne
+    peut ne pas rendre de JSON du tout."""
+    try:
+        d = r.json()
+    except ValueError:
+        return ""
+    return str(d.get("detail", "")) if isinstance(d, dict) else ""
 
 
 #: Si aucun agent de zone kernel n'est inscriptible, d'autres fichiers de la même zone.
@@ -147,7 +175,26 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # La racine que le moteur écrit est celle qu'il lit de `BRAIN_ROOT`, pas
+    # `--brain`. Une autre racine, et chaque PUT viserait un brain que personne
+    # n'a annoncé : refus, avant tout PUT.
+    annonce = a.brain.expanduser().resolve()
+    if Path(server.BRAIN_ROOT).resolve() != annonce:
+        print(f"❌ le moteur sert {Path(server.BRAIN_ROOT).resolve()}, pas {annonce} "
+              f"(variable BRAIN_ROOT ?) — aucun PUT envoyé.", file=sys.stderr)
+        return 1
     racine = server.BRAIN_ROOT
+
+    # Ce que le PUT qui aboutit touche hors du fichier — à neutraliser. Un moteur
+    # qui ne les porte plus n'est pas sauté : on ne saurait plus ce qu'on laisse
+    # passer.
+    absentes = [f for f in ("_demander_reindex", "_foreign_lock")
+                if not callable(getattr(server, f, None))]
+    if absentes:
+        print(f"❌ le moteur ne porte pas {', '.join(absentes)} : ce contrôle ne sait "
+              f"plus neutraliser ce qu'une écriture déclenche — aucun PUT envoyé.",
+              file=sys.stderr)
+        return 1
 
     # ── Le classement des zones, sans toucher au reseau ─────────────────────
     #
@@ -196,16 +243,45 @@ def main() -> int:
         return 1
     print(f"  ✅ témoin — déclaré `donnee`, KERNEL.md tombe en `{apres}`")
 
+    client = TestClient(server.app, client=("127.0.0.1", 4242))
+    server.check_auth = lambda a: ["public", "work", "kernel"]   # une garde a la fois
+
+    # ── Pendant TOUS les PUT : réindexation, verrous, sous-processus ────────
+    #
+    # Remplacés en mémoire par des compteurs, dans ce processus, et rendus en
+    # `finally` — comme `_open_claims` plus bas. Le PUT qui aboutit ne lit
+    # donc aucun verrou en base et ne dépose aucune réindexation dans la file
+    # du moteur.
+    demandes, verrous, lances = [], [], []
+    vrai_reindex, vrai_verrou = server._demander_reindex, server._foreign_lock
+    sp = getattr(server, "subprocess", None)
+    vrai_popen = sp.Popen if sp else None
+    try:
+        server._demander_reindex = lambda rel: demandes.append(rel) or True
+        server._foreign_lock = lambda rel, holder: verrous.append(rel) or None
+        if sp:
+            sp.Popen = lambda *a, **k: lances.append(a) or None
+        return refus_et_temoin(server, racine, client, demandes, verrous, lances)
+    finally:
+        server._demander_reindex, server._foreign_lock = vrai_reindex, vrai_verrou
+        if sp:
+            sp.Popen = vrai_popen
+
+
+def refus_et_temoin(server, racine: Path, client, demandes: list, verrous: list,
+                    lances: list) -> int:
+    """Les PUT : les refus déclarés, la zone kernel, puis le témoin. Appelée
+    par `main` seulement, réindexation et verrous neutralisés (les listes
+    reçoivent ce qui a été intercepté)."""
     # ── Les refus de la route, avec le filet ────────────────────────────────
     cibles = [(c, code, zone, quoi) for c, code, zone, quoi in ATTENDU
               if (racine / c).is_file()]
     manquants = [c for c, *_ in ATTENDU if not (racine / c).is_file()]
     avant = {c: empreinte(racine / c) for c, *_ in cibles}
 
-    client = TestClient(server.app, client=("127.0.0.1", 4242))
-    server.check_auth = lambda a: ["public", "work", "kernel"]   # une garde a la fois
-
     echecs = 0
+    temoin_ko = False
+    effets_ko = False
     for chemin, code_attendu, zone, quoi in cibles:
         contenu = (racine / chemin).read_text(encoding="utf-8")
         r = client.put(f"/brain/{chemin}", json={"content": contenu})
@@ -242,8 +318,9 @@ def main() -> int:
     # c'est exactement ce qui a fait rougir ce contrôle le 11/09.
     #
     # ⚠️ Aucun de ces trois cas ne doit ABOUTIR : un PUT accepté écrit le
-    # fichier et lance `embed.py --file`. Seul le témoin, plus bas, joue un cas
-    # qui aboutit — et il intercepte le lancement de l'indexeur.
+    # fichier, lit les verrous et demande une réindexation. Seul le témoin,
+    # plus bas, joue un cas qui aboutit — verrous et réindexation sont
+    # neutralisés par `main` pendant tous les PUT, et comptés.
     # La cible : un agent RÉELLEMENT en zone kernel. `agents/` peut être une vue,
     # et un agent surchargé dans `instance/` vit en zone instance — son écriture
     # n'exige pas de claim, c'est voulu. Viser `coach` à l'aveugle faisait rougir
@@ -286,32 +363,67 @@ def main() -> int:
         # rendraient la même chose et le vert serait creux.
         #
         # ⚠️ Le second cas ABOUTIT — c'est tout l'intérêt du témoin. Une route
-        # qui aboutit réécrit le fichier (à l'identique, le filet le vérifie) et
-        # lance `embed.py --file` en sous-processus. Ce lancement-là n'a rien à
-        # faire dans un contrôle : on le neutralise, plutôt que de compter sur
-        # l'indexeur pour trouver le contenu inchangé. Un effet de bord qu'on
-        # tolère parce qu'il est inoffensif reste un effet de bord.
-        vrai_popen = server.subprocess.Popen
-        lances = []
+        # qui aboutit réécrit le fichier (à l'identique, le filet le vérifie),
+        # lit les verrous du réseau et demande une réindexation. Ces deux-là
+        # n'ont rien à faire dans un contrôle : `main` les a neutralisés, plutôt
+        # que de compter sur l'indexeur pour trouver le contenu inchangé. Un
+        # effet de bord qu'on tolère parce qu'il est inoffensif reste un effet
+        # de bord.
         try:
-            server.subprocess.Popen = lambda *a, **k: lances.append(a) or None
             server._open_claims = lambda: []
             sans = client.put(f"/brain/{kernel_cible}", json={"content": contenu})
             server._open_claims = lambda: [{"sess_id": "seul", "scope": "x"}]
             avec = client.put(f"/brain/{kernel_cible}", json={"content": contenu})
         finally:
             server._open_claims = vrai_claims
-            server.subprocess.Popen = vrai_popen
         # `avec` DOIT aboutir — c'est la contrepartie de la garde, et c'est
         # pour ça qu'on ne le joue qu'ici, en sachant que le contenu est
         # identique et que le filet d'empreintes le vérifie juste après.
-        vu = sans.status_code != avec.status_code
+        #
+        # Une DIFFÉRENCE ne suffit pas : « sans 409, avec 403 » (un autre refus)
+        # ou « avec 503 » (une panne) différaient aussi, et passaient au vert
+        # sans que rien ait abouti. On exige le refus de la garde de claim
+        # d'un côté, l'écriture de l'autre.
+        sans_motif, avec_motif = motif_de(sans), motif_de(avec)
+        sans_ok = sans.status_code == 409 and "aucun claim" in sans_motif.lower()
+        avec_ok = avec.status_code == 200
+        vu = sans_ok and avec_ok
         print(f"  {'✅' if vu else '❌'} témoin — sans claim {sans.status_code}, "
-              f"avec un claim {avec.status_code} : la garde consulte bien les claims")
-        print(f"  ℹ️  {len(lances)} reindexation(s) interceptée(s) — aucune n'a "
-              f"atteint l'indexeur")
+              f"avec un claim {avec.status_code} : "
+              + ("la garde consulte bien les claims" if vu
+                 else "rien ne prouve que la garde consulte les claims"))
+        if not sans_ok:
+            print(f"     ❌ le PUT SANS claim a rendu {sans.status_code}, attendu 409 "
+                  f"« aucun claim » — {sans_motif[:56]}", file=sys.stderr)
+        if not avec_ok:
+            print(f"     ❌ le PUT AVEC un claim a rendu {avec.status_code}, attendu 200 : "
+                  f"l'écriture n'a pas abouti (un autre refus ou une panne) — "
+                  f"{avec_motif[:56]}", file=sys.stderr)
         if not vu:
-            echecs += 1
+            temoin_ko = True
+        # Ce que l'écriture a déclenché, intercepté. On compte, on ne compare pas
+        # les chemins : la route passe le chemin RÉSOLU, pas celui demandé.
+        # Zéro après un 200 : la route réindexe (ou lit les verrous) par un
+        # détour que ce contrôle ne neutralise pas — rien ne dit qu'il n'a pas
+        # atteint le vrai moteur. Plus d'un : un autre PUT a abouti.
+        if avec_ok:
+            reindex_ok = len(demandes) == 1
+            verrous_ok = len(verrous) == 1
+            print(f"  {'✅' if reindex_ok and verrous_ok else '❌'} effets interceptés — "
+                  f"{len(demandes)} réindexation(s), {len(verrous)} lecture(s) de "
+                  f"verrous, {len(lances)} sous-processus ; attendu 1 et 1")
+            if not reindex_ok:
+                print(f"     ❌ {len(demandes)} réindexation(s) interceptée(s) après le "
+                      f"PUT qui aboutit, attendu 1 : la route réindexe par un "
+                      f"autre chemin que `_demander_reindex`, non neutralisé",
+                      file=sys.stderr)
+                effets_ko = True
+            if not verrous_ok:
+                print(f"     ❌ {len(verrous)} lecture(s) de verrous interceptée(s) "
+                      f"après le PUT qui aboutit, attendu 1 : la route lit les "
+                      f"verrous par un autre chemin que `_foreign_lock`, non "
+                      f"neutralisé", file=sys.stderr)
+                effets_ko = True
         if empreinte(racine / kernel_cible) != empreinte_avant:
             print(f"\n🚨 {kernel_cible} A ÉTÉ MODIFIÉ par ce contrôle.",
                   file=sys.stderr)
@@ -328,9 +440,19 @@ def main() -> int:
     if echecs:
         print(f"\n❌ {echecs} garde(s) n'ont pas refusé ce qu'elles déclarent "
               f"refuser.", file=sys.stderr)
+    if temoin_ko:
+        print("\n❌ le témoin n'a pas abouti : sans claim, la garde devait refuser "
+              "(409 « aucun claim ») ;\n   avec un claim, l'écriture devait aboutir "
+              "(200). Sans les deux, rien ne prouve que la garde consulte les claims.",
+              file=sys.stderr)
+    if effets_ko:
+        print("\n❌ l'écriture qui aboutit n'a pas déclenché exactement une réindexation "
+              "et une lecture\n   de verrous interceptées : ce contrôle ne sait pas ce "
+              "qu'elle a touché du moteur.", file=sys.stderr)
+    if echecs or temoin_ko or effets_ko:
         return 1
-    print(f"\n✅ les gardes refusent — {len(cibles)} refus vérifiés, rien n'a été "
-          f"écrit")
+    print(f"\n✅ les gardes refusent — {len(cibles)} refus vérifiés, contenu "
+          f"inchangé, réindexation et verrous neutralisés")
     return 0
 
 

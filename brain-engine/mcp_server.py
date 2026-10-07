@@ -554,8 +554,9 @@ def brain_write(path: str, content: str) -> str:
     Écrit un fichier dans le brain via PUT /brain/{path}.
 
     Le MCP ecrit dans les zones libres (workspace/, projets/, content/…).
-    Les zones kernel (agents/, profil/, scripts/) exigent le scope `kernel`,
-    que le rôle mcp n'a pas — et les invariants sont refuses a tout le monde.
+    La zone kernel (le programme, profil/, scripts/… : `NIVEAUX.yml` la dit)
+    exige le scope `kernel`, que le rôle mcp n'a pas — et les invariants sont
+    refuses a tout le monde.
 
     Args:
         path    : Chemin relatif dans le brain (ex: "focus.md", "todos/sprint.md").

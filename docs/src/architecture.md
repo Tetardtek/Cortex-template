@@ -83,6 +83,13 @@ du noyau livré (`noyau/agents/<nom>.md`). Un complément
 assemblé — l'agent, puis le complément. Tu gardes tout : `brain maj` met le noyau à
 jour sans toucher à tes surcharges ni à tes compléments.
 
+**Ce que la vue sert au public.** Au jeton `public` du moteur, la vue ne sert que les
+agents du noyau livré — ce qui se résout dans `noyau/agents/`. Tes surcharges, les
+fichiers assemblés avec un complément, `instance/agents/` et tout fichier réel posé
+dans `agents/` restent à toi : lisibles en owner et par le jeton `mcp`, jamais par
+`public` — à la lecture comme dans l'index de recherche. Sans `noyau/agents/` (un
+brain d'avant la vue), `agents/` reste public comme avant.
+
 **Un fork lit son noyau.** Le setup déclare `noyau: lecture` dans l'instance active
 de `brain-compose.local.yml` (à côté de `posture:`), et la vue pose alors `noyau/`
 en lecture seule : tes retouches vont dans `instance/`, une surcharge ou un

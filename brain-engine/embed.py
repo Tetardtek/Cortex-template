@@ -111,9 +111,21 @@ PATH_SCOPES = [
     # `satellite` le garde lisible par `owner` et par le rôle `mcp` — l'usage
     # quotidien ne change pas — et le retire au rôle `public`.
     ('learning/',             'satellite'),
+    # Ce que l'instance apporte à la vue `agents/` — ses surcharges, ses
+    # compléments, son README — est à elle : lisible par `owner` et par le rôle
+    # `mcp`, jamais par `public`. Déclaré plutôt que laissé au défaut : retirer
+    # la ligne ne changerait rien aujourd'hui, mais la décision se lit ici.
+    ('instance/agents/',      'satellite'),
     # PUBLIC — visible, distribué
     ('wiki/',                 'public'),
+    # `agents/` : la table ne décide seule que dans un brain d'avant la vue (sans
+    # `noyau/agents/`). Avec la vue, `vient_du_noyau()` passe avant elle : seul ce
+    # qui se résout dans le noyau livré reste `public`.
     ('agents/',               'public'),
+    # `GET /brain/{path}` juge le chemin RÉSOLU : sans cette entrée, un agent du
+    # noyau servi par la vue tombait sur le défaut, et un jeton `public` ne le
+    # lisait plus. Le reste de `noyau/` garde le défaut.
+    ('noyau/agents/',         'public'),
     ('infrastructure/',       'public'),
     ('BRAIN-INDEX.md',        'public'),
 ]
@@ -143,12 +155,45 @@ def is_private(filepath: str) -> bool:
     return any(filepath == p or filepath.startswith(p) for p in PRIVATE_PATHS)
 
 
-def resolve_scope(filepath: str) -> str:
-    """Retourne la zone d'accès (kernel | instance | satellite | public)."""
+def vient_du_noyau(filepath: str, racine: Path | None = None) -> bool | None:
+    """Une entrée de la vue `agents/` vient-elle du noyau livré ?
+
+    `None` hors de la vue, ou sans vue (pas de `noyau/agents/` : un brain d'avant
+    la vue) — la table décide seule. Sinon, vrai SEULEMENT pour ce qui se résout
+    dans `noyau/agents/` : une liste blanche. Tout le reste est à l'instance — un
+    fichier assemblé avec son complément, un lien vers une surcharge entière, un
+    fichier réel posé là (une revue, un assemblage resté après le retrait de son
+    complément) : dans le doute, plus fermé.
+
+    `racine` : le brain où résoudre le chemin — par défaut celui de l'indexeur ;
+    le moteur passe le sien."""
+    if not filepath.startswith('agents/'):
+        return None
+    racine = racine or BRAIN_ROOT
+    noyau = racine / 'noyau' / 'agents'
+    if not noyau.is_dir():
+        return None
+    return (racine / filepath).resolve().is_relative_to(noyau.resolve())
+
+
+def scope_de_la_table(filepath: str) -> str:
+    """Le scope que `PATH_SCOPES` donne au chemin tel quel — premier préfixe gagnant,
+    sinon le défaut. Ne regarde pas le disque."""
     for prefix, scope in PATH_SCOPES:
         if filepath == prefix or filepath.startswith(prefix):
             return scope
     return DEFAULT_SCOPE
+
+
+def resolve_scope(filepath: str, racine: Path | None = None) -> str:
+    """Retourne la zone d'accès (kernel | instance | satellite | public).
+
+    Dans la vue `agents/`, ce qui ne vient pas du noyau est `satellite` — les
+    apports de l'instance ne sont pas publics, tranché par l'owner le 7/10 ;
+    ailleurs, la table."""
+    if vient_du_noyau(filepath, racine) is False:
+        return 'satellite'
+    return scope_de_la_table(filepath)
 
 
 def get_frontmatter_scope(filepath: Path) -> str | None:

@@ -1527,6 +1527,111 @@ class TestUnNoyauEnLectureNeSEcritPasParLeMoteur(unittest.TestCase):
         self.assertIn('satellite', r.text)
 
 
+class TestLeRepliDesZonesSuitNiveaux(unittest.TestCase):
+    """🔴 La liste de secours des zones couvre ce que `NIVEAUX.yml` met en kernel ou
+    invariant.
+
+    Si `NIVEAUX.yml` est absent ou illisible, ou si `core.zones` manque, `_write_zone`
+    se replie sur des listes en dur. Elles s'arrêtaient à `agents/`, `profil/`,
+    `scripts/` : 169 fichiers suivis tombaient en `libre`, dont tout `noyau/` — et
+    `PUT /brain/agents/coach.md`, résolu vers `noyau/agents/coach.md`, réécrivait un
+    agent du noyau sans claim. L'anti-dérive lit le vrai `NIVEAUX.yml` : une entrée
+    kernel ajoutée sans être recopiée dans le repli le fait rougir. Joué dans un brain
+    jetable (`srv.BRAIN_ROOT` redirigé). Les témoins : la surcharge du fork et la
+    donnée restent `libre`."""
+
+    RANG = {'libre': 0, 'kernel': 1, 'invariant': 2}
+    maxDiff = None
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-repli-'))
+        self._racine = srv.BRAIN_ROOT
+        srv.BRAIN_ROOT = self.tmp
+
+    def tearDown(self):
+        srv.BRAIN_ROOT = self._racine
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_sans_niveaux_le_repli_garde_le_noyau_et_niveaux(self):
+        self.assertEqual(srv._declarations_niveaux(), ({}, {}), 'le repli doit être pris')
+        self.assertEqual(srv._write_zone('noyau/agents/x.md'), 'kernel')
+        self.assertEqual(srv._write_zone('NIVEAUX.yml'), 'invariant')
+
+    def test_sans_core_zones_memes_verdicts(self):
+        shutil.copy(BRAIN_ROOT_PATH / 'NIVEAUX.yml', self.tmp / 'NIVEAUX.yml')
+        self.assertTrue(srv._declarations_niveaux()[0], 'NIVEAUX.yml doit être lu')
+        with patch.dict(sys.modules, {'core.zones': None}):
+            self.assertEqual(srv._write_zone('noyau/agents/x.md'), 'kernel')
+            self.assertEqual(srv._write_zone('NIVEAUX.yml'), 'invariant')
+            self.assertEqual(srv._write_zone('instance/agents/x.md'), 'libre')
+
+    @staticmethod
+    def _attendu_par_niveaux() -> dict[str, str]:
+        """Chaque entrée racine du vrai `NIVEAUX.yml` → 'invariant' | 'kernel' | 'libre'.
+
+        Lu dans le fichier, jamais recopié : c'est ce qui fait de ce test une
+        anti-dérive. La règle est celle du fichier lui-même : invariant · programme
+        → kernel, sauf une `zone:` déclarée."""
+        import yaml
+        d = yaml.safe_load((BRAIN_ROOT_PATH / 'NIVEAUX.yml').read_text(encoding='utf-8'))
+        attendu = {}
+        for nom, val in d['entrees'].items():
+            niveau = val.get('niveau') if isinstance(val, dict) else val
+            zone = val.get('zone') if isinstance(val, dict) else None
+            if niveau == 'invariant':
+                attendu[nom] = 'invariant'
+            elif zone == 'kernel' or (zone is None and niveau == 'programme'):
+                attendu[nom] = 'kernel'
+            else:
+                attendu[nom] = 'libre'
+        return attendu
+
+    def test_anti_derive_aucune_entree_kernel_ne_tombe_en_libre(self):
+        attendu = self._attendu_par_niveaux()
+        stricts = {n: z for n, z in attendu.items() if z != 'libre'}
+        self.assertIn('noyau/', stricts, 'la lecture de NIVEAUX.yml ne mesure rien')
+        self.assertIn('NIVEAUX.yml', stricts)
+        try:
+            import core.zones  # noqa: F401
+        except ImportError:
+            pass
+        else:
+            # La règle lue ici est celle du moteur sur le vrai fichier — sinon ce
+            # test jugerait le repli contre une règle à lui.
+            srv.BRAIN_ROOT = BRAIN_ROOT_PATH
+            for nom, zone in attendu.items():
+                echantillon = nom + 'x.md' if nom.endswith('/') else nom
+                self.assertEqual(srv._write_zone(echantillon), zone, f'NIVEAUX.yml relu : {nom}')
+            srv.BRAIN_ROOT = self.tmp
+        self.assertEqual(srv._declarations_niveaux(), ({}, {}), 'le repli doit être pris')
+        en_defaut = []
+        for nom, zone in sorted(stricts.items()):
+            echantillon = nom + 'x.md' if nom.endswith('/') else nom
+            verdict = srv._write_zone(echantillon)
+            if self.RANG[verdict] < self.RANG[zone]:
+                en_defaut.append(f'{echantillon} : {verdict} (NIVEAUX.yml : {zone})')
+        self.assertEqual(en_defaut, [], 'le repli est plus permissif que NIVEAUX.yml')
+
+    def test_la_surcharge_et_la_donnee_restent_libres(self):
+        for chemin in ('instance/agents/x.md', 'workspace/x.md', 'projets/x.md'):
+            self.assertEqual(srv._write_zone(chemin), 'libre', chemin)
+
+    def test_bout_en_bout_un_agent_du_noyau_exige_un_claim(self):
+        (self.tmp / 'noyau' / 'agents').mkdir(parents=True)
+        (self.tmp / 'noyau' / 'agents' / 'coach.md').write_text('# le coach du noyau\n')
+        (self.tmp / 'agents').mkdir()
+        (self.tmp / 'agents' / 'coach.md').symlink_to('../noyau/agents/coach.md')
+        client = TestClient(srv.app, raise_server_exceptions=False, client=LOCAL)
+        with patch.object(srv, 'BRAIN_MODE', 'owner'), patch.object(srv, '_TOKEN_MAP', {}), \
+             patch.object(srv, '_open_claims', return_value=[]), \
+             patch.object(srv, '_foreign_lock', return_value=None), \
+             patch.object(srv, '_demander_reindex', return_value=False):
+            r = client.put('/brain/agents/coach.md', json={'content': '# réécrit\n'})
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn('aucun claim', r.text)
+        self.assertEqual((self.tmp / 'noyau' / 'agents' / 'coach.md').read_text(), '# le coach du noyau\n')
+
+
 class TestLectureParZone(unittest.TestCase):
     """`GET /brain/{path}` applique à la lecture les zones de `_SCOPE_ACCESS`.
 
@@ -1572,6 +1677,258 @@ class TestLectureParZone(unittest.TestCase):
         for c in self.FICHIERS:
             self.assertEqual(self._lire(self.distant, c, 'j-owner'), 200, c)
             self.assertEqual(self._lire(self.local, c), 200, c)
+
+
+class TestLectureDeLaVue(unittest.TestCase):
+    """🔴 Dans la vue `agents/`, seul le noyau livré est public.
+
+    Quand `noyau/agents/` existe, `agents/` est une vue que `brain vue` construit :
+    un lien vers `noyau/agents/X.md`, un lien vers une surcharge entière de
+    l'instance (`instance/agents/X.md`), ou un fichier ASSEMBLÉ — l'agent du noyau
+    suivi du complément de l'instance (`instance/agents/X.complement.md`).
+
+    Deux défauts, deux témoins. Le premier : `GET /brain/{path}` juge le chemin
+    RÉSOLU, `noyau/agents/` n'avait pas d'entrée, et un jeton `public` recevait 403
+    sur un agent du noyau. Le second : le fichier assemblé restait sous
+    `('agents/', 'public')` — en lecture comme à l'index — et servait au public ce
+    que l'instance avait sorti du noyau pour le garder. Tranché par
+    l'owner le 7/10 : les apports de l'instance ne sont pas publics.
+
+    Joué dans un brain jetable dont la vue est construite par le VRAI
+    `vue.construire()`, avec un faux complément et une fausse surcharge. Le moteur
+    lit son brain (`srv.BRAIN_ROOT`) ; l'indexeur pointe pendant la lecture sur un
+    brain d'avant la vue : un moteur qui jugerait dans le brain de l'indexeur au
+    lieu du sien rougit ici."""
+
+    JETONS = {'j-owner': 'owner', 'j-mcp': 'mcp', 'j-public': 'public'}
+    APPORT = ('FAUX-COMPLEMENT', 'FAUSSE-SURCHARGE')
+    # Ce qui vient du noyau livré : public.
+    DU_NOYAU = ('agents/plain.md', 'noyau/agents/plain.md', 'noyau/agents/coach.md',
+                'noyau/agents/surch.md')
+    # Ce qui est à l'instance — ou dont on ne sait pas d'où il vient : jamais public.
+    A_L_INSTANCE = ('agents/coach.md', 'agents/surch.md', 'instance/agents/surch.md',
+                    'instance/agents/coach.complement.md', 'instance/agents/README.md',
+                    'agents/vieux.md', 'agents/etranger.md', 'agents/reviews/r.md')
+    AGENT = ("---\nname: {n}\ndescription: agent {n}\n---\n\n# {n}\n\n## Rôle\n\n"
+             "{corps} de {n} : un texte assez long pour faire un chunk que l'indexeur garde.\n")
+
+    @staticmethod
+    def _vue_py():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'vue_de_la_lecture', BRAIN_ROOT_PATH / 'scripts' / 'vue.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _ecrire(self, rel, texte):
+        (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.tmp / rel).write_text(texte, encoding='utf-8')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-lecture-vue-')).resolve()
+        self.avant = Path(tempfile.mkdtemp(prefix='brain-avant-la-vue-')).resolve()
+        for n in ('coach', 'surch', 'plain', 'vieux'):
+            self._ecrire(f'noyau/agents/{n}.md', self.AGENT.format(n=n, corps='Le noyau'))
+        self._ecrire('instance/agents/.gitkeep', '')
+        self._ecrire('instance/agents/README.md', '# instance/agents\n\nLes apports de cette instance.\n')
+        self._ecrire('instance/agents/coach.complement.md',
+                     "## Calibrage\n\nFAUX-COMPLEMENT : une donnée de l'instance, jamais publique, "
+                     "assez longue pour faire un chunk.\n")
+        self._ecrire('instance/agents/vieux.complement.md',
+                     "## Ancien\n\nFAUX-COMPLEMENT retiré depuis, mais resté dans l'assemblage.\n")
+        self._ecrire('instance/agents/surch.md', self.AGENT.format(n='surch', corps='FAUSSE-SURCHARGE'))
+        # Un lien de l'instance vers la zone privée : la vue le relie, la zone reste fermée.
+        self._ecrire('workspace/scratch/x.md', '# carnet\n')
+        (self.tmp / 'instance/agents/carnet.md').symlink_to('../../workspace/scratch/x.md')
+        self._ecrire('noyau/autre.md', self.AGENT.format(n='autre', corps='Le reste du noyau'))
+        self._ecrire('KERNEL.md', '# KERNEL\n')
+        self.vue = self._vue_py()
+        self.vue.construire(self.tmp)
+        # Un assemblage resté après le retrait de son complément (sans reconstruire),
+        # un fichier réel posé dans la vue, une revue de l'instance.
+        (self.tmp / 'instance/agents/vieux.complement.md').unlink()
+        self._ecrire('agents/etranger.md', self.AGENT.format(n='etranger', corps='Un fichier réel'))
+        self._ecrire('agents/reviews/r.md', '# revue\n\nUne revue de cette instance.\n')
+        (self.tmp / 'agents/fuite.md').symlink_to('../workspace/scratch/x.md')
+        (self.tmp / 'agents/noyau-kernel.md').symlink_to('../KERNEL.md')
+        # Un lien de la vue vers le noyau, mais HORS de `noyau/agents/` : la frontière
+        # de la liste blanche est `noyau/agents/`, pas `noyau/`.
+        (self.tmp / 'agents/hors-agents.md').symlink_to('../noyau/autre.md')
+        self._srv, self._embed = srv.BRAIN_ROOT, embed.BRAIN_ROOT
+        srv.BRAIN_ROOT, embed.BRAIN_ROOT = self.tmp, self.avant
+        self.distant = TestClient(srv.app, raise_server_exceptions=False, client=('192.0.2.1', 50000))
+
+    def tearDown(self):
+        srv.BRAIN_ROOT, embed.BRAIN_ROOT = self._srv, self._embed
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        shutil.rmtree(self.avant, ignore_errors=True)
+
+    def _lire(self, chemin, jeton):
+        with patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            return self.distant.get(f'/brain/{chemin}',
+                                    headers={'Authorization': f'Bearer {jeton}'}).status_code
+
+    def _indexer(self, target_file=None):
+        """Les chunks que `embed.run()` écrirait, avec leur scope — sa vraie boucle,
+        sans base : `dry_run`, et l'écriture interceptée."""
+        ecrits = []
+        def capter(conn, chunk, vector, dry_run=False):
+            ecrits.append(dict(chunk))
+            return True
+        embed.BRAIN_ROOT = self.tmp
+        try:
+            with patch.object(embed, 'upsert_chunk', capter), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                embed.run(dry_run=True, target_file=target_file)
+        finally:
+            embed.BRAIN_ROOT = self.avant
+        return ecrits
+
+    # ── la vue est celle que `brain vue` construit ────────────────────────────
+    def test_la_vue_est_celle_de_vue_construire(self):
+        a = self.tmp / 'agents'
+        self.assertTrue((a / 'plain.md').is_symlink())
+        self.assertEqual((a / 'plain.md').resolve(), (self.tmp / 'noyau/agents/plain.md'))
+        self.assertTrue((a / 'surch.md').is_symlink())
+        self.assertEqual((a / 'surch.md').resolve(), (self.tmp / 'instance/agents/surch.md'))
+        for assemble in ('coach.md', 'vieux.md'):
+            self.assertFalse((a / assemble).is_symlink(), assemble)
+            self.assertTrue(self.vue.assemble_intact(a / assemble), assemble)
+        self.assertIn('FAUX-COMPLEMENT', (a / 'coach.md').read_text(encoding='utf-8'))
+        self.assertFalse((self.tmp / 'instance/agents/vieux.complement.md').exists())
+        self.assertFalse((a / 'README.md').exists(), 'le README de l\'instance n\'est pas un agent')
+
+    # ── la lecture ───────────────────────────────────────────────────────────
+    def test_public_lit_ce_qui_vient_du_noyau(self):
+        for chemin in self.DU_NOYAU:
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self._lire(chemin, 'j-public'), 200, chemin)
+
+    def test_public_ne_lit_rien_de_l_instance(self):
+        for chemin in self.A_L_INSTANCE:
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self._lire(chemin, 'j-public'), 403, chemin)
+
+    def test_mcp_et_owner_lisent_toute_la_vue(self):
+        for jeton in ('j-mcp', 'j-owner'):
+            for chemin in self.DU_NOYAU + self.A_L_INSTANCE:
+                with self.subTest(jeton=jeton, chemin=chemin):
+                    self.assertEqual(self._lire(chemin, jeton), 200, f'{jeton} {chemin}')
+
+    def test_la_vue_n_ouvre_pas_la_zone_privee(self):
+        """Ni un lien de la vue, ni un lien que l'instance y fait relier."""
+        self.assertTrue((self.tmp / 'agents/carnet.md').is_symlink(), 'vue.construire l\'a relié')
+        for chemin in ('agents/fuite.md', 'agents/carnet.md', 'instance/agents/carnet.md'):
+            for jeton in ('j-public', 'j-mcp'):
+                with self.subTest(chemin=chemin, jeton=jeton):
+                    self.assertEqual(self._lire(chemin, jeton), 403, f'{jeton} {chemin}')
+
+    def test_la_vue_n_ouvre_pas_le_kernel_au_public(self):
+        self.assertEqual(self._lire('agents/noyau-kernel.md', 'j-public'), 403)
+
+    def test_la_frontiere_est_noyau_agents_pas_noyau(self):
+        """Un lien de la vue vers `noyau/autre.md` n'est pas un agent du noyau livré :
+        refusé au public, et indexé `satellite` par la passe complète."""
+        self.assertEqual((self.tmp / 'agents/hors-agents.md').resolve(), self.tmp / 'noyau/autre.md')
+        self.assertEqual(self._lire('agents/hors-agents.md', 'j-public'), 403)
+        scopes = {c['scope'] for c in self._indexer() if c['filepath'] == 'agents/hors-agents.md'}
+        self.assertTrue(scopes, 'agents/hors-agents.md non indexé : le test ne mesurerait rien')
+        self.assertEqual(scopes, {'satellite'})
+
+    def test_le_reste_du_noyau_reste_satellite(self):
+        self.assertEqual(embed.resolve_scope('noyau/autre.md', self.tmp), 'satellite')
+        self.assertEqual(self._lire('noyau/autre.md', 'j-public'), 403)
+
+    # ── l'index ──────────────────────────────────────────────────────────────
+    def test_l_index_ne_classe_public_que_le_noyau(self):
+        scopes = {}
+        for c in self._indexer():
+            scopes.setdefault(c['filepath'], set()).add(c['scope'])
+        self.assertEqual(scopes.get('agents/plain.md'), {'public'})
+        for chemin in ('agents/coach.md', 'agents/surch.md', 'agents/vieux.md', 'agents/etranger.md'):
+            self.assertEqual(scopes.get(chemin), {'satellite'}, chemin)
+        apports = {c['filepath'] for c in self._indexer()
+                   if c['scope'] == 'public' and any(m in c['text'] for m in self.APPORT)}
+        self.assertEqual(apports, set(), 'un apport de l\'instance indexé en public')
+
+    def test_l_index_d_un_fichier_seul_suit_la_meme_regle(self):
+        for chemin, attendu in (('agents/coach.md', 'satellite'), ('agents/plain.md', 'public')):
+            with self.subTest(chemin=chemin):
+                chunks = self._indexer(chemin)
+                self.assertTrue(chunks, f'{chemin} : rien d\'indexé, le test ne mesurerait rien')
+                self.assertEqual({c['scope'] for c in chunks}, {attendu}, chemin)
+
+    def test_recherche_et_boot_publics_ne_servent_aucun_apport(self):
+        """La recherche filtre sur la colonne `scope` que l'indexeur a écrite —
+        simulée ici sur les chunks de `run()` (le filtre SQL `scope IN` remplacé)."""
+        lignes = [{'filepath': c['filepath'], 'title': c.get('title', ''), 'chunk_text': c['text'],
+                   'scope': c['scope'], 'score': 1.0} for c in self._indexer()]
+        def chercher(q='', top_k=50, allowed_scopes=None):
+            return [l for l in lignes if l['scope'] in allowed_scopes]
+        with patch.object(srv, 'run_single_query', chercher), \
+             patch.object(srv, 'run_boot_queries', chercher), \
+             patch.object(srv, '_TOKEN_MAP', self.JETONS):
+            for route in ('/search?q=x&top=50&full=true', '/boot?full=true'):
+                vus = {}
+                for jeton in ('j-public', 'j-mcp'):
+                    r = self.distant.get(route, headers={'Authorization': f'Bearer {jeton}'})
+                    self.assertEqual(r.status_code, 200, f'{route} {jeton}')
+                    vus[jeton] = [x for x in r.json()['results']
+                                  if any(m in x.get('chunk_text', '') for m in self.APPORT)]
+                self.assertEqual(vus['j-public'], [], f'{route} : apport servi au public')
+                self.assertTrue(vus['j-mcp'], f'{route} : mcp ne voit plus les apports')
+
+    # ── sans vue, et sans apport : rien ne change ────────────────────────────
+    def test_un_brain_d_avant_la_vue_garde_la_table(self):
+        agent = self.avant / 'agents' / 'coach.md'
+        agent.parent.mkdir(parents=True)
+        agent.write_text('# coach\n', encoding='utf-8')
+        self.assertIsNone(embed.vient_du_noyau('agents/coach.md', self.avant))
+        self.assertEqual(embed.resolve_scope('agents/coach.md', self.avant), 'public')
+        self.assertEqual(embed.resolve_scope('agents/coach.md'), 'public')   # l'indexeur, ici
+
+    def test_un_fork_sans_apport_garde_tous_ses_agents_publics(self):
+        fork = Path(tempfile.mkdtemp(prefix='brain-fork-')).resolve()
+        self.addCleanup(shutil.rmtree, fork, True)
+        for n in ('coach', 'plain'):
+            p = fork / 'noyau/agents' / f'{n}.md'
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(self.AGENT.format(n=n, corps='Le noyau'), encoding='utf-8')
+        (fork / 'instance/agents').mkdir(parents=True)
+        (fork / 'instance/agents/.gitkeep').write_text('')
+        self.vue.construire(fork)
+        for n in ('coach', 'plain'):
+            self.assertTrue((fork / 'agents' / f'{n}.md').is_symlink(), n)
+            self.assertEqual(embed.resolve_scope(f'agents/{n}.md', fork), 'public', n)
+
+    # ── la table, contre NIVEAUX.yml ─────────────────────────────────────────
+    def test_la_table_suit_niveaux_pour_chaque_source_de_vue(self):
+        """Lu dans le vrai `NIVEAUX.yml`, jugé sur la table seule : une source de vue
+        qui est du PROGRAMME a le scope de sa vue ; une source qui est une DONNÉE de
+        l'instance n'est jamais publique. La prochaine vue déclarée sans le scope de
+        ses sources rougit ici."""
+        import yaml
+        d = yaml.safe_load((BRAIN_ROOT_PATH / 'NIVEAUX.yml').read_text(encoding='utf-8'))
+        entrees = d['entrees']
+        def niveau(chemin):
+            racine = chemin.split('/')[0] + '/'
+            val = entrees.get(racine)
+            return val.get('niveau') if isinstance(val, dict) else val
+        vues = {nom: val['vue_de'] for nom, val in entrees.items()
+                if isinstance(val, dict) and val.get('vue_de')}
+        self.assertIn('agents/', vues, 'aucune vue lue : le test ne mesurerait rien')
+        vu_une_donnee = False
+        for vue, sources in vues.items():
+            attendu = embed.scope_de_la_table(f'{vue}x.md')
+            for source in sources:
+                scope = embed.scope_de_la_table(f'{source}x.md')
+                if niveau(source) == 'donnee':
+                    vu_une_donnee = True
+                    self.assertNotEqual(scope, 'public', f'{source} est une donnée : jamais publique')
+                else:
+                    self.assertEqual(scope, attendu, f'{source} ne suit pas sa vue {vue}')
+        self.assertTrue(vu_une_donnee, 'aucune source de donnée lue : le test ne mesurerait rien')
 
 
 class TestServerAuth(unittest.TestCase):
@@ -3094,7 +3451,9 @@ class BrainBsiJetable(unittest.TestCase):
         shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'bsi-claim.sh', self.brain / 'scripts')
         for f in (BRAIN_ROOT_PATH / 'scripts' / 'lib').glob('*.*'):
             shutil.copy(f, self.brain / 'scripts' / 'lib')
-        for f in ('db.py', 'schema.sql'):
+        # db.py importe racines : on le copie, et _bsi lance depuis ce faux brain — sinon
+        # `python3 -` trouve le racines.py du cwd (le vrai, lancé depuis brain-engine/).
+        for f in ('db.py', 'racines.py', 'schema.sql'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
         (self.brain / 'brain-engine' / '.venv').symlink_to(venv)
         (self.brain / 'contexts' / 'session-pilote.yml').write_text('type: pilote\nttl_hours: 12\n')
@@ -3114,7 +3473,7 @@ class BrainBsiJetable(unittest.TestCase):
 
     def _bsi(self, *args, port='1'):
         return subprocess.run(['bash', str(self.brain / 'scripts' / 'bsi-claim.sh'), *args],
-                              capture_output=True, text=True, timeout=60,
+                              capture_output=True, text=True, timeout=60, cwd=self.brain,
                               env={**self.env, 'BRAIN_PORT': port})
 
     def _open(self, sess, *args, port='1'):
@@ -5921,6 +6280,127 @@ class TestForgeAutonome(unittest.TestCase):
         self.assertNotIn('=h', str(e.exception))
 
 
+class TestForgeMergeAvanceRapide(unittest.TestCase):
+    """`merge` fusionne en avance rapide, et refuse de réécrire une branche
+    longue.
+
+    Le 6/10, une PR de réalignement fusionnée en `rebase` a fait rejouer par la
+    forge 69 commits en copies réécrites (même arbre, historique dupliqué).
+    `fast-forward-only` avance la base sans rien réécrire ; `rebase` et `squash`
+    réécrivent toujours, donc refusés quand la tête est longue — ou illisible.
+    Joué contre une FAUSSE forge : `conf` lève, `call` est remplacé, MYSECRETS
+    pointe sur un chemin qui n'existe pas — ni réseau, ni jeton."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('brain-forge.py absent — script d’instance')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_avance_rapide', self.SCRIPT)
+        self.bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bf)
+        self.call_d_origine = self.bf.call
+
+        def conf_interdite():
+            raise AssertionError('conf() réelle appelée — le test atteindrait MYSECRETS')
+        self.bf.conf = conf_interdite
+        self.bf.SECRETS = Path(tempfile.gettempdir()) / 'forge-avance-rapide-absent' / 'MYSECRETS'
+        self.appels = []
+
+    def _forge(self, tete, code_get=200):
+        def call(method, path, payload=None):
+            self.appels.append((method, path, payload))
+            if method == 'GET':
+                if code_get != 200:
+                    return code_get, {'message': 'illisible'}
+                return 200, {'head': {'ref': tete, 'repo': {'full_name': 'Owner/depot'}}}
+            return 200, None
+        self.bf.call = call
+
+    def _merge(self, style, tete, code_get=200):
+        self._forge(tete, code_get)
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = self.bf.cmd_merge('Owner/depot', '1', style)
+        return code, sortie.getvalue()
+
+    def _posts(self):
+        return [p for m, _, p in self.appels if m == 'POST']
+
+    def test_l_avance_rapide_part_telle_quelle(self):
+        code, _ = self._merge('fast-forward-only', 'dev/myeline')
+        self.assertEqual(code, 0)
+        self.assertEqual(self._posts(),
+                         [{'Do': 'fast-forward-only', 'delete_branch_after_merge': False}])
+
+    def test_l_avance_rapide_par_la_ligne_de_commande(self):
+        self._forge('dev/myeline')
+        sys_argv = sys.argv
+        sys.argv = ['brain-forge.py', '--repo', 'Owner/depot', 'merge', '7', 'fast-forward-only']
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as e:
+                self.bf.main()
+        finally:
+            sys.argv = sys_argv
+        self.assertEqual(e.exception.code, 0)
+        self.assertEqual(self._posts()[0]['Do'], 'fast-forward-only')
+
+    def test_un_style_inconnu_sort_toujours(self):
+        self._forge('fix/x')
+        with self.assertRaises(SystemExit):
+            self.bf.cmd_merge('Owner/depot', '1', 'rebase-merge')
+        self.assertEqual(self._posts(), [])
+
+    def test_rebase_et_squash_refuses_sur_une_branche_longue(self):
+        for style in ('rebase', 'squash'):
+            for tete in ('main', 'master', 'dev/myeline', 'dev/autonome'):
+                with self.subTest(style=style, tete=tete):
+                    self.appels.clear()
+                    code, sortie = self._merge(style, tete)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(self._posts(), [], 'aucune fusion ne doit partir')
+                    self.assertIn('fast-forward-only', sortie)
+
+    def test_rebase_et_squash_refuses_quand_la_tete_est_illisible(self):
+        for style in ('rebase', 'squash'):
+            for code_get in (404, 500):
+                with self.subTest(style=style, code_get=code_get):
+                    self.appels.clear()
+                    code, _ = self._merge(style, 'fix/x', code_get=code_get)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(self._posts(), [])
+
+    def test_rebase_et_squash_permis_sur_une_branche_courte(self):
+        # Le témoin voisin : sans lui, « refusé » pourrait vouloir dire « tout refuse ».
+        for style in ('rebase', 'squash'):
+            with self.subTest(style=style):
+                self.appels.clear()
+                code, _ = self._merge(style, 'fix/x')
+                self.assertEqual(code, 0)
+                self.assertEqual([p['Do'] for p in self._posts()], [style])
+
+    def test_merge_reste_permis_sur_une_branche_longue(self):
+        code, _ = self._merge('merge', 'dev/autonome')
+        self.assertEqual(code, 0)
+        self.assertEqual(self._posts(),
+                         [{'Do': 'merge', 'delete_branch_after_merge': False}])
+
+    def test_l_aide_le_dit(self):
+        doc = self.bf.__doc__
+        self.assertIn('fast-forward-only', doc)
+        self.assertIn('rebase réécrit les commits, toujours', doc)
+        self.assertRegex(doc, r'réaligne[^\n]*fast-forward-only')
+
+    def test_la_signature_de_call_ne_bouge_pas(self):
+        # `myeline/tools/kanban.py` l'appelle ainsi.
+        import inspect
+        params = inspect.signature(self.call_d_origine).parameters
+        self.assertEqual(list(params), ['method', 'path', 'payload'])
+        self.assertIs(params['payload'].default, None)
+        self.assertIs(params['path'].default, inspect.Parameter.empty)
+
+
 class TestHookMarqueursDeConflit(unittest.TestCase):
     """Le pre-commit refuse un marqueur de conflit git ajouté par le commit.
 
@@ -6255,7 +6735,10 @@ class TestSuffixeDeMachine(unittest.TestCase):
         (self.brain / 'brain-engine').mkdir()
         for f in ('bsi-claim.sh', 'posture-gate-check.sh', 'lib/python.sh'):
             shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.brain / 'scripts' / f)
-        shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'db.py', self.brain / 'brain-engine' / 'db.py')
+        # db.py importe racines : on le copie, et _ouvrir lance depuis ce faux brain — le
+        # cwd hérité ne prête plus le vrai racines.py.
+        for f in ('db.py', 'racines.py'):
+            shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
         (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
         subprocess.run(['git', 'init', '-q'], cwd=self.brain, check=True)
 
@@ -6273,7 +6756,7 @@ class TestSuffixeDeMachine(unittest.TestCase):
                    BRAIN_DB_PATH=str(self.tmp / 'jetable.db'))
         r = subprocess.run(['bash', str(self.brain / 'scripts' / 'bsi-claim.sh'), 'open', sess_id,
                             '--type', 'work', '--scope', 'work/essai'],
-                           env=env, capture_output=True, text=True, timeout=60)
+                           env=env, capture_output=True, text=True, timeout=60, cwd=self.brain)
         return r.returncode, r.stdout + r.stderr
 
     def test_sur_replica_sans_suffixe_refuse_et_donne_l_identifiant(self):
@@ -6328,7 +6811,9 @@ class TestDoltBrancheRafraichir(unittest.TestCase):
         (self.brain / 'brain-engine').mkdir()
         for f in ('dolt-branche-rafraichir.sh', 'dolt-laptop.sh', 'lib/python.sh'):
             shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.brain / 'scripts' / f)
-        for f in ('db.py', 'modules.yml'):
+        # db.py importe racines : on le copie, et _lancer lance depuis ce faux brain — le
+        # cwd hérité ne prête plus le vrai racines.py.
+        for f in ('db.py', 'racines.py', 'modules.yml'):
             shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.brain / 'brain-engine' / f)
         (self.brain / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
         (self.brain / 'brain-compose.local.yml').write_text('machine: laptop\n')
@@ -6347,7 +6832,7 @@ class TestDoltBrancheRafraichir(unittest.TestCase):
         if laptop:
             env.update(BRAIN_DB_BACKEND='dolt', BRAIN_DOLT_USER='laptop', BRAIN_DOLT_DB='brain-dolt/laptop')
         return subprocess.run(['bash', str(chemin or self.brain / 'scripts' / script), *args],
-                              env=env, capture_output=True, text=True, timeout=120)
+                              env=env, capture_output=True, text=True, timeout=120, cwd=self.brain)
 
     def _sql(self, utilisateur, base, *requetes):
         import pymysql
@@ -6993,8 +7478,9 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
         self.assertEqual(self._jouer('replica-nomad', 'noyau/agents/un-agent.md'), 1)
 
     def test_la_regle_vient_des_niveaux_pas_d_une_liste(self):
-        """`contexts/` est kernel par `NIVEAUX.yml`, absent de la liste de secours :
-        seule la dérivation par le CORE le refuse."""
+        """`contexts/` est kernel par `NIVEAUX.yml` : refusé en replica. Le chemin
+        principal le tranche ; le repli le recopie depuis — c'est l'absence
+        d'avertissement (`TestLeRepliDuHookDePostureSuitNiveaux`) qui prouve la dérivation."""
         self.assertEqual(self._jouer('replica-nomad', 'contexts/session-x.yml'), 1)
 
     def test_un_agent_a_plat_reste_refuse(self):
@@ -7028,6 +7514,230 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
         for session in ('brain', 'pilote'):
             self.assertEqual(self._jouer('master', 'x.md', noyau='lecture', session=session), 0, session)
         self.assertEqual(self._jouer('replica-nomad', 'x.md', session='brain'), 1, 'le témoin : replica ferme')
+
+
+class TestLeRepliDuHookDePostureSuitNiveaux(unittest.TestCase):
+    """🔴 En repli, le hook de posture refuse ce que `NIVEAUX.yml` met en kernel ou invariant.
+
+    Le chemin principal tranche par le `Registre` du CORE. Sans `NIVEAUX.yml`, ou si
+    `core.zones` ne s'importe pas, le hook se replie sur une regex écrite en dur : elle
+    s'arrêtait à `agents/`, `noyau/`, `profil/`, `scripts/`… et laissait passer
+    `contexts/`, `docs/`, `skills/`, le gitlink `wiki` — 16 entrées racine. L'anti-dérive
+    lit le vrai `NIVEAUX.yml` par `TestLeRepliDesZonesSuitNiveaux._attendu_par_niveaux()` :
+    une entrée kernel ajoutée sans être recopiée dans la regex le fait rougir. Un repli
+    pris se dit sur stderr. Joué dans des dépôts git jetables, en posture replica-nomad."""
+
+    AVERTISSEMENT = 'liste de secours'
+    maxDiff = None
+
+    def setUp(self):
+        absents = [r for r in TestPostureVoitLeNoyau.HOOKS if not (BRAIN_ROOT_PATH / r).is_file()]
+        if absents:
+            self.skipTest(f'garde de posture absente de ce brain ({absents[0]})')
+
+    def _jouer(self, chemins: list[str], chemin_pris: str, gitlink: str | None = None):
+        """Le hook, en replica-nomad, sur `chemins` stagés. `chemin_pris` : 'principal',
+        'sans_niveaux' (pas de `NIVEAUX.yml`) ou 'sans_core' (`core` qui lève `ImportError`).
+        Rend (code de sortie, stderr, fichiers refusés)."""
+        with tempfile.TemporaryDirectory(prefix='brain-posture-repli-') as tmp:
+            b = Path(tmp)
+            copies = ['scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
+                      'scripts/lib/python.sh', 'scripts/posture-gate-check.sh']
+            if chemin_pris != 'sans_niveaux':
+                copies.append('NIVEAUX.yml')
+            for rel in copies:
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+            (b / 'brain-engine').mkdir()
+            (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+            if chemin_pris == 'sans_core':
+                (b / 'brain-engine' / 'core').mkdir()
+                (b / 'brain-engine' / 'core' / '__init__.py').write_text(
+                    'raise ImportError("core absent, pour le test")\n')
+            elif (BRAIN_ROOT_PATH / 'brain-engine' / 'core').is_dir():
+                (b / 'brain-engine' / 'core').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / 'core')
+            (b / 'brain-compose.local.yml').write_text(
+                'instances:\n  ici:\n    active: true\n    posture: replica-nomad\n')
+            g = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                                          cwd=b, capture_output=True, text=True)
+            g('init', '-q')
+            for chemin in chemins:
+                f = b / chemin
+                if not f.exists():
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text('# un fichier\n')
+                g('add', chemin)
+            if gitlink:
+                r = g('update-index', '--add', '--cacheinfo', f'160000,{"1" * 40},{gitlink}')
+                self.assertEqual(r.returncode, 0, r.stderr)
+            env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_MAIN', 'BRAIN_KERNEL_OVERRIDE')}
+            r = subprocess.run(['bash', str(b / 'scripts/hooks/pre-commit-posture')], cwd=b,
+                               capture_output=True, text=True, env=env, timeout=120)
+            refuses = sorted(l[len('  • '):] for l in r.stderr.splitlines() if l.startswith('  • '))
+            return r.returncode, r.stderr, refuses
+
+    def _attendus(self) -> list[str]:
+        """Un échantillon par entrée kernel ou invariant du vrai `NIVEAUX.yml`."""
+        attendu = TestLeRepliDesZonesSuitNiveaux._attendu_par_niveaux()
+        stricts = sorted(n for n, z in attendu.items() if z != 'libre')
+        self.assertIn('noyau/', stricts, 'la lecture de NIVEAUX.yml ne mesure rien')
+        self.assertIn('contexts/', stricts)
+        return sorted(n + 'x.md' if n.endswith('/') else n for n in stricts)
+
+    def test_temoin_un_manifest_de_session_est_refuse_sans_niveaux(self):
+        code, _, refuses = self._jouer(['contexts/session-x.yml'], 'sans_niveaux')
+        self.assertEqual((code, refuses), (1, ['contexts/session-x.yml']))
+
+    def test_sans_core_memes_verdicts(self):
+        code, _, refuses = self._jouer(['contexts/session-x.yml', 'noyau/agents/x.md'], 'sans_core')
+        self.assertEqual((code, refuses), (1, ['contexts/session-x.yml', 'noyau/agents/x.md']))
+
+    def test_anti_derive_chaque_entree_kernel_est_refusee_en_repli(self):
+        echantillons = self._attendus()
+        code, stderr, refuses = self._jouer(echantillons, 'sans_core')
+        manquants = sorted(set(echantillons) - set(refuses))
+        self.assertEqual(manquants, [], 'le repli laisse passer ce que NIVEAUX.yml met en kernel')
+        self.assertEqual(code, 1)
+        self.assertIn(self.AVERTISSEMENT, stderr, 'le repli doit être pris')
+
+    def test_le_gitlink_wiki_est_refuse_en_repli(self):
+        for chemin_pris in ('sans_niveaux', 'sans_core'):
+            code, _, refuses = self._jouer([], chemin_pris, gitlink='wiki')
+            self.assertEqual((code, refuses), (1, ['wiki']), chemin_pris)
+
+    def test_rien_de_trop(self):
+        libres = ['instance/agents/x.md', 'projets/x.md', 'workspace/x.md', 'focus.md',
+                  'brain-engine/server.py']
+        for chemin_pris in ('sans_niveaux', 'sans_core'):
+            code, stderr, refuses = self._jouer(libres, chemin_pris)
+            self.assertEqual((code, refuses), (0, []), f'{chemin_pris} : {stderr}')
+
+    def test_le_repli_pris_se_dit_sur_stderr(self):
+        for chemin_pris in ('sans_niveaux', 'sans_core'):
+            _, stderr, _ = self._jouer(['focus.md'], chemin_pris)
+            self.assertIn(self.AVERTISSEMENT, stderr, chemin_pris)
+        code, stderr, refuses = self._jouer(['contexts/session-x.yml'], 'principal')
+        self.assertEqual((code, refuses), (1, ['contexts/session-x.yml']), 'le témoin : le principal tranche')
+        self.assertNotIn(self.AVERTISSEMENT, stderr)
+
+
+class TestSaboter(unittest.TestCase):
+    """`saboter.py` juge le fichier APRÈS remplacement, garde l'abri d'un essai tué, et
+    n'a plus de `return` dans son `finally`.
+
+    L'ancienne garde 2 (`--par` déjà présent dans le fichier) refusait tout retrait d'un
+    élément de liste (`'a', 'b',` → `'a',` : `'a',` y est déjà) et ratait le cas qu'elle
+    visait : un fichier resté saboté par un essai tué, son `.saboter-abri` à côté — l'outil
+    concluait « a rougi », écrasait l'abri avec la version sabotée, puis le supprimait.
+    Joué par sous-processus sur un fichier jouet, dans un dossier temporaire."""
+
+    OUTIL = BRAIN_ROOT_PATH / 'scripts' / 'saboter.py'
+    ORIGINAL = "ROLES = ['a', 'b', 'c']\n"
+
+    def setUp(self):
+        self.outil = script_d_instance(self.OUTIL)
+        self.tmp = Path(tempfile.mkdtemp(prefix='saboter-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.cible = self.tmp / 'jouet.py'
+        self.abri = self.tmp / 'jouet.py.saboter-abri'
+        self.cible.write_text(self.ORIGINAL, encoding='utf-8')
+        # La commande éprouvée : rouge dès que 'b' quitte la liste.
+        (self.tmp / 'verif.py').write_text(
+            "import jouet, sys\nsys.exit(0 if 'b' in jouet.ROLES else 1)\n", encoding='utf-8')
+
+    def _saboter(self, motif: str, par: str, *commande: str):
+        commande = commande or (sys.executable, 'verif.py')
+        return subprocess.run(
+            [sys.executable, str(self.outil), '--motif', motif, '--par', par,
+             str(self.cible), '--', *commande],
+            capture_output=True, text=True, cwd=self.tmp, timeout=60)
+
+    def _rendu_intact(self, r):
+        self.assertEqual(self.cible.read_text(encoding='utf-8'), self.ORIGINAL, r.stdout + r.stderr)
+        self.assertFalse(self.abri.exists(), 'abri laissé derrière un essai réussi')
+
+    def test_retirer_un_element_de_liste_sabote_et_rougit(self):
+        r = self._saboter("'a', 'b', ", "'a', ")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('a rougi', r.stdout)
+        self._rendu_intact(r)
+
+    def test_remplacement_identique_reste_inerte_sans_toucher_au_fichier(self):
+        avant = self.cible.stat().st_mtime_ns
+        r = self._saboter("'b'", "'b'")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn('SABOTAGE INERTE', r.stdout)
+        self.assertEqual(self.cible.stat().st_mtime_ns, avant, 'le fichier a été réécrit')
+        self._rendu_intact(r)
+
+    def test_motif_absent_sort_2(self):
+        r = self._saboter("'z'", "'y'")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('MOTIF INTROUVABLE', r.stdout)
+        self._rendu_intact(r)
+
+    def test_commande_inexecutable_sort_5_et_rend_le_fichier(self):
+        r = self._saboter("'b'", "'x'", 'commande-introuvable-my-270')
+        self.assertEqual(r.returncode, 5, r.stdout + r.stderr)
+        self.assertIn('COMMANDE INEXÉCUTABLE', r.stdout)
+        self.assertIn("sous zsh, `$VAR` ne se découpe PAS toute seule.", r.stdout)
+        self._rendu_intact(r)
+
+    def test_commande_restee_verte_sort_1(self):
+        r = self._saboter("'c'", "'d'")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('restée VERTE', r.stdout)
+        self._rendu_intact(r)
+
+    def test_l_abri_d_un_essai_tue_n_est_pas_ecrase(self):
+        """Un abri déjà là est la seule copie de l'original : sortie 4, rien touché."""
+        self.abri.write_text(self.ORIGINAL, encoding='utf-8')
+        reste_sabote = "ROLES = ['a', 'c']\n"
+        self.cible.write_text(reste_sabote, encoding='utf-8')
+        r = self._saboter("'c'", "'d'")
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertEqual(self.abri.read_text(encoding='utf-8'), self.ORIGINAL, 'abri écrasé')
+        self.assertEqual(self.cible.read_text(encoding='utf-8'), reste_sabote, 'fichier touché')
+
+    def test_interrompu_le_fichier_est_rendu_et_l_exception_remonte(self):
+        """La commande envoie SIGINT à l'outil : le `finally` rend le fichier, puis la
+        `KeyboardInterrupt` remonte (code -2) au lieu d'être avalée en un verdict."""
+        sigint = 'import os, signal, time; os.kill(os.getppid(), signal.SIGINT); time.sleep(3)'
+
+        r = self._saboter("'b', ", "", sys.executable, '-c', sigint)
+        self.assertEqual(r.returncode, -2, r.stdout + r.stderr)
+        self.assertIn('KeyboardInterrupt', r.stderr)
+        self._rendu_intact(r)
+
+        # Variante : l'abri altéré avant le SIGINT — la restauration le voit, le garde.
+        altere = "ROLES = ['altéré']\n"
+        r = self._saboter("'b', ", "", sys.executable, '-c',
+                          f'open("jouet.py.saboter-abri", "w").write({altere!r}); ' + sigint)
+        self.assertEqual(r.returncode, -2, r.stdout + r.stderr)
+        self.assertIn('KeyboardInterrupt', r.stderr)
+        self.assertIn('NON RESTAURÉ', r.stdout)
+        self.assertTrue(self.abri.exists(), 'abri retiré alors que le fichier n’est pas rendu')
+
+    def test_pas_de_return_break_continue_dans_un_finally(self):
+        """Lu par l'AST : un `return` dans un `finally` avale l'exception en vol."""
+        import ast
+        arbre = ast.parse(self.outil.read_text(encoding='utf-8'))
+        trouves = []
+
+        def fouiller(noeud, dans_boucle):
+            for enfant in ast.iter_child_nodes(noeud):
+                if isinstance(enfant, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                    continue
+                if isinstance(enfant, ast.Return) or (
+                        isinstance(enfant, (ast.Break, ast.Continue)) and not dans_boucle):
+                    trouves.append(f'{type(enfant).__name__.lower()} l. {enfant.lineno}')
+                fouiller(enfant, dans_boucle or isinstance(enfant, (ast.For, ast.AsyncFor, ast.While)))
+
+        for essai in ast.walk(arbre):
+            if isinstance(essai, ast.Try):
+                for instr in essai.finalbody:
+                    fouiller(ast.Module(body=[instr], type_ignores=[]), False)
+        self.assertEqual(trouves, [], 'sortie de flot dans un finally')
 
 
 class TestIsolationVoitLaVue(unittest.TestCase):
@@ -9165,6 +9875,61 @@ class TestNiveauxDuGabarit(unittest.TestCase):
                         if l.strip().startswith('#') and l.strip('# ')}
         self.assertEqual([l for l in texte.splitlines() if l.strip() in commentaires], [],
                          'un commentaire de la source est parti')
+
+    def test_le_repli_du_fork_suit_son_niveaux_rendu(self):
+        """Le repli des zones du moteur RENDU couvre ce que le `NIVEAUX.yml` RENDU met en
+        kernel ou invariant.
+
+        La synchro ajoute au `NIVEAUX.yml` du fork des entrées que la source ne porte pas
+        (la vitrine de sa racine : `ARCHITECTURE.md`, `LICENSE.md`). Le repli de `server.py`
+        (`KERNEL_ZONE_FILES`) les recopie en dur. L'anti-dérive de l'origine
+        (`TestLeRepliDesZonesSuitNiveaux`) lit le `NIVEAUX.yml` de l'origine : un oubli
+        dans le repli n'y rougit pas, il ne se voyait que chez un fork. Ici, le juge est
+        le `server.py` du rendu, joué en repli (`BRAIN_ROOT` sur un dossier vide), dans un
+        sous-processus ; la règle est celle de `_attendu_par_niveaux`, lue sur le rendu."""
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        import yaml
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        # La règle de l'anti-dérive de l'origine, lue sur le NIVEAUX.yml du rendu :
+        # une seule règle, pas une copie qui dériverait.
+        regle = TestLeRepliDesZonesSuitNiveaux._attendu_par_niveaux
+        with patch.dict(regle.__globals__, {'BRAIN_ROOT_PATH': rendu}):
+            attendu = regle()
+        stricts = {n: z for n, z in attendu.items() if z != 'libre'}
+        # Le test prouve qu'il mesure : le noyau, le fichier des zones, et au moins une
+        # entrée que seul le rendu déclare — sinon l'anti-dérive de l'origine suffisait.
+        self.assertIn('noyau/', stricts, 'la lecture du NIVEAUX.yml rendu ne mesure rien')
+        self.assertIn('NIVEAUX.yml', stricts)
+        source = yaml.safe_load((self.brain / 'NIVEAUX.yml').read_text(encoding='utf-8'))['entrees']
+        self.assertTrue(set(stricts) - set(source),
+                        'aucune entrée stricte propre au rendu : ce test ne voit rien de plus que '
+                        "l'anti-dérive de l'origine")
+        vide = self.tmp / 'racine-vide'
+        vide.mkdir()
+        echantillons = {(n + 'x.md' if n.endswith('/') else n): z for n, z in stricts.items()}
+        p = subprocess.run(
+            [sys.executable, '-c',
+             'import sys, json; sys.dont_write_bytecode=True; sys.path.insert(0, "brain-engine"); '
+             'import server; '
+             'print(json.dumps({"fichier": server.__file__, '
+             '"declarations": list(server._declarations_niveaux()), '
+             '"verdicts": {c: server._write_zone(c) for c in sys.argv[1:]}}))',
+             *sorted(echantillons)],
+            cwd=rendu, capture_output=True, text=True, timeout=60,
+            env={**self.env, 'BRAIN_ROOT': str(vide)})
+        self.assertEqual(p.returncode, 0, p.stderr[-800:])
+        sortie = json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(Path(sortie['fichier']).resolve(), (rendu / 'brain-engine' / 'server.py').resolve(),
+                         'le juge doit être le server.py du rendu')
+        self.assertEqual(sortie['declarations'], [{}, {}], 'le repli doit être pris')
+        self.assertEqual(list(vide.iterdir()), [], 'le repli a écrit dans sa racine')
+        rang = TestLeRepliDesZonesSuitNiveaux.RANG
+        en_defaut = [f'{e} : {sortie["verdicts"][e]} (NIVEAUX.yml rendu : {z})'
+                     for e, z in sorted(echantillons.items())
+                     if rang[sortie['verdicts'][e]] < rang[z]]
+        self.assertEqual(en_defaut, [], 'le repli du fork est plus permissif que son NIVEAUX.yml')
 
     def test_sans_source_la_synchro_refuse(self):
         """Témoin : un brain sans `NIVEAUX.yml` ne rend pas un gabarit sans zones."""

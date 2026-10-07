@@ -11,10 +11,16 @@ Les deux ont été trouvés par des témoins posés à la main, qui ont disparu 
 la session. Ce fichier les rend permanents. Il construit des situations
 **fausses** dans un brain jetable, et vérifie que chaque outil les refuse.
 
-    python3 tools/test_controles_rougissent.py
+    python3 tools/test_controles_rougissent.py --brain <le vrai brain>
+
+`--brain` est obligatoire : c'est le brain d'où les témoins copient scripts et
+manifestes. Sans lui, ou s'il lui manque `KERNEL.md` ou `scripts/`, le témoin
+refuse (sortie 2) au lieu de deviner.
 
 Garanties :
 
+    brain / explicite     sans `--brain` ⇒ refus ; un dossier sans `KERNEL.md` ⇒
+                          refus ; un brain (`KERNEL.md` et `scripts/`) passe
     contextes / L1        un fichier déclaré et absent est signalé
     contextes / L2        un template dont le répertoire manque est signalé
     contextes / vrai      un brain cohérent passe au vert
@@ -73,6 +79,13 @@ Garanties :
                           sync-template.sh écrit ; reformulé d'un côté ⇒ rouge
     garde de lecture      son hook absent de `.claude/settings.json`, ou ce fichier
                           illisible ⇒ rouge ; branché par `brancher`, vert
+    gardes / témoin       sans claim 409, avec un claim 200 ⇒ vert ; « avec » rendu
+                          403 (un autre refus) ou 503 (une panne) ⇒ rouge
+    gardes / effets       le PUT qui aboutit n'atteint ni la réindexation ni les
+                          verrous du moteur ; une réindexation ou une lecture de
+                          verrous par un détour, un invariant ou la cible kernel
+                          réécrits autrement, le PUT « sans » qui aboutit, une
+                          `BRAIN_ROOT` qui n'est pas `--brain` ⇒ rouge
     kanban / tenir        l'index absent se régénère ; à blanc rougit sans écrire ;
                           une clôture sans preuve arrête avant la forge (BRAIN-079)
     zone / projet         un préfixe déclaré se tient ; l'exemption d'un autre préfixe
@@ -114,6 +127,8 @@ exercent le brain vivant par nature.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import shutil
 import subprocess
 import sys
@@ -160,11 +175,30 @@ def joue(outil: str, racine: Path, *extra: str) -> int:
 
 
 # Le vrai brain, d'où les témoins COPIENT des scripts et des manifestes — ils ne
-# l'écrivent jamais. Il vient de `--brain` ; le défaut suppose myeline rangé à
-# côté (`~/Dev/Gitea/myeline` → `~/Dev/Brain`). Mesuré le 28/09 : depuis un
-# worktree, ce défaut ne menait nulle part — trois garanties rougissaient en
-# `code -1`, et trois autres (daemon, TTL, archivage) s'abstenaient en silence.
-VRAI_BRAIN = Path(__file__).resolve().parents[3] / "Brain"
+# l'écrivent jamais. Il vient de `--brain`, et de lui seul : `resoudre_brain` le
+# fixe avant le premier témoin. Il n'a plus de défaut deviné. L'ancien supposait
+# ce dépôt rangé à côté du brain ; depuis un worktree il menait ailleurs, et 19
+# garanties disparaissaient sans un mot — un témoin faux, vert pour rien.
+VRAI_BRAIN: Path | None = None
+
+
+def resoudre_brain(argv: list[str] | None = None) -> Path:
+    """Le vrai brain, donné par `--brain` et vérifié : il porte `KERNEL.md` et
+    `scripts/`. Sinon refus, sortie 2, sans rien deviner."""
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--brain", type=Path, default=None,
+                   help="le vrai brain, d'où copier scripts et manifestes — "
+                        "jamais écrit ; les témoins travaillent dans des brains temporaires")
+    args = p.parse_args(argv)
+    if args.brain is None:
+        p.error("--brain est obligatoire : le vrai brain, d'où les témoins copient "
+                "scripts et manifestes. Aucun défaut n'est deviné.")
+    brain = args.brain.expanduser().resolve()
+    if not (brain / "KERNEL.md").is_file() or not (brain / "scripts").is_dir():
+        p.error(f"--brain {brain} : ce dossier ne porte pas de brain "
+                "(il faut KERNEL.md et scripts/).")
+    return brain
 
 
 def joue_bash(script: str, base: Path) -> int:
@@ -246,15 +280,8 @@ def lock_pour(base: Path, version: str = "1.0.0") -> None:
 def main() -> int:
     # `--brain` ne désigne pas où l'on écrit : chaque témoin construit son brain
     # jetable. Il dit d'où COPIER les vrais scripts et manifestes (VRAI_BRAIN).
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--brain", type=Path, default=None,
-                   help="le vrai brain, d'où copier scripts et manifestes — "
-                        "jamais écrit ; les témoins travaillent dans des brains temporaires")
-    args = p.parse_args()
     global VRAI_BRAIN
-    if args.brain:
-        VRAI_BRAIN = args.brain.expanduser().resolve()
+    VRAI_BRAIN = resoudre_brain()
 
     echecs: list[str] = []
 
@@ -263,6 +290,27 @@ def main() -> int:
         print(f"  {etat} {nom:34} code {obtenu} (attendu {attendu})")
         if obtenu != attendu:
             echecs.append(nom)
+
+    # Le témoin exige son brain : appelée dans ce processus, la résolution refuse
+    # ce qu'elle doit refuser. Un défaut deviné qui revient, pris tel quel, fait
+    # tomber la première ; une vérification neutralisée, la deuxième.
+    def resolution(argv: list[str]) -> int:
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                resoudre_brain(argv)
+        except SystemExit as e:
+            return e.code if isinstance(e.code, int) else 1
+        return 0
+
+    print("\nBRAIN — le témoin exige le sien\n")
+    garantie("brain / sans --brain ⇒ refus", resolution([]), 2)
+    with tempfile.TemporaryDirectory(prefix="temoin-brain-") as tmp:
+        garantie("brain / un dossier sans KERNEL.md ⇒ refus",
+                 resolution(["--brain", tmp]), 2)
+        (Path(tmp) / "KERNEL.md").write_text("# KERNEL\n", encoding="utf-8")
+        (Path(tmp) / "scripts").mkdir()
+        garantie("brain / KERNEL.md et scripts/ ⇒ passe",
+                 resolution(["--brain", tmp]), 0)
 
     with tempfile.TemporaryDirectory(prefix="temoin-controles-") as tmp:
         base = brain_jetable(Path(tmp))
@@ -2125,6 +2173,161 @@ def cmd_close_stale():
                 "[Unit]\n[Service]\nExecStart=/bin/true\n", encoding="utf-8")
             garantie("unités / sans l'After=, juste",
                      joue("unites_sans_cycle.py", u, "--unites", str(u)), 0)
+
+    # ── Les gardes d'écriture : le témoin exige que l'écriture aboutisse ──────
+    #
+    # `eprouver_gardes_ecriture.py` conclut « la garde consulte les claims » par
+    # deux PUT : sans claim (409), puis avec un claim. Il se contentait d'une
+    # DIFFÉRENCE : « avec » rendu 403 (un autre refus) ou 503 (une panne) passait
+    # au vert, alors que rien n'avait abouti. Un faux `server.py`, dans un
+    # brain jetable, rend ce que le moteur rendrait — le statut du PUT « avec » est
+    # piloté par `FAUX_AVEC`. Le 200 rend 0 avec le même faux : un 1 sur 403 ou
+    # 503 ne peut venir que du témoin (les trois refus kernel lèvent leur 409 avant).
+    #
+    # Le faux suit la route du vrai moteur : les verrous lus (`_foreign_lock`)
+    # AVANT l'écriture, la réindexation demandée à la file (`_demander_reindex`)
+    # APRÈS, et sa racine suit `BRAIN_ROOT` comme `racines.py`. Chaque effet qui
+    # atteint le faux laisse une trace dans le brain jetable : une trace
+    # `reindex` ou `verrous` après la passe, c'est un effet que l'outil a laissé
+    # passer jusqu'au moteur. `FAUX_ALTERE` le rend fautif d'une seule façon à la
+    # fois : une réindexation ou une lecture de verrous par un détour, un
+    # invariant ou la cible kernel réécrits AUTREMENT (les deux filets
+    # d'empreintes), le PUT « sans » qui aboutit. Et une `BRAIN_ROOT` qui désigne un autre brain que `--brain` doit
+    # être refusée avant tout PUT (aucune trace `put` là-bas).
+    #
+    # L'outil importe fastapi : il se joue avec le python du moteur. Sans fastapi,
+    # il sortirait `SKIP` et 0 : la section s'abstient en le disant, et un SKIP
+    # n'est jamais compté comme un 0.
+    faux_serveur = (
+        "import os, subprocess   # le vrai l'importe aussi ; il ne s'en sert plus pour réindexer\n"
+        "from pathlib import Path\n"
+        "from typing import Optional\n"
+        "from fastapi import FastAPI, HTTPException\n"
+        "from pydantic import BaseModel\n\n"
+        "BRAIN_ROOT = Path(os.environ.get('BRAIN_ROOT') or Path(__file__).resolve().parent.parent)\n"
+        "AVEC = int(os.environ.get('FAUX_AVEC', '200'))\n"
+        "ALTERE = os.environ.get('FAUX_ALTERE', '')\n"
+        "N = [0]\n"
+        "app = FastAPI()\n\n"
+        "def _trace(quoi):\n"
+        "    t = BRAIN_ROOT / 'brain-engine' / 'traces'\n"
+        "    t.mkdir(parents=True, exist_ok=True)\n"
+        "    with open(t / quoi, 'a', encoding='utf-8') as f:\n"
+        "        f.write('x\\n')\n\n"
+        "def _declarations_niveaux():\n"
+        "    return ({'KERNEL.md': 'invariant'}, {})\n\n"
+        "def _write_zone(chemin):\n"
+        "    if _declarations_niveaux()[0].get(chemin) == 'invariant':\n"
+        "        return 'invariant'\n"
+        "    if chemin.startswith(('agents/', 'profil/', 'scripts/')) or chemin == 'brain-compose.yml':\n"
+        "        return 'kernel'\n"
+        "    return 'libre'\n\n"
+        "def check_auth(a):\n"
+        "    raise HTTPException(401, 'jeton')\n\n"
+        "def _open_claims():\n"
+        "    return []\n\n"
+        "def _foreign_lock(chemin, holder):\n"
+        "    _trace('verrous')\n"
+        "    return None\n\n"
+        "def _demander_reindex(chemin):\n"
+        "    _trace('reindex')\n"
+        "    return True\n\n"
+        "def _reindexer_en_direct(chemin):\n"
+        "    _trace('reindex')\n"
+        "    return True\n\n"
+        "def _verrous_en_direct(chemin, holder):\n"
+        "    _trace('verrous')\n"
+        "    return None\n\n"
+        "class Corps(BaseModel):\n"
+        "    content: str\n"
+        "    sess_id: Optional[str] = None\n\n"
+        "@app.put('/brain/{chemin:path}')\n"
+        "def ecrire(chemin: str, corps: Corps):\n"
+        "    _trace('put')\n"
+        "    check_auth(None)\n"
+        "    z = _write_zone(chemin)\n"
+        "    if z == 'invariant':\n"
+        "        if ALTERE == 'invariant':\n"
+        "            (BRAIN_ROOT / chemin).write_text(corps.content + 'x', encoding='utf-8')\n"
+        "        raise HTTPException(403, 'zone invariant')\n"
+        "    if z == 'kernel':\n"
+        "        N[0] += 1\n"
+        "        if ALTERE == 'sans' and N[0] == 4:\n"
+        "            return {'ok': True}\n"
+        "        claims = _open_claims()\n"
+        "        if not claims:\n"
+        "            raise HTTPException(409, 'aucun claim ouvert')\n"
+        "        if corps.sess_id and corps.sess_id not in [c['sess_id'] for c in claims]:\n"
+        "            raise HTTPException(409, 'claim non ouvert')\n"
+        "        if len(claims) > 1 and not corps.sess_id:\n"
+        "            raise HTTPException(409, '2 claims ouverts — préciser sess_id')\n"
+        "        if AVEC == 403:\n"
+        "            raise HTTPException(403, 'noyau verrouillé')\n"
+        "        if AVEC == 503:\n"
+        "            raise HTTPException(503, 'verrous illisibles')\n"
+        "    lire = _verrous_en_direct if ALTERE == 'verrous_detour' else _foreign_lock\n"
+        "    if lire(chemin, corps.sess_id):\n"
+        "        raise HTTPException(409, 'lock détenu')\n"
+        "    (BRAIN_ROOT / chemin).write_text(corps.content + ('x' if ALTERE == 'kernel' else ''), encoding='utf-8')\n"
+        "    if ALTERE == 'detour':\n"
+        "        _reindexer_en_direct(chemin)\n"
+        "    else:\n"
+        "        _demander_reindex(chemin)\n"
+        "    return {'ok': True}\n"
+    )
+    py_moteur = python_du_brain(VRAI_BRAIN)
+    a_fastapi = subprocess.run([py_moteur, "-c", "import fastapi.testclient"],
+                               capture_output=True).returncode == 0
+    if not _outils_presents("eprouver_gardes_ecriture.py"):
+        print("  ⏭  gardes d'écriture / outil d'instance absent de ce brain")
+    elif not a_fastapi:
+        print("  ⏭  gardes d'écriture / fastapi absent du python du moteur — l'outil s'abstiendrait, rien à éprouver")
+    else:
+        with tempfile.TemporaryDirectory(prefix="temoin-gardes-") as tmp:
+            g = Path(tmp) / "brain"
+            autre = Path(tmp) / "autre"
+            (g / "brain-engine").mkdir(parents=True)
+            (g / "brain-engine" / "server.py").write_text(faux_serveur, encoding="utf-8")
+
+            def gardes(avec: int = 200, altere: str = "",
+                       racine_moteur: Path | None = None) -> tuple[int, set[str]]:
+                """Le code de sortie de l'outil, et les traces que le faux moteur a
+                laissées dans la racine qu'il sert. Brain remis à neuf à chaque passe."""
+                servie = racine_moteur or g
+                for b in (g, autre):
+                    (b / "agents").mkdir(parents=True, exist_ok=True)
+                    (b / "KERNEL.md").write_text("# KERNEL\n", encoding="utf-8")
+                    (b / "agents" / "coach.md").write_text("---\nname: coach\n---\n", encoding="utf-8")
+                    shutil.rmtree(b / "brain-engine" / "traces", ignore_errors=True)
+                env = {k: v for k, v in os.environ.items() if k != "BRAIN_ROOT"}
+                env.update(FAUX_AVEC=str(avec), FAUX_ALTERE=altere)
+                if racine_moteur:
+                    env["BRAIN_ROOT"] = str(racine_moteur)
+                r = subprocess.run(
+                    [py_moteur, str(OUTILS / "eprouver_gardes_ecriture.py"), "--brain", str(g)],
+                    capture_output=True, text=True, env=env)
+                traces = servie / "brain-engine" / "traces"
+                vues = {p.name for p in traces.iterdir()} if traces.is_dir() else set()
+                # Un SKIP n'est pas un 0 : il ne compte ni vert ni rouge, il fait tomber la garantie.
+                return (-2 if "SKIP" in r.stdout + r.stderr else r.returncode), vues
+
+            code, vues = gardes(200)
+            garantie("gardes / témoin : avec un claim 200", code, 0)
+            garantie("gardes / témoin : avec un claim 403", gardes(403)[0], 1)
+            garantie("gardes / témoin : avec un claim 503", gardes(503)[0], 1)
+            # Les deux effets du PUT qui aboutit : aucun ne doit atteindre le moteur.
+            garantie("gardes / réindexation neutralisée",
+                     code if code < 0 else int("reindex" in vues), 0)
+            garantie("gardes / verrous neutralisés",
+                     code if code < 0 else int("verrous" in vues), 0)
+            garantie("gardes / réindexation par un détour", gardes(altere="detour")[0], 1)
+            garantie("gardes / témoin : verrous par un détour", gardes(altere="verrous_detour")[0], 1)
+            garantie("gardes / filet invariant : réécrit autrement", gardes(altere="invariant")[0], 1)
+            garantie("gardes / filet kernel : réécrit autrement", gardes(altere="kernel")[0], 1)
+            garantie("gardes / témoin : le PUT « sans » aboutit", gardes(altere="sans")[0], 1)
+            # Une autre racine : refusée, et AVANT tout PUT (aucune trace là-bas).
+            code, vues = gardes(racine_moteur=autre)
+            garantie("gardes / BRAIN_ROOT ≠ --brain", code if code < 0 or not vues else 2, 1)
 
     # Le garde de lecture : son branchement, mesuré par le garde lui-même.
     garde_src = VRAI_BRAIN / "scripts" / "garde-lecture.py"

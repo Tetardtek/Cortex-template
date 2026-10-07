@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.4.0"
-generated_at: "2026-10-06T18:14"
+kernel_version: "3.4.1"
+generated_at: "2026-10-07T05:41"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: a78e103282603b6c96cf4c4c5a92bf1200180bc185f22611bec531bb7a0be4e0
+  brain-compose.yml: bc1d983c82db0a3332cf4c28222d01b01d77a82a5ce30ae76740b62c32400b17
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
