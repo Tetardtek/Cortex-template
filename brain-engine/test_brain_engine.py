@@ -392,6 +392,10 @@ class TestEmbedUtils(unittest.TestCase):
         Le temoin tient dans la paire : un fichier exclu rend une liste VIDE,
         un fichier accepte en rend une de UN. Sans le second, « vide » pourrait
         venir d'un `--file` qui ne marche plus du tout.
+
+        Le fichier accepte se juge aussi sur son NOM et sa strategie : ceux de la
+        passe complete. `--file agents/x.md` rendait la cible resolue,
+        `noyau/agents/x.md` — un doublon de l'agent dans l'index.
         """
         exclu = embed.BRAIN_ROOT / "brain-engine" / "embed.py"
         self.assertTrue(embed.should_exclude(exclu),
@@ -400,11 +404,13 @@ class TestEmbedUtils(unittest.TestCase):
             embed.collect_files(str(exclu.relative_to(embed.BRAIN_ROOT))), [],
             "un fichier hors corpus ne doit pas etre indexe par --file")
 
+        self.assertEqual(embed.collect_files("KERNEL.md"),
+                         [(embed.BRAIN_ROOT / "KERNEL.md", "file")],
+                         "temoin : un fichier DU corpus passe toujours par --file")
         accepte = embed.BRAIN_ROOT / "agents" / "AGENTS.md"
         if accepte.is_file():
-            self.assertEqual(
-                len(embed.collect_files(str(accepte.relative_to(embed.BRAIN_ROOT)))), 1,
-                "temoin : un fichier DU corpus passe toujours par --file")
+            self.assertEqual(embed.collect_files("agents/AGENTS.md"), [(accepte, "h2")],
+                             "un agent de la vue garde son nom de vue")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1739,9 +1745,15 @@ class TestLectureDeLaVue(unittest.TestCase):
                      "## Ancien\n\nFAUX-COMPLEMENT retiré depuis, mais resté dans l'assemblage.\n")
         self._ecrire('instance/agents/surch.md', self.AGENT.format(n='surch', corps='FAUSSE-SURCHARGE'))
         # Un lien de l'instance vers la zone privée : la vue le relie, la zone reste fermée.
-        self._ecrire('workspace/scratch/x.md', '# carnet\n')
+        self._ecrire('workspace/scratch/x.md',
+                     "# carnet\n\n## Notes\n\nCARNET-PRIVE : une note du carnet de travail, assez "
+                     "longue pour faire un chunk que l'indexeur garderait.\n")
         (self.tmp / 'instance/agents/carnet.md').symlink_to('../../workspace/scratch/x.md')
         self._ecrire('noyau/autre.md', self.AGENT.format(n='autre', corps='Le reste du noyau'))
+        self._ecrire('docs/page.md', self.AGENT.format(n='page', corps='Une page générée'))
+        # Imbriqués sous des bases que le corpus prend À PLAT (`*.md`, `*.yml`) : hors corpus.
+        self._ecrire('handoffs/archive/x.md', self.AGENT.format(n='archive', corps='Un handoff rangé'))
+        self._ecrire('contexts/archive/x.yml', 'session: archive\nnote: un contexte rangé, hors corpus\n')
         self._ecrire('KERNEL.md', '# KERNEL\n')
         self.vue = self._vue_py()
         self.vue.construire(self.tmp)
@@ -1755,6 +1767,11 @@ class TestLectureDeLaVue(unittest.TestCase):
         # Un lien de la vue vers le noyau, mais HORS de `noyau/agents/` : la frontière
         # de la liste blanche est `noyau/agents/`, pas `noyau/`.
         (self.tmp / 'agents/hors-agents.md').symlink_to('../noyau/autre.md')
+        # Un lien de la vue qui sort du brain : écarté, tranché par l'owner le 7/10.
+        self.dehors = Path(tempfile.mkdtemp(prefix='hors-du-brain-')).resolve()
+        (self.dehors / 'x.md').write_text(self.AGENT.format(n='dehors', corps='HORS-DU-BRAIN'),
+                                          encoding='utf-8')
+        (self.tmp / 'agents/dehors.md').symlink_to(self.dehors / 'x.md')
         self._srv, self._embed = srv.BRAIN_ROOT, embed.BRAIN_ROOT
         srv.BRAIN_ROOT, embed.BRAIN_ROOT = self.tmp, self.avant
         self.distant = TestClient(srv.app, raise_server_exceptions=False, client=('192.0.2.1', 50000))
@@ -1763,6 +1780,7 @@ class TestLectureDeLaVue(unittest.TestCase):
         srv.BRAIN_ROOT, embed.BRAIN_ROOT = self._srv, self._embed
         shutil.rmtree(self.tmp, ignore_errors=True)
         shutil.rmtree(self.avant, ignore_errors=True)
+        shutil.rmtree(self.dehors, ignore_errors=True)
 
     def _lire(self, chemin, jeton):
         with patch.object(srv, '_TOKEN_MAP', self.JETONS):
@@ -1858,6 +1876,86 @@ class TestLectureDeLaVue(unittest.TestCase):
                 chunks = self._indexer(chemin)
                 self.assertTrue(chunks, f'{chemin} : rien d\'indexé, le test ne mesurerait rien')
                 self.assertEqual({c['scope'] for c in chunks}, {attendu}, chemin)
+
+    # ── l'indexeur : une seule porte, nommée par la vue, jugée sur sa cible ───
+    #
+    # Deux portes mènent à l'index : la passe complète et le fichier seul (`--file`,
+    # le `PUT` du moteur). La seconde résolvait son chemin : `--file agents/plain.md`
+    # indexait `noyau/agents/plain.md`, un doublon de l'agent sous un nom que
+    # `NIVEAUX.yml` dit non indexé, découpé par la mauvaise stratégie ; et elle
+    # indexait ce que le corpus ne prend pas (un complément, `noyau/autre.md`,
+    # `docs/`). La première jugeait le chemin de la vue, pas sa cible : un
+    # lien de la vue vers le carnet privé s'indexait.
+
+    def _chunks(self, target_file=None):
+        return [(c['filepath'], c['scope'], c['text']) for c in self._indexer(target_file)]
+
+    def test_un_fichier_seul_se_nomme_par_sa_vue(self):
+        """Par la vue ou par sa source, le fichier seul rend les chunks de la passe
+        complète : même nom, même scope, même découpe."""
+        complet = self._chunks()
+        for source, vue, scope in (('agents/plain.md', 'agents/plain.md', 'public'),
+                                   ('noyau/agents/plain.md', 'agents/plain.md', 'public'),
+                                   ('noyau/agents/coach.md', 'agents/coach.md', 'satellite')):
+            with self.subTest(source=source):
+                attendu = [c for c in complet if c[0] == vue]
+                self.assertTrue(attendu, f'{vue} absent de la passe complète : rien à comparer')
+                self.assertEqual({c[1] for c in attendu}, {scope}, vue)
+                self.assertEqual(self._chunks(source), attendu, source)
+
+    def test_un_fichier_seul_hors_du_corpus_n_est_pas_indexe(self):
+        """Une source sans entrée de vue (un complément, le README de l'instance), le
+        reste du noyau, une page générée, la zone privée, un fichier imbriqué sous une
+        base que le corpus prend à plat, un chemin qui sort du brain : rien
+       ."""
+        hors = ('instance/agents/coach.complement.md', 'instance/agents/README.md',
+                'noyau/autre.md', 'docs/page.md', 'workspace/scratch/x.md',
+                'agents/reviews/r.md', 'handoffs/archive/x.md', 'contexts/archive/x.yml',
+                'agents/fuite.md', 'agents/carnet.md', 'agents/dehors.md',
+                os.path.relpath(self.dehors / 'x.md', self.tmp),
+                str(self.tmp / 'agents/plain.md'))
+        for chemin in hors:
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self._chunks(chemin), [], chemin)
+
+    def test_la_passe_complete_juge_la_cible(self):
+        """Un lien de la vue vers la zone privée, ou hors du brain, n'est pas indexé —
+        posé dans `agents/` ou relié par `instance/agents/`."""
+        complet = self._chunks()
+        noms = {c[0] for c in complet}
+        self.assertIn('agents/plain.md', noms, 'témoin : la vue est bien indexée')
+        for chemin in ('agents/fuite.md', 'agents/carnet.md', 'agents/dehors.md'):
+            self.assertNotIn(chemin, noms, chemin)
+        fuites = [c[0] for c in complet if 'CARNET-PRIVE' in c[2] or 'HORS-DU-BRAIN' in c[2]]
+        self.assertEqual(fuites, [], 'le carnet ou un fichier hors du brain indexé')
+
+    def test_les_deux_portes_rendent_le_meme_fichier(self):
+        """Pour chaque fichier de la passe complète, `--file` rend exactement ce
+        fichier et sa stratégie ; hors du corpus, rien."""
+        embed.BRAIN_ROOT = self.tmp
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                complet = embed.collect_files()
+                self.assertTrue(complet, 'passe complète vide : le test ne mesurerait rien')
+                for p, strategie in complet:
+                    rel = str(p.relative_to(self.tmp))
+                    with self.subTest(rel=rel):
+                        self.assertEqual(embed.collect_files(rel), [(p, strategie)], rel)
+                for rel in ('noyau/autre.md', 'docs/page.md', 'instance/agents/README.md'):
+                    with self.subTest(rel=rel):
+                        self.assertEqual(embed.collect_files(rel), [], rel)
+        finally:
+            embed.BRAIN_ROOT = self.avant
+
+    def test_vues_suit_niveaux(self):
+        """`embed.VUES` est le `vue_de:` de `NIVEAUX.yml` — une vue déclarée sans que
+        l'indexeur la connaisse rougit ici."""
+        import yaml
+        d = yaml.safe_load((BRAIN_ROOT_PATH / 'NIVEAUX.yml').read_text(encoding='utf-8'))
+        declarees = {nom: tuple(val['vue_de']) for nom, val in d['entrees'].items()
+                     if isinstance(val, dict) and val.get('vue_de')}
+        self.assertTrue(declarees, 'aucune vue lue : le test ne mesurerait rien')
+        self.assertEqual(embed.VUES, declarees)
 
     def test_recherche_et_boot_publics_ne_servent_aucun_apport(self):
         """La recherche filtre sur la colonne `scope` que l'indexeur a écrite —
@@ -4814,13 +4912,15 @@ class TestMcpSansJetonResteLocal(unittest.TestCase):
     l'adresse du client d'après l'en-tête, et une machine du réseau recevait 200.
     Le témoin tourne dans un espace réseau ISOLÉ (`unshare --net`), avec une
     interface factice 192.0.2.1 (plage de documentation, RFC 5737 — ni privée
-    ni routable) : rien ne sort, rien de la machine n'est touché."""
+    ni routable) : rien ne sort, rien de la machine n'est touché. Le MCP écoute
+    la machine seule par défaut : le témoin l'ouvre (`BRAIN_BIND=0.0.0.0`),
+    le cas où la garde sert."""
 
     SCRIPT = r"""
 ip link set lo up
 ip link add d0 type dummy 2>/dev/null && ip addr add 192.0.2.1/24 dev d0 && ip link set d0 up || exit 3
 cd "$1"
-env -i PATH=/usr/bin:/bin HOME=/tmp BRAIN_MCP_PORT=17999 BRAIN_PORT=17998 "$2" brain-engine/mcp_server.py >/dev/null 2>&1 &
+env -i PATH=/usr/bin:/bin HOME=/tmp BRAIN_BIND=0.0.0.0 BRAIN_MCP_PORT=17999 BRAIN_PORT=17998 "$2" brain-engine/mcp_server.py >/dev/null 2>&1 &
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do sleep 1; curl -s -o /dev/null http://127.0.0.1:17999/mcp && break; done
 Q='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}'
 c() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d "$Q" "$@"; }
@@ -4856,13 +4956,15 @@ class TestMoteurSansJetonResteLocal(unittest.TestCase):
     machine du réseau local lisait le corpus et écrivait. Le témoin tourne dans
     un espace réseau ISOLÉ (`unshare --net`, interface factice 192.0.2.1, RFC
     5737) et ne frappe que des routes de LECTURE : sur l'ancien code, la
-    requête du réseau passe — il ne faut pas qu'elle puisse écrire."""
+    requête du réseau passe — il ne faut pas qu'elle puisse écrire. Le moteur
+    écoute la machine seule par défaut : le témoin l'ouvre
+    (`BRAIN_BIND=0.0.0.0`), le cas où la garde sert."""
 
     SCRIPT = r"""
 ip link set lo up
 ip link add d0 type dummy 2>/dev/null && ip addr add 192.0.2.1/24 dev d0 && ip link set d0 up || exit 3
 cd "$1"
-env -i PATH=/usr/bin:/bin HOME="$3" BRAIN_PORT=17998 BRAIN_DOLT_PORT=13399 "$2" brain-engine/server.py >/dev/null 2>&1 &
+env -i PATH=/usr/bin:/bin HOME="$3" BRAIN_BIND=0.0.0.0 BRAIN_PORT=17998 BRAIN_DOLT_PORT=13399 "$2" brain-engine/server.py >/dev/null 2>&1 &
 for i in $(seq 1 30); do sleep 1; curl -s -o /dev/null http://127.0.0.1:17998/health && break; done
 c() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 echo "local=$(c http://127.0.0.1:17998/health)"
@@ -4871,7 +4973,7 @@ echo "reseau_docs=$(c --interface 192.0.2.1 http://192.0.2.1:17998/docs)"
 echo "forge=$(c --interface 192.0.2.1 -H 'X-Forwarded-For: 127.0.0.1' -H 'Host: 127.0.0.1:17998' http://192.0.2.1:17998/health)"
 echo "local_xff=$(c -H 'X-Forwarded-For: 192.0.2.7' http://127.0.0.1:17998/health)"
 kill %1 2>/dev/null
-env -i PATH=/usr/bin:/bin HOME="$3" BRAIN_PORT=17997 BRAIN_DOLT_PORT=13399 BRAIN_TOKEN_PUBLIC=temoin "$2" brain-engine/server.py >/dev/null 2>&1 &
+env -i PATH=/usr/bin:/bin HOME="$3" BRAIN_BIND=0.0.0.0 BRAIN_PORT=17997 BRAIN_DOLT_PORT=13399 BRAIN_TOKEN_PUBLIC=temoin "$2" brain-engine/server.py >/dev/null 2>&1 &
 for i in $(seq 1 30); do sleep 1; curl -s -o /dev/null http://127.0.0.1:17997/health && break; done
 echo "jeton_reseau_docs=$(c --interface 192.0.2.1 http://192.0.2.1:17997/docs)"
 kill %2 2>/dev/null
@@ -11415,6 +11517,53 @@ class TestZoneDuDiff(unittest.TestCase):
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('❌ scripts/x.sh', r.stdout)
+
+
+class TestEcouteLocaleParDefaut(unittest.TestCase):
+    """Le moteur et le MCP écoutent sur la machine seule, sauf choix explicite.
+
+    Avant : `uvicorn.run(..., host='0.0.0.0')` en dur dans les deux serveurs —
+    le port s'ouvrait à tout le réseau local, alors que tous leurs clients
+    mesurés le 7/10 étaient locaux. Tranché par l'owner : `127.0.0.1` par
+    défaut, `BRAIN_BIND` pour choisir une autre adresse.
+
+    Le témoin exécute le vrai point d'entrée de chaque serveur (`__main__`)
+    avec un `uvicorn` espion : il lit l'adresse que le serveur lui passerait,
+    sans lancer de serveur ni ouvrir de port."""
+
+    ESPION = (
+        'import runpy, sys, types\n'
+        'vu = {}\n'
+        'espion = types.ModuleType("uvicorn")\n'
+        'espion.run = lambda app, **kw: vu.update(kw)\n'
+        'sys.modules["uvicorn"] = espion\n'
+        'runpy.run_path(sys.argv[1], run_name="__main__")\n'
+        'print("HOST=%s" % vu.get("host"))\n'
+    )
+
+    def _hote(self, serveur: str, bind: str | None) -> str:
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_BIND'}
+        env.update(PYTHONDONTWRITEBYTECODE='1', BRAIN_PORT='17996', BRAIN_MCP_PORT='17995')
+        if bind is not None:
+            env['BRAIN_BIND'] = bind
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run([sys.executable, '-c', self.ESPION,
+                                str(BRAIN_ROOT_PATH / 'brain-engine' / serveur)],
+                               cwd=tmp, env=env, capture_output=True, text=True, timeout=120)
+        hotes = re.findall(r'^HOST=(.*)$', r.stdout, re.M)
+        self.assertEqual(len(hotes), 1, f'{serveur} : uvicorn.run jamais appelé\n' + r.stderr[-800:])
+        return hotes[0]
+
+    def test_le_moteur_ecoute_la_machine_seule(self):
+        self.assertEqual(self._hote('server.py', None), '127.0.0.1')
+
+    def test_le_mcp_ecoute_la_machine_seule(self):
+        self.assertEqual(self._hote('mcp_server.py', None), '127.0.0.1')
+
+    def test_brain_bind_choisit_l_adresse_des_deux(self):
+        for serveur in ('server.py', 'mcp_server.py'):
+            with self.subTest(serveur=serveur):
+                self.assertEqual(self._hote(serveur, '192.0.2.1'), '192.0.2.1')
 
 
 if __name__ == '__main__':

@@ -97,13 +97,16 @@ même route) est refusée en 403, avec l'endroit où écrire : `instance/`.
 
 ## Les accès
 
-Les deux serveurs écoutent sur toutes les interfaces — donc sur ton réseau
-local aussi. Sans jeton, l'API comme le serveur MCP ne répondent qu'à ta
-machine elle-même : une autre machine est refusée, et une requête relayée par un
-proxy (`X-Forwarded-For`) aussi.
+Les deux serveurs écoutent sur `127.0.0.1` : ta machine seule, le réseau ne
+les voit pas. La variable `BRAIN_BIND` choisit une autre adresse, pour les deux
+à la fois — `BRAIN_BIND=0.0.0.0` les ouvre à toutes les interfaces.
 
-Pour joindre le moteur depuis une autre machine, déclare les jetons dans
-`brain-engine/.env.local` :
+Même ouverts au réseau, sans jeton, l'API comme le serveur MCP ne répondent
+qu'à ta machine elle-même : une autre machine est refusée, et une requête
+relayée par un proxy (`X-Forwarded-For`) aussi.
+
+Pour joindre le moteur depuis une autre machine, pose `BRAIN_BIND` et déclare
+les jetons dans `brain-engine/.env.local` :
 
 | Variable | Rôle |
 |---|---|

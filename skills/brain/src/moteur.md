@@ -53,7 +53,8 @@ ouvre des zones — jamais un palier : il n'y en a plus (BRAIN-072). Jetons dans
 `BRAIN_TOKEN_PUBLIC`. Avec `BRAIN_TOKEN_MCP`, le client MCP doit envoyer
 l'en-tête `x-api-key: <jeton>`.
 
-Sans jeton, l'API et le MCP ne répondent qu'à la machine elle-même (une requête
-relayée par `X-Forwarded-For` compte comme distante), bien que les deux serveurs
-écoutent sur toutes les interfaces. Avec des jetons, le réseau passe, filtré par
-rôle.
+Les deux serveurs écoutent sur `127.0.0.1` par défaut ; `BRAIN_BIND` choisit une
+autre adresse pour les deux (`0.0.0.0` : toutes les interfaces). Ouverts au
+réseau et sans jeton, l'API et le MCP ne répondent qu'à la machine elle-même (une
+requête relayée par `X-Forwarded-For` compte comme distante). Avec des jetons, le
+réseau passe, filtré par rôle.

@@ -90,6 +90,10 @@ Garanties :
                           une clôture sans preuve arrête avant la forge (BRAIN-079)
     zone / projet         un préfixe déclaré se tient ; l'exemption d'un autre préfixe
                           ne le touche pas ; sans `prefixe:` ⇒ rouge
+    discord / publication sans clé, ou `discord: {<serveur>: tout | [<PREFIXE>-n]}`,
+                          la zone tient ; pas une table, un serveur `On:` ou
+                          `scope`, une valeur `no`, un autre préfixe, une fiche
+                          absente de la liste ⇒ rouge, et la sortie nomme la règle
     naissance / projet    à blanc n'écrit rien ; slug ou préfixe pris ⇒ refus avant
                           d'écrire ; créé ⇒ la zone tient
     tous / listes         l'appel d'avant aveugle à l'autre liste ; `--tous` rougit
@@ -1184,6 +1188,48 @@ def cmd_close_stale():
             garantie("zone projet / sans `prefixe:`, rien ne se devine", tenir_projet("muet"), 1)
     else:
         print("  ⏭  La zone projet : un autre préfixe, lu dans la fich / outil d'instance absent de ce brain")
+
+    # ── La clé `discord:` d'une fiche projet : où sa liste se publie ───────
+    #
+    # `discord: {<serveur>: tout | [<PREFIXE>-n, …]}`, pas de clé = non publié.
+    # Chaque refus se juge au code de sortie ET à son MOTIF dans la sortie : le
+    # code seul ne dit pas quelle règle a refusé. Mesuré : la règle « pas du
+    # préfixe » cassée, `[XY-1]` rougissait encore — par « absente de la liste ».
+    # Les formes et les motifs sont écrits ici, pas repris de la table de
+    # l'auto-épreuve (`CAS_DISCORD`) : si cette table se vidait et qu'une règle
+    # cassait, l'auto-épreuve passerait, et la garantie de cette règle tomberait.
+    # YAML 1.1 lit `On:` `True` et `no` `False` — la forme écrite n'est pas la valeur lue.
+    with tempfile.TemporaryDirectory(prefix="temoin-discord-") as tmp:
+        base = Path(tmp)
+        (base / "projets").mkdir()
+        (base / "workspace" / "backlog" / "diffuse").mkdir(parents=True)
+        (base / "workspace" / "backlog" / "diffuse" / "DI-1.md").write_text(
+            "### [DI-1] Une fiche publiée\n", encoding="utf-8")
+        fiche = base / "projets" / "diffuse.md"
+
+        def publier(bloc: str, motif: str | None = None) -> int:
+            """Le code de sortie de la zone ; -1 si le motif attendu n'est pas nommé."""
+            fiche.write_text("---\nname: diffuse\ntype: projet\nstatus: dev\nprefixe: DI\n"
+                             + bloc + "---\n\n# Diffuse\n", encoding="utf-8")
+            r = subprocess.run([sys.executable, str(OUTILS / "zone_projet.py"), "--brain", str(base)],
+                               capture_output=True, text=True)
+            return r.returncode if motif is None or motif in r.stdout else -1
+
+        garantie("discord / sans clé, la zone tient", publier(""), 0)
+        garantie("discord / la clé déclarée tient",
+                 publier("discord:\n  Un-serveur: tout\n  Autre: [DI-1]\n"), 0)
+        garantie("discord / pas une table ⇒ rouge, nommé",
+                 publier("discord: tout\n", "attend une table"), 1)
+        garantie("discord / un serveur `On:` ⇒ rouge, nommé",
+                 publier("discord:\n  On: tout\n", "n'est pas du texte"), 1)
+        garantie("discord / un serveur `scope` ⇒ rouge, nommé",
+                 publier("discord:\n  scope: tout\n", "un serveur nommé « scope »"), 1)
+        garantie("discord / `no` ⇒ rouge, nommé",
+                 publier("discord:\n  Un-serveur: no\n", "ni `tout` ni une liste"), 1)
+        garantie("discord / un autre préfixe ⇒ rouge, nommé",
+                 publier("discord:\n  Un-serveur: [XY-1]\n", "pas du préfixe DI"), 1)
+        garantie("discord / une fiche absente ⇒ rouge, nommé",
+                 publier("discord:\n  Un-serveur: [DI-2]\n", "absente de workspace/backlog/diffuse/"), 1)
 
     # ── `--tous` : chaque liste, pas seulement `myeline` — ───────
     #

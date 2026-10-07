@@ -6,6 +6,7 @@ Expose la recherche sémantique via HTTP (FastAPI + uvicorn).
 Usage :
   python3 brain-engine/server.py                  → port 7700 (défaut)
   BRAIN_PORT=8080 python3 brain-engine/server.py  → port custom
+  BRAIN_BIND=0.0.0.0 python3 brain-engine/server.py → écoute le réseau (défaut : 127.0.0.1)
 
 Tokens (MYSECRETS) :
   BRAIN_TOKEN_OWNER   → zones public + work + kernel  (toi, sessions locales)
@@ -83,6 +84,17 @@ from search import RechercheIndisponible
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 BRAIN_PORT = int(os.getenv('BRAIN_PORT') or 7700)
+
+
+def adresse_ecoute() -> str:
+    """L'adresse où le moteur écoute : la machine seule, sauf choix explicite.
+
+    `BRAIN_BIND` (la même variable pour le MCP) choisit une autre adresse —
+    `0.0.0.0` pour tout le réseau. Avant, `0.0.0.0` était écrit en dur et
+    ouvrait le port au réseau local, quand tous les clients mesurés étaient
+    locaux (tranché par l'owner le 7/10)."""
+    return os.getenv('BRAIN_BIND') or '127.0.0.1'
+
 
 # Zones accessibles par rôle
 _SCOPE_ACCESS: dict[str, list[str]] = {
@@ -163,9 +175,11 @@ class _SansJetonResteLocal:
 
     La règle du MCP, tranchée par l'owner le 28/09. `check_auth` rend
     les trois zones à qui n'a pas de jeton quand aucun n'est configuré — l'état
-    d'un fork neuf — et uvicorn écoute sur 0.0.0.0 : sans cette garde, toute
-    machine du réseau local lisait le corpus et écrivait. Elle couvre HTTP et
-    WebSocket, fichiers servis compris ; avec des jetons, rien ne change.
+    d'un fork neuf. Le moteur écoutait alors sur 0.0.0.0 : sans cette garde,
+    toute machine du réseau local lisait le corpus et écrivait. Il écoute
+    désormais sur 127.0.0.1 par défaut ; la garde reste, pour qui
+    choisit une autre adresse (`BRAIN_BIND`). Elle couvre HTTP et WebSocket,
+    fichiers servis compris ; avec des jetons, rien ne change.
 
     `X-Forwarded-For` présent = un proxy relaie quelqu'un d'autre : pas local
     (la règle de `_is_localhost`)."""
@@ -2485,5 +2499,5 @@ if __name__ == '__main__':
     roles = ', '.join(sorted(set(_TOKEN_MAP.values()))) if _TOKEN_MAP else 'auth désactivée (dev)'
     log.info('Brain-as-a-Service BE-4 — port %d — rôles: %s', BRAIN_PORT, roles)
     # En-têtes de proxy crus d'un proxy LOCAL seulement (relecture du 28/09).
-    uvicorn.run(app, host='0.0.0.0', port=BRAIN_PORT,
+    uvicorn.run(app, host=adresse_ecoute(), port=BRAIN_PORT,
                 forwarded_allow_ips='127.0.0.1', proxy_headers=True)

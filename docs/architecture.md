@@ -17,7 +17,7 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 3.4.1, kerneluser, postures)
+- `brain-compose.yml` — la configuration du programme (version 3.4.2, kerneluser, postures)
 - `noyau/agents/` — les 58 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
@@ -89,7 +89,9 @@ agents du noyau livré — ce qui se résout dans `noyau/agents/`. Tes surcharge
 fichiers assemblés avec un complément, `instance/agents/` et tout fichier réel posé
 dans `agents/` restent à toi : lisibles en owner et par le jeton `mcp`, jamais par
 `public` — à la lecture comme dans l'index de recherche. Sans `noyau/agents/` (un
-brain d'avant la vue), `agents/` reste public comme avant.
+brain d'avant la vue), `agents/` reste public comme avant. L'index compte chaque agent
+une fois, sous son nom de vue (`agents/<nom>.md`, jamais sa source), et un lien de la
+vue vers la zone privée ou hors du brain n'est jamais indexé.
 
 **Un fork lit son noyau.** Le setup déclare `noyau: lecture` dans l'instance active
 de `brain-compose.local.yml` (à côté de `posture:`), et la vue pose alors `noyau/`

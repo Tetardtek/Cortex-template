@@ -136,6 +136,7 @@ fiches. Il se remplit en travaillant.
 |---|---|---|
 | API + dashboard | 7700 | `BRAIN_PORT` |
 | serveur MCP | 7701 | `BRAIN_MCP_PORT` |
+| adresse d'écoute des deux (127.0.0.1 par défaut) | — | `BRAIN_BIND` |
 | base Dolt (127.0.0.1 seulement) | 3307 | `BRAIN_DOLT_PORT` |
 
 ## Mettre à jour depuis le gabarit

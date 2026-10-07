@@ -17,6 +17,10 @@ ensemble. Ce qui pourrirait en silence sans lui :
     une fiche sans statut, ou un       un projet dont personne ne sait s'il vit ; une
       fichier qui n'est pas une fiche  annexe à plat, qui se fait passer pour un projet
       à la racine de projets/          (elle vit dans projets/<slug>/)
+    une clé `discord:` mal formée      une publication que personne n'a voulue : un
+                                       serveur `On:` lu `True`, une valeur `no` lue
+                                       `False`, un serveur nommé `scope`, une fiche
+                                       d'un autre préfixe ou absente de la liste
 
 **Les dossiers sans fiche d'aujourd'hui ne se devinent pas** : ils se rattachent
 un par un, avec l'humain. D'ici là, chacun est NOMMÉ, avec sa raison, dans
@@ -49,6 +53,22 @@ FICHE = re.compile(r"^([A-Z][A-Z0-9]*)-\d+\.md$")
 PALIERS = {"a", "b", "c"}
 STATUTS = ("planned", "cadrage", "dev", "active", "prod", "pause", "archived")
 AUTO_EPREUVE_CAS = 0                    # compté par l'auto-épreuve, pas écrit à la main
+
+# Les formes de `discord:` que le contrôle refuse, et le motif qu'il doit nommer
+# pour chacune. YAML 1.1 lit `no` comme `False`, `On:` comme `True` : la forme
+# écrite n'est pas la valeur lue.
+CAS_DISCORD = {
+    "discord : pas une table": ("discord: tout\n", "`discord:` attend une table"),
+    "discord : un serveur qui n'est pas du texte (`On:`)": ("discord:\n  On: tout\n",
+                                                           "n'est pas du texte"),
+    "discord : un serveur nommé scope": ("discord:\n  scope: tout\n", "« scope »"),
+    "discord : ni `tout` ni une liste (`no`)": ("discord:\n  Un-serveur: no\n",
+                                               "ni `tout` ni une liste"),
+    "discord : un identifiant d'un autre préfixe": ("discord:\n  Un-serveur: [BB-1]\n",
+                                                   "pas du préfixe AA"),
+    "discord : une fiche absente de la liste": ("discord:\n  Un-serveur: [AA-2]\n",
+                                               "absente de workspace/backlog/a/"),
+}
 
 
 def _meta(fiche: Path) -> dict:
@@ -160,6 +180,11 @@ def juger(brain: Path) -> list[str]:
                 defauts.append(f"workspace/backlog/{d}/{f.name} : préfixe {m.group(1)}, "
                                f"le projet déclare {attendu}")
 
+    # 8. `discord:` — où la liste se publie, par serveur
+    for slug, m in fiches.items():
+        if "discord" in m:
+            defauts += _juger_discord(brain, slug, m)
+
     # 6. un projet archivé a gelé sa liste : plus aucune fiche ouverte
     for slug, m in fiches.items():
         if str(m.get("status")) != "archived" or m.get("prefixe") is None or slug not in dossiers:
@@ -174,6 +199,59 @@ def juger(brain: Path) -> list[str]:
             defauts.append(f"projets/{slug}.md est archivé, et {len(ouvertes)} fiche(s) "
                            f"restent ouvertes ({', '.join(ouvertes[:4])}) — "
                            f"`projet.py archiver {slug}` les met en pause")
+    return defauts
+
+
+def _juger_discord(brain: Path, slug: str, m: dict) -> list[str]:
+    """`discord: {<serveur>: tout | [<PREFIXE>-n, …]}`. Pas de clé : non publié.
+
+    Ce que la lecture YAML ferait en silence, et que ce contrôle refuse :
+
+        `On:`, `Yes:` comme nom      lus `True` — deux tels serveurs s'écrasent
+        `no`, `off` comme valeur      lus `False` — ni `tout` ni une liste
+        un serveur nommé `scope`      sa ligne `  scope: …` détournerait le scope
+                                      d'indexation, lu ligne à ligne dans le frontmatter
+        une fiche d'un autre préfixe, ou absente de la liste du projet
+    """
+    ici = f"projets/{slug}.md"
+    table = m.get("discord")
+    if not isinstance(table, dict):
+        return [f"{ici} : `discord: {table}` — `discord:` attend une table "
+                f"`{{<serveur>: tout | [<PREFIXE>-n, …]}}` ; sans publication, retirer la clé"]
+    defauts = []
+    prefixe = str(m["prefixe"]) if m.get("prefixe") is not None else None
+    connues = None
+    for serveur, valeur in table.items():
+        if not isinstance(serveur, str) or not serveur.strip():
+            defauts.append(f"{ici} : le serveur « {serveur!r} » de `discord:` n'est pas du texte "
+                           f"— YAML lit On, Yes, No… comme booléens : citer le nom (\"On\":)")
+            continue
+        if serveur.strip() == "scope":
+            defauts.append(f"{ici} : un serveur nommé « scope » dans `discord:` — sa ligne "
+                           f"`  scope:` se lirait comme le scope d'indexation de la fiche")
+            continue
+        if valeur == "tout":
+            continue
+        if not isinstance(valeur, list):
+            defauts.append(f"{ici} : `discord:` « {serveur} » vaut {valeur!r} — ni `tout` ni une "
+                           f"liste de fiches (YAML lit no, off… comme booléens)")
+            continue
+        for ident in valeur:
+            if not isinstance(ident, str) or not _fiches.CLE.match(ident):
+                defauts.append(f"{ici} : `discord:` « {serveur} » nomme {ident!r}, "
+                               f"qui n'est pas un identifiant de fiche (<PREFIXE>-n)")
+            elif prefixe is None or ident.rsplit("-", 1)[0] != prefixe:
+                defauts.append(f"{ici} : `discord:` « {serveur} » nomme {ident}, pas du préfixe "
+                               f"{prefixe or '(aucun déclaré)'} du projet")
+            else:
+                if connues is None:
+                    try:
+                        connues = set(_fiches.lire(brain, slug, prefixe))
+                    except _fiches.Illisible:
+                        connues = set()
+                if ident not in connues:
+                    defauts.append(f"{ici} : `discord:` « {serveur} » nomme {ident}, "
+                                   f"absente de workspace/backlog/{slug}/")
     return defauts
 
 
@@ -199,10 +277,15 @@ def auto_epreuve() -> list[str]:
         "projet archivé, fiche ouverte": ({"a": "---\ntype: projet\nstatus: dev\nstatus: archived\nprefixe: AA\n---\n"},
                                           ["a"], {"a": ["AA-1.md"]}, ""),
     }
+    # La clé `discord:` — chaque refus vu PAR SON MOTIF, pas par un autre défaut
+    # qui rougirait à sa place. Une liste `AA` avec sa fiche `AA-1`, saine hors la clé.
+    for nom, (cle, motif) in CAS_DISCORD.items():
+        cas[nom] = ({"a": "---\ntype: projet\nstatus: dev\nprefixe: AA\n" + cle + "---\n"},
+                    ["a"], {"a": ["AA-1.md"]}, "", motif)
     global AUTO_EPREUVE_CAS
     AUTO_EPREUVE_CAS = len(cas)
     rates = []
-    for nom, (projets, dossiers, fiches, exempt) in cas.items():
+    for nom, (projets, dossiers, fiches, exempt, *motif) in cas.items():
         with tempfile.TemporaryDirectory(prefix="zone-projet-") as tmp:
             b = Path(tmp)
             (b / "projets").mkdir()
@@ -217,7 +300,8 @@ def auto_epreuve() -> list[str]:
                         f"### [{n[:-3]}] Une fiche\n", encoding="utf-8")
             if exempt:
                 (b / EXEMPTIONS).write_text(exempt, encoding="utf-8")
-            if not juger(b):
+            vus = juger(b)
+            if not vus or (motif and not any(motif[0] in v for v in vus)):
                 rates.append(nom)
     # le témoin négatif : une zone saine ne rougit pas
     with tempfile.TemporaryDirectory(prefix="zone-projet-") as tmp:
@@ -226,7 +310,13 @@ def auto_epreuve() -> list[str]:
         (b / "workspace" / "backlog" / "sain").mkdir(parents=True)
         (b / "projets" / "sain.md").write_text(
             "---\ntype: projet\nstatus: dev\nprefixe: SA\npalier: a\nrepo: forge.example/o/sain\n---\n", encoding="utf-8")
-        (b / "workspace" / "backlog" / "sain" / "SA-1.md").write_text("x\n", encoding="utf-8")
+        (b / "workspace" / "backlog" / "sain" / "SA-1.md").write_text("### [SA-1] Une fiche\n",
+                                                                      encoding="utf-8")
+        # la clé `discord:` bien formée : un serveur publie tout, un autre une fiche
+        (b / "projets" / "sain.md").write_text(
+            (b / "projets" / "sain.md").read_text(encoding="utf-8").replace(
+                "\n---\n", "\ndiscord:\n  Un-serveur: tout\n  Autre serveur: [SA-1]\n---\n", 1),
+            encoding="utf-8")
         # un projet archivé dont la liste est gelée : une fiche close, une en pause
         (b / "workspace" / "backlog" / "fini").mkdir()
         (b / "projets" / "fini.md").write_text("---\ntype: projet\nstatus: dev\nstatus: archived\nprefixe: FI\n---\n",
@@ -238,6 +328,18 @@ def auto_epreuve() -> list[str]:
             encoding="utf-8")
         if juger(b):
             rates.append("témoin négatif : une zone saine rougit")
+        # `_fiches.projet` rend la table déclarée, et `{}` sans la clé
+        try:
+            lus = (_fiches.projet(b, "sain").discord, _fiches.projet(b, "fini").discord)
+        except AttributeError:
+            lus = None
+        if lus != ({"Un-serveur": "tout", "Autre serveur": ["SA-1"]}, {}):
+            rates.append(f"_fiches.projet ne rend pas la clé `discord:` déclarée (lu : {lus!r})")
+        # … et un `Projet` reste hachable : la table est hors du hash
+        try:
+            hash(_fiches.projet(b, "sain"))
+        except TypeError as e:
+            rates.append(f"_fiches.Projet n'est plus hachable avec sa clé `discord:` ({e})")
     return rates
 
 

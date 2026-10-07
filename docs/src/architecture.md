@@ -88,7 +88,9 @@ agents du noyau livré — ce qui se résout dans `noyau/agents/`. Tes surcharge
 fichiers assemblés avec un complément, `instance/agents/` et tout fichier réel posé
 dans `agents/` restent à toi : lisibles en owner et par le jeton `mcp`, jamais par
 `public` — à la lecture comme dans l'index de recherche. Sans `noyau/agents/` (un
-brain d'avant la vue), `agents/` reste public comme avant.
+brain d'avant la vue), `agents/` reste public comme avant. L'index compte chaque agent
+une fois, sous son nom de vue (`agents/<nom>.md`, jamais sa source), et un lien de la
+vue vers la zone privée ou hors du brain n'est jamais indexé.
 
 **Un fork lit son noyau.** Le setup déclare `noyau: lecture` dans l'instance active
 de `brain-compose.local.yml` (à côté de `posture:`), et la vue pose alors `noyau/`

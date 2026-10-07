@@ -21,6 +21,7 @@ Outils exposés :
 Usage :
   python3 brain-engine/mcp_server.py                 → port 7701 (défaut)
   BRAIN_MCP_PORT=8000 python3 brain-engine/mcp_server.py
+  BRAIN_BIND=0.0.0.0 python3 brain-engine/mcp_server.py → écoute le réseau (défaut : 127.0.0.1)
 
 Connexion Claude Code :
   claude mcp add --transport http brain http://127.0.0.1:7701/mcp
@@ -54,6 +55,16 @@ from search import requete_faible, RechercheIndisponible
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 BRAIN_MCP_PORT  = int(os.getenv('BRAIN_MCP_PORT') or 7701)
+
+
+def adresse_ecoute() -> str:
+    """L'adresse où le MCP écoute : la machine seule, sauf choix explicite.
+
+    `BRAIN_BIND` (la même variable que le moteur) choisit une autre adresse.
+    Le MCP est local par doctrine, et `0.0.0.0` écrit en dur l'ouvrait pourtant
+    au réseau local (tranché par l'owner le 7/10)."""
+    return os.getenv('BRAIN_BIND') or '127.0.0.1'
+
 # Le moteur de CE brain : son port vient de BRAIN_PORT. Écrit 7700 en dur, un MCP
 # lancé sur un autre port (un second brain, un bac d'essai) appelait le moteur de
 # la PROD — `brain_write` y aurait écrit (relecture du 28/09).
@@ -142,9 +153,10 @@ class BrainAuthMiddleware:
 
     Sans token configuré, le serveur ne répond QU'EN LOOPBACK. Auparavant
     l'absence de token désactivait le contrôle entièrement (`and self._token`) :
-    le MCP, qui écoute sur 0.0.0.0, était alors ouvert à tout le réseau local.
+    le MCP, qui écoutait sur 0.0.0.0, était alors ouvert à tout le réseau local.
     Une installation neuve n'a pas de token — c'était donc le comportement par
-    défaut, pas un cas limite.
+    défaut, pas un cas limite. Le MCP écoute désormais sur 127.0.0.1 par défaut
+    ; la garde reste, pour qui choisit une autre adresse (`BRAIN_BIND`).
     """
     def __init__(self, app, token: str | None):
         self._app  = app
@@ -934,5 +946,5 @@ if __name__ == '__main__':
     log.info(_annonce_racines())
     # Les en-têtes de proxy ne sont crus que d'un proxy LOCAL : `'*'` laissait
     # n'importe quelle machine réécrire l'adresse du client (relecture du 28/09).
-    uvicorn.run(mcp_app, host='0.0.0.0', port=BRAIN_MCP_PORT,
+    uvicorn.run(mcp_app, host=adresse_ecoute(), port=BRAIN_MCP_PORT,
                 forwarded_allow_ips='127.0.0.1', proxy_headers=True)

@@ -232,6 +232,11 @@ class Projet:
     palier: str
     depot: str | None = None  # `owner/depot` du CODE (`repo:`) — où vit `dev/autonome`
     statut: str | None = None  # `status:` — `archived` gèle la liste (règle 4, 29/09)
+    # `discord:` — où la liste se publie : `{<serveur>: "tout" | [<PREFIXE>-n, …]}`.
+    # Sans la clé, `{}` : le projet n'est publié nulle part. Une valeur qui n'est
+    # pas une table se lit `{}` ici ; c'est `zone_projet.py` qui la refuse, nommée.
+    # Hors du hash : une table ne se hache pas.
+    discord: dict = field(default_factory=dict, hash=False)
 
 
 def _depot(valeur) -> str | None:
@@ -286,7 +291,8 @@ def projet(brain: Path, slug: str) -> Projet:
                   issues=_depot(meta.get("issues") or meta.get("repo")),
                   palier=str(meta.get("palier") or "a"),
                   depot=_depot(meta.get("repo")),
-                  statut=str(meta["status"]) if meta.get("status") else None)
+                  statut=str(meta["status"]) if meta.get("status") else None,
+                  discord=dict(meta["discord"]) if isinstance(meta.get("discord"), dict) else {})
 
 
 def projets_a_liste(brain: Path) -> list[str]:

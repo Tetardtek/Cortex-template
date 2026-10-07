@@ -136,19 +136,19 @@ voir la section suivante.
 
 ## ⚠️ Posture réseau — à lire avant d'exposer quoi que ce soit
 
-Les deux serveurs écoutent sur `0.0.0.0`, donc sur **toutes les interfaces**, y
-compris le réseau local. Ce n'est pas un défaut à corriger dans votre coin, c'est
-un choix par défaut qu'il faut connaître :
+Les deux serveurs écoutent sur `127.0.0.1` : **la machine seule**, le réseau
+local ne les voit pas. La variable d'environnement `BRAIN_BIND` choisit une autre
+adresse, pour les deux à la fois — `BRAIN_BIND=0.0.0.0` les ouvre à **toutes les
+interfaces**. Ouverts au réseau :
 
 - **sans jeton configuré**, l'API et le MCP ne répondent qu'aux appels de la
   machine elle-même : une autre machine reçoit 403 (l'API) ou 401 (le MCP), et
   une requête relayée par un proxy (`X-Forwarded-For`) aussi ;
-- **avec des jetons**, l'accès est filtré par rôle, et le port reste ouvert au
+- **avec des jetons**, l'accès est filtré par rôle, et le port est ouvert au
   réseau.
 
 Pour joindre le moteur depuis une autre machine — un second poste, un proxy
-vers Internet — configurez les jetons. L'adresse d'écoute (`0.0.0.0`) est écrite dans le code : la restreindre
-demande aujourd'hui de le modifier.
+vers Internet — posez `BRAIN_BIND` et configurez les jetons.
 
 ---
 

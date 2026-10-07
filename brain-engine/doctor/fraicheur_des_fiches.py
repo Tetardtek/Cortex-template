@@ -63,6 +63,12 @@ Le seuil vient de la distribution reelle, pas d'un choix esthetique : sur
 tout l'historique de `projets/`, les mises a jour d'etat touchent 1 a 4
 fiches, les douze remaniements en touchent 6 a 21. Il n'y a rien entre 4 et 6.
 
+Pour la meme raison, **un commit qui ne touche que le bloc `discord:`** du
+frontmatter n'ecrit pas l'etat : choisir ou se publie un projet ne dit rien de
+lui. Mesure avant le correctif : l'ajout de la cle faisait passer une fiche de
+« non mesurable » a « a jour ». Un commit qui touche le bloc ET autre chose
+reste une ecriture.
+
 ⚠️ Consequence assumee : une fiche que **seuls** des remaniements ont touchee
 n'a pas de date d'ecriture d'etat. Elle est declaree non mesurable — pas
 « tres en retard ». On ne sait pas, et on le dit.
@@ -308,20 +314,27 @@ def ecritures_d_etat(brain: Path) -> dict[str, int]:
     compte les fiches touchees AVANT d'attribuer la date : un commit au-dela
     du seuil est un remaniement, il n'ecrit l'etat de personne.
     """
-    sortie = _log_des_fiches(brain, "--format=%x00%ct")
+    sortie = _log_des_fiches(brain, "--format=%x00%ct %H")
     dernier: dict[str, int] = {}
     for bloc in sortie.split("\x00"):
         if not bloc.strip():
             continue
         lignes = bloc.strip().splitlines()
-        horodatage = int(lignes[0])
+        horodatage, sha = lignes[0].split()
         fiches = _fiches_du_bloc(lignes[1:])
         if len(fiches) > SEUIL_REMANIEMENT:
             continue                      # remaniement : ne rajeunit personne
         for f in fiches:
             # `git log` descend du plus recent au plus ancien : le premier vu
             # est le bon, on ne l'ecrase pas avec un commit plus vieux.
-            dernier.setdefault(f, horodatage)
+            if f in dernier:
+                continue
+            # Choisir ou se publie un projet ne dit rien de son etat : un commit
+            # qui ne touche que le bloc `discord:` ne compte pas. Interroge pour
+            # le premier commit retenu de chaque fiche seulement.
+            if bloc_discord_seul(brain, sha, f):
+                continue
+            dernier[f] = int(horodatage)
     # Une RELECTURE datee compte, meme posee dans un lot. La passe sur
     # tous les projets (3/10) a remesure 51 fiches en trois PR de 8 a 23 fiches :
     # des remaniements pour la regle ci-dessus, donc aucune relecture — et
@@ -335,6 +348,49 @@ def ecritures_d_etat(brain: Path) -> dict[str, int]:
         if quand > dernier.get(f, 0):
             dernier[f] = quand
     return dernier
+
+
+def sans_bloc_discord(texte: str) -> str:
+    """Le texte de la fiche, le bloc `discord:` retire de son frontmatter.
+
+    Le bloc, c'est la ligne `discord:` en tete de colonne et les lignes
+    indentees qui la suivent (`  <serveur>: tout`). Une ligne vide le ferme, et
+    elle reste : ajouter le bloc au milieu du frontmatter ne deplace rien.
+    Hors frontmatter, rien n'est retire : `discord:` n'y est pas une cle.
+    """
+    if not texte.startswith("---\n"):
+        return texte
+    fin = texte.find("\n---", 4)
+    if fin < 0:
+        return texte
+    garde, dans = [], False
+    for ligne in texte[4:fin].split("\n"):
+        if dans and ligne[:1] in (" ", "\t") and ligne.strip():
+            continue
+        dans = ligne.startswith("discord:")
+        if not dans:
+            garde.append(ligne)
+    return "---\n" + "\n".join(garde) + texte[fin:]
+
+
+def _version(dossier: Path, rev: str, nom: str) -> str | None:
+    r = subprocess.run(["git", "show", f"{rev}:./{nom}"], cwd=dossier,
+                       capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def bloc_discord_seul(brain: Path, sha: str, fiche: str) -> bool:
+    """Ce commit ne change-t-il, dans cette fiche, que son bloc `discord:` ?
+
+    Une fiche creee par le commit, ou illisible a l'une des deux versions,
+    n'est pas dans ce cas : c'est une ecriture, comme avant.
+    """
+    nom = fiche.removeprefix("projets/")
+    dossier = brain / "projets"
+    apres, avant = _version(dossier, sha, nom), _version(dossier, f"{sha}^", nom)
+    if apres is None or avant is None or apres == avant:
+        return False
+    return sans_bloc_discord(apres) == sans_bloc_discord(avant)
 
 
 MARQUEUR_RELECTURE = r"📏 \*\*Remesuré le"
@@ -588,6 +644,7 @@ def auto_epreuve() -> None:
 
     epreuve_du_parcours()
     epreuve_du_satellite()
+    epreuve_du_bloc_discord()
 
 
 def epreuve_du_satellite() -> None:
@@ -614,6 +671,70 @@ def epreuve_du_satellite() -> None:
                 int(_git(sat, "log", "-1", "--format=%ct", "--", "mon-site.md").strip()))
         verifie("… et une relecture datée s'y lit aussi",
                 "projets/relu.md" in relectures(brain), True)
+
+
+def epreuve_du_bloc_discord() -> None:
+    """Un commit qui ne touche que le bloc `discord:` n'écrit pas l'état.
+
+    Le témoin du défaut, mesuré avant ce correctif : ajouter `discord:` à une
+    fiche que seuls des remaniements avaient touchée la faisait passer de « non
+    mesurable » à « à jour ». Choisir où se publie un projet ne dit rien de son
+    état.
+    """
+    print("\nÉPREUVE — le bloc `discord:` n'est pas une écriture d'état\n")
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        brain, gitea = base / "Brain", base / "Gitea"
+        _depot(brain)
+        _depot(gitea / "pub")
+        tete = "---\nname: pub\ntype: projet\nstatus: dev\nprefixe: PU\n"
+        _commit(brain, {"projets/pub.md": tete + "---\n\n# Pub\n\nÉtat : rien de livré.\n"},
+                "scribe: pub au 10/09", "2026-09-10T10:00:00")
+        _commit(gitea / "pub", {"a.txt": "1"}, "travail", "2026-09-11T10:00:00")
+        racines = [(gitea, 1)]
+        ecrite = ecritures_d_etat(brain)["projets/pub.md"]
+
+        _commit(brain, {"projets/pub.md": tete + "discord:\n  Un-serveur: tout\n---\n\n"
+                        "# Pub\n\nÉtat : rien de livré.\n"},
+                "projets: pub se publie", "2026-09-12T10:00:00")
+        verifie("ajouter le bloc `discord:` ne rajeunit pas la fiche",
+                ecritures_d_etat(brain).get("projets/pub.md"), ecrite)
+        verifie("… donc le doute sur son dépôt survit",
+                {n: c for n, _, c in examiner(brain, racines)[0]}.get("pub.md"), 1)
+        _commit(brain, {"projets/pub.md": tete + "discord: {Un-serveur: [PU-1], Autre: tout}\n"
+                        "---\n\n# Pub\n\nÉtat : rien de livré.\n"},
+                "projets: pub change de publication", "2026-09-12T11:00:00")
+        verifie("le changer non plus",
+                ecritures_d_etat(brain).get("projets/pub.md"), ecrite)
+
+        # le cas mesuré : une fiche que seuls des remaniements ont touchée reste
+        # non mesurable — le bloc ne lui donne pas une date d'état
+        masse = {f"projets/m{i}.md": f"---\nname: m{i}\n---\n# m{i}\n" for i in range(6)}
+        _commit(brain, masse, "projets: remaniement", "2026-09-12T12:00:00")
+        _commit(brain, {"projets/m0.md": "---\nname: m0\ndiscord:\n  Un-serveur: tout\n---\n# m0\n"},
+                "projets: m0 se publie", "2026-09-12T13:00:00")
+        verifie("une fiche sans écriture d'état le reste, bloc `discord:` ajouté",
+                "projets/m0.md" in ecritures_d_etat(brain), False)
+
+        # le témoin négatif : le même commit, qui touche AUSSI l'état, rajeunit
+        _commit(brain, {"projets/pub.md": tete + "discord:\n  Un-serveur: tout\n---\n\n"
+                        "# Pub\n\nÉtat : livré le 13/09.\n"},
+                "scribe: pub livré", "2026-09-13T10:00:00")
+        verifie("un commit qui touche le bloc ET l'état rajeunit la fiche",
+                ecritures_d_etat(brain).get("projets/pub.md") > ecrite, True)
+        verifie("… et le doute tombe",
+                "pub.md" in {n for n, _, _ in examiner(brain, racines)[0]}, False)
+
+        # le frontmatter seul : le bloc ET `status:` changent ensemble, le corps
+        # non. `status:` est l'état — le commit rajeunit la fiche. Sans ce cas,
+        # retirer TOUT le frontmatter de la comparaison passait inaperçu.
+        avant_statut = ecritures_d_etat(brain).get("projets/pub.md")
+        _commit(brain, {"projets/pub.md": tete.replace("status: dev", "status: prod")
+                        + "discord:\n  Un-serveur: [PU-1]\n---\n\n"
+                        "# Pub\n\nÉtat : livré le 13/09.\n"},
+                "projets: pub en prod, publiée autrement", "2026-09-14T10:00:00")
+        verifie("le bloc ET `status:` ensemble, frontmatter seul : la fiche rajeunit",
+                ecritures_d_etat(brain).get("projets/pub.md") > avant_statut, True)
 
 
 def _ancienne_resolution(cible: str, racines: list[Path]) -> Path | None:

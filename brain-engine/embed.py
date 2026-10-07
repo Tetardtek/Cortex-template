@@ -32,6 +32,7 @@ import json
 import struct
 import hashlib
 import argparse
+import fnmatch
 import sqlite3  # conservé pour run_template() uniquement
 import subprocess
 import time
@@ -656,46 +657,131 @@ def upsert_chunk(conn, chunk: dict,
 
 # ── Pipeline principal ────────────────────────────────────────────────────────
 
+# ── Une seule porte vers le corpus ─────────────────────────
+#
+# Deux portes mènent à l'index : la passe complète, qui parcourt `CORPUS_PATHS`, et
+# le fichier seul (`--file`, et le `PUT /brain/{path}` du moteur, qui passe un
+# chemin RÉSOLU). Elles ne jugeaient pas la même chose.
+#
+# Le fichier seul résolvait son chemin : `--file agents/x.md` indexait
+# `noyau/agents/x.md` — un doublon de l'agent sous un nom que `NIVEAUX.yml` dit
+# non indexé, découpé par la mauvaise stratégie. Il n'était pas borné au corpus :
+# un complément d'agent, `noyau/autre.md` ou une page de `docs/` entraient dans
+# l'index. Mesuré le 7/10 : les deux portes divergeaient sur 64 fichiers sur
+# 1 373 — tous les agents de la vue.
+#
+# La passe complète, elle, jugeait le chemin de la vue et jamais sa cible : un lien
+# de `agents/` vers `workspace/scratch/` s'indexait, alors que la lecture directe
+# le refuse. Aucun lien de ce genre dans la vraie vue : un défaut latent.
+#
+# D'où une seule règle, appliquée par les deux portes : un fichier se nomme par sa
+# vue (`chemin_de_vue`), sa stratégie vient du corpus (`strategie_du_corpus`), et
+# il est admis sur son chemin ET sur sa cible (`admis`).
+
+# Les vues du brain et leurs sources — le `vue_de:` de `NIVEAUX.yml`, tenu égal
+# par un test.
+VUES = {'agents/': ('noyau/agents/', 'instance/agents/')}
+
+
+def chemin_de_vue(rel: str) -> str | None:
+    """Le nom sous lequel le corpus connaît `rel`.
+
+    Une source de vue se nomme par sa vue : `noyau/agents/x.md` ou
+    `instance/agents/x.md` → `agents/x.md`, si la vue a cette entrée. Une source
+    sans entrée dans la vue — un complément, le README de l'instance — rend `None` :
+    elle est indexée par sa vue (l'assemblage), jamais seule ; de même si l'entrée
+    de la vue est un lien pendant. Hors d'une source, `rel` tel quel."""
+    for vue, sources in VUES.items():
+        for source in sources:
+            if rel.startswith(source):
+                nom = vue + rel[len(source):]
+                return nom if (BRAIN_ROOT / nom).exists() else None
+    return rel
+
+
+def strategie_du_corpus(p: Path) -> str | None:
+    """La stratégie que `CORPUS_PATHS` donne à `p`, avec la règle du parcours de la
+    passe complète (`*` : un fichier de la base, `**/` : à toute profondeur) ;
+    `None` hors du corpus. Premier motif gagnant, comme le parcours."""
+    for base, pattern, strategy in CORPUS_PATHS:
+        try:
+            rel = p.relative_to(BRAIN_ROOT / base)
+        except ValueError:
+            continue
+        if pattern.startswith('**/'):
+            dedans = fnmatch.fnmatchcase(rel.name, pattern[3:])
+        else:
+            dedans = len(rel.parts) == 1 and fnmatch.fnmatchcase(rel.name, pattern)
+        if dedans:
+            return strategy
+    return None
+
+
+def admis(p: Path) -> bool:
+    """`p` (un chemin du corpus, non résolu) entre-t-il dans l'index ?
+
+    Jugé sur son chemin ET sur sa cible : la cible résolue reste dans le brain —
+    un lien qui en sort est écarté, tranché par l'owner le 7/10 —, ni l'un ni
+    l'autre n'est exclu ni privé, puis le TTL des zones, sur le chemin."""
+    racine = BRAIN_ROOT.resolve()
+    cible = p.resolve()
+    if not cible.is_relative_to(racine):
+        return False
+    # La cible, exprimée sous `BRAIN_ROOT` : `should_exclude` en déduit son chemin
+    # relatif — `is_private` ne reconnaîtrait pas un chemin absolu.
+    cible = BRAIN_ROOT / cible.relative_to(racine)
+    if should_exclude(p) or (cible != p and should_exclude(cible)):
+        return False
+    return not should_skip_by_zone(p)
+
+
 def collect_files(target_file: str | None = None) -> list[tuple[Path, str]]:
-    """Retourne la liste (path, strategy) des fichiers à indexer."""
+    """Retourne la liste (path, strategy) des fichiers à indexer.
+
+    `target_file` : un seul fichier, qui passe la même porte que la passe complète —
+    pour chaque fichier qu'elle prend, `collect_files(rel)` rend exactement
+    `[(p, stratégie)]`, et rien hors du corpus."""
     files = []
     seen = set()
 
     if target_file:
-        p = (BRAIN_ROOT / target_file).resolve()
-        if not str(p).startswith(str(BRAIN_ROOT.resolve())):
-            print(f"  🚨 --file hors BRAIN_ROOT refusé : {p}")
+        # Normalisé sans `resolve()` : résoudre replierait un agent de la vue sur
+        # sa source. Un chemin absolu, ou qui remonte au-dessus du brain,
+        # n'est pas un chemin du corpus.
+        rel = os.path.normpath(target_file)
+        if os.path.isabs(rel) or rel.split(os.sep)[0] == '..':
+            print(f"  🚨 --file hors BRAIN_ROOT refusé : {target_file}")
             return files
-        if p.exists():
-            # 🔴 Les filtres du corpus s'appliquent AUSSI a un fichier unique.
-            #
-            # Jusqu'au 11/09, ce chemin rendait immediatement sans appeler
-            # `should_exclude` ni `should_skip_by_zone` — que la boucle du
-            # corpus complet, elle, applique. Un `PUT /brain/<fichier>` sur un
-            # fichier exclu le faisait donc entrer dans l'index, et la purge
-            # hors-corpus l'en retirait au passage suivant du cron.
-            #
-            # Un va-et-vient silencieux, avec une fenetre de 6 h. Mesure le
-            # 11/09 : 573 fichiers hors bruit sont exclus du corpus, dont 385
-            # dans `workspace/` et `handoffs/` — des zones ECRIVABLES par la
-            # route. L'index n'en portait aucun (0 intrus sur 691 fichiers) :
-            # le defaut existait dans le code sans s'etre jamais materialise,
-            # parce que le cron refermait derriere.
-            #
-            # Deux portes vers le meme index qui n'ont pas la meme politique,
-            # c'est exactement le motif que ce chantier traque.
-            if should_exclude(p) or should_skip_by_zone(p):
-                print(f"  ⏭️  --file hors corpus, non indexé : "
-                      f"{p.relative_to(BRAIN_ROOT)}")
-                return files
-            # Déterminer stratégie par répertoire
-            for base, pattern, strategy in CORPUS_PATHS:
-                if str(p).startswith(str(BRAIN_ROOT / base)):
-                    files.append((p, strategy))
-                    break
-            else:
-                files.append((p, 'h2'))
-        return files
+        nom = chemin_de_vue(rel)
+        if nom is None:
+            print(f"  ⏭️  --file source de vue sans entrée lisible dans la vue, non indexée seule : {rel}")
+            return files
+        p = BRAIN_ROOT / nom
+        if not p.is_file():
+            return files
+        # 🔴 Les filtres du corpus s'appliquent AUSSI a un fichier unique.
+        #
+        # Jusqu'au 11/09, ce chemin rendait immediatement sans appeler
+        # `should_exclude` ni `should_skip_by_zone` — que la boucle du
+        # corpus complet, elle, applique. Un `PUT /brain/<fichier>` sur un
+        # fichier exclu le faisait donc entrer dans l'index, et la purge
+        # hors-corpus l'en retirait au passage suivant du cron.
+        #
+        # Un va-et-vient silencieux, avec une fenetre de 6 h. Mesure le
+        # 11/09 : 573 fichiers hors bruit sont exclus du corpus, dont 385
+        # dans `workspace/` et `handoffs/` — des zones ECRIVABLES par la
+        # route. L'index n'en portait aucun (0 intrus sur 691 fichiers) :
+        # le defaut existait dans le code sans s'etre jamais materialise,
+        # parce que le cron refermait derriere.
+        #
+        # La stratégie vient désormais du corpus, comme pour la passe
+        # complète : un fichier qu'aucun motif ne prend n'est plus indexé
+        # en `h2` par défaut.
+        strategy = strategie_du_corpus(p)
+        if strategy is None or not admis(p):
+            print(f"  ⏭️  --file hors corpus, non indexé : {nom}")
+            return files
+        return [(p, strategy)]
 
     for base, pattern, strategy in CORPUS_PATHS:
         base_path = BRAIN_ROOT / base
@@ -704,9 +790,7 @@ def collect_files(target_file: str | None = None) -> list[tuple[Path, str]]:
         for p in sorted(base_path.glob(pattern)):
             if p in seen or not p.is_file():
                 continue
-            if should_exclude(p):
-                continue
-            if should_skip_by_zone(p):
+            if not admis(p):
                 continue
             seen.add(p)
             files.append((p, strategy))

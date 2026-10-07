@@ -14,6 +14,13 @@ vitrine: <github.com>/<owner>/<depot>         # optionnel — la vitrine publiqu
 prefixe: <XX>                                # le jour de sa PREMIÈRE tâche à suivre : <XX>-<n>
                                              # d'ici là, sa vision.md suffit
 palier: a                                    # a (défaut) | b | c — c ne se pose que par l'humain
+# La publication sur Discord — optionnelle : sans la clé, le projet n'est publié nulle part.
+# Par serveur, `tout` (toutes les fiches de sa liste) ou une liste de fiches de son préfixe :
+# discord:
+#   <serveur>: tout
+#   <autre-serveur>: [<XX>-1, <XX>-4]
+# Un nom que YAML lirait autrement (On, Yes, No…) se met entre guillemets : "On": tout.
+# Un serveur ne s'appelle pas « scope » : la ligne se lirait comme le scope de la fiche.
 ---
 
 # <Nom du projet>
