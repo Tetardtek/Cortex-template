@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.2"
-generated_at: "2026-10-08T13:25"
+kernel_version: "3.5.3"
+generated_at: "2026-10-08T17:47"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: b5f1a28482ac9a5b352cc68199c1f16f2bd377881a9d250f0099c53bcdbcd1e5
+  brain-compose.yml: 2f3022e52b074d93f3787d836c23c09422f55fb31058c9131d42f8e87a1357f2
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -71,7 +71,7 @@ files:
   noyau/agents/vps.md: a8fdf0bdecb5dd13162fcbb18722a33cf288d3f1d83bdd46adaaef8cc8ab23aa
   noyau/agents/watch.md: 8339cbe7fec7f31eb2cbcd13d4db000c08b7e29df14138a124139a7017afce9d
   scripts/aligne.py: f8a2e4e13a6e4a36d8043690a56284f8c3a4c539a3f7bdda97539d098e023351
-  scripts/brain: 7b24b17b16ce78e93217ba64573a89126f0e2a48a874cf214939c3e9d76e3738
+  scripts/brain: 6ae6dc2f10824d0875377580731c478394f8357b3af6e044cf169c14d2a30ffc
   scripts/brain-db-sync.sh: 4487a7caa1f6510b2e623f72ffbe695c3d7806afe5e73671c84201aece883083
   scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
   scripts/brain-init.sh: 7dc783afb40c10be66f761f89f307ca3fe30624869b18f16d67a3f0a2df79773
@@ -102,6 +102,7 @@ files:
   scripts/lib/python.sh: 643ea746b6f30388227dcaf13ff445a9f39b99528f1cf491bad7d923010eca9f
   scripts/maj-disponible.py: 97f6537cb2ee7c2ae36931ffe9b17f043eef2bb1bc1eb942f94200c1d9d78c16
   scripts/maj.py: 9c0fb1bff179c5ae18fc429322b737ed8e92c813904c9bf7850571150a0a58fa
+  scripts/migrer.py: 6d92515d8eecdf44c27aa4ec52d074ede9ccf2ae47aa46614dd1e2732a1780af
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
   scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
   scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687

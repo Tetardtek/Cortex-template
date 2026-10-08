@@ -19,7 +19,7 @@ description: >
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v3.5.2 — 58 agents, 6 types de session,
+Kernel v3.5.3 — 58 agents, 6 types de session,
 23 routes d'API, 10 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
@@ -41,6 +41,8 @@ tort — et c'est un défaut à signaler, pas à contourner.*
 - publier le gabarit ;
 - installer un brain sur une machine : `brain init` (`brain init --verifier` : les
   prérequis seulement, rien n'est écrit) ;
+- passer un brain cloné par git au paquet `brain-cortex`, une fois : `brain migrer`
+  (`--a-blanc` d'abord ; `--annuler` le ramène) ;
 - savoir si le brain est sain : `brain doctor`.
 
 ## Les règles qui ne se discutent pas

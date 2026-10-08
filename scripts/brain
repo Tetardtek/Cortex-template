@@ -12,6 +12,7 @@
 #   brain vue [--construire]     agents/ comme une vue du noyau et de l'instance
 #   brain aligne                 reprendre le tronc, le noyau verrouillé compris
 #   brain briefing [--projet P]  le briefing du boot, calculé (helloWorld le lance)
+#   brain migrer [<dossier>]     un brain git passe au paquet, une fois (--a-blanc, --annuler)
 #
 # Les autres verbes viendront des scripts du brain, un par un (`brain <verbe>`)
 # — chacun le jour où il est prêt, pas avant.
@@ -30,7 +31,8 @@ source "$_ici/lib/python.sh"   # python3 = celui du venv de brain-engine
 # change. `init` crée la data : il ne la cherche pas.
 source "$_ici/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
 _donnees=""
-if [[ "${1:-}" != "init" && -e "$_ici/../.cortex-programme" ]]; then
+# `migrer` reçoit le clone à migrer : il ne cherche pas la data non plus.
+if [[ "${1:-}" != "init" && "${1:-}" != "migrer" && -e "$_ici/../.cortex-programme" ]]; then
   _donnees="$(brain_donnees "$(cd "$_ici/.." && pwd)")" || exit 1
   export BRAIN_ROOT="$_donnees"
 fi
@@ -77,16 +79,21 @@ case "${1:-}" in
     shift
     exec python3 "$_ici/aligne.py" "$@"
     ;;
+  migrer)
+    # Un brain git passe au paquet, une fois — depuis le programme installé.
+    shift
+    exec python3 "$_ici/migrer.py" "$@"
+    ;;
   briefing)
     # Le briefing du boot : les gestes mécaniques, faits par un script.
     shift
     exec python3 "$_ici/briefing.py" "$@"
     ;;
   ""|-h|--help|help)
-    sed -n '4,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '4,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
-    echo "brain : verbe inconnu « $1 » — connus : init, serve, doctor, maj, vue, aligne, briefing" >&2
+    echo "brain : verbe inconnu « $1 » — connus : init, serve, doctor, maj, vue, aligne, migrer, briefing" >&2
     exit 2
     ;;
 esac

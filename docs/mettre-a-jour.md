@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.5.2.
+> travail. Kernel v3.5.3.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -188,6 +188,50 @@ que rien n'a pu effacer est signalé, jamais effacé. Il déclare la version
 reçue (`kernel_version`) et branche le garde de lecture. Comme `brain maj`,
 c'est l'`aligne.py` de la version reçue qui fait le travail : s'il diffère du
 tien, il prend la main.
+
+---
+
+## Passer au paquet, une fois : `brain migrer`
+
+Un brain cloné par git porte son programme dans son dossier. Installé par le
+paquet `brain-cortex`, le programme vit à part, et le dossier ne garde que tes
+données. `brain migrer` fait ce passage, une fois, depuis le programme installé :
+
+```bash
+pipx install --index-url <INDEX> --pip-args="--extra-index-url https://pypi.org/simple" "brain-cortex==<VERSION>"
+~/.local/share/pipx/venvs/brain-cortex/bin/brain migrer ~/Dev/Brain --a-blanc
+~/.local/share/pipx/venvs/brain-cortex/bin/brain migrer ~/Dev/Brain
+```
+
+Pourquoi ce chemin long : la commande `brain` de `~/.local/bin` désigne encore
+ton clone, et pipx ne la remplace pas (« pointing to unexpected location ») ;
+`brain migrer` la fait désigner le paquet à la fin. `pipx install --force` la
+remplacerait tout de suite. `<INDEX>` et `<VERSION>` : `installer-avec-claude.md` —
+jamais `pipx install brain-cortex` sans index : il chercherait sur PyPI, où ce nom
+n'est pas le nôtre.
+
+**Il refuse avant de toucher quoi que ce soit** : du travail non commité ou des
+commits non poussés (dans le clone ou un satellite), un paquet plus ancien que
+le clone, une copie déjà là, et dans les entrées du programme (`scripts/`,
+`noyau/`, `brain-engine/`…) un fichier qui diffère de celui du paquet — une
+retouche à toi, nommée. Un script de ton instance ou un satellite qui vit dans
+une entrée du programme passe avec `--laisser-l-instance` : il reste dans la
+copie. `--a-blanc` dit tout cela sans rien faire.
+
+**Puis** : la copie entière du dossier à côté (`~/Dev/Brain.avant-paquet`, son
+`.git` compris — rien n'y est retiré) ; les unités systemd du brain arrêtées
+(leurs fichiers gardés dans la copie) ; le programme quitte le dossier ; le
+dossier devient un dépôt de données neuf (l'histoire d'avant reste dans la
+copie) ; `brain init` pose le reste — la vue, une base Dolt locale (vide si la
+tienne était ailleurs), les unités, les hooks. Un hook de `~/.claude/settings.json`
+qui visait un script disparu est signalé, pas retiré. Il finit par `brain
+doctor`, et ne sort 0 que s'il est vert.
+
+**Revenir** : `brain migrer --annuler ~/Dev/Brain` remet la copie à sa place,
+les unités d'avant dans leur état, et vérifie que le clone rendu est identique
+à celui d'avant (son empreinte). Le dossier migré est mis de côté
+(`~/Dev/Brain.migre-<date>`), jamais supprimé. La copie, elle, reste jusqu'à ce
+que tu la retires.
 
 ---
 

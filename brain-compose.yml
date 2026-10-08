@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.5.2"
+version: "3.5.3"
 
 # ---
 # Ownership — kerneluser
@@ -220,3 +220,6 @@ changelog:
   - version: "3.5.2"
     date: "2026-10-08"
     notes: "L'installation guidee, et le noyau garde contre un renommage. docs/installer-avec-claude.md : la procedure qu'un Claude suit pour installer un brain avec quelqu'un (prerequis, pipx install avec la version exacte, brain init, demarrage, brain doctor, brancher Claude Code) ; les gestes sensibles se demandent, un index prive se lit avec un jeton que la personne ecrit elle-meme dans ~/.netrc. brain init --verifier marche sur un programme installe a part, et verifie la VERSION de Node (^20.19 ou >= 22.12), plus seulement sa presence. Le hook de posture voit un fichier du noyau sorti par un renommage (git mv) : il est refuse. brain-engine.sh logs --fin montre la fin du journal et rend la main. La doc dit vrai a un nouveau venu (le nombre d'etapes calcule, les replis bash scripts/brain quand la commande brain n'est pas posee) ; docs-verite marche sur un clone neuf ; le journal des versions est dans l'ordre, et son controle le verifie. La suite de tests arrete ses serveurs Dolt meme quand un test echoue. Mise a jour depuis la v3.5.1 : brain maj, brain maj --appliquer, puis brain doctor."
+  - version: "3.5.3"
+    date: "2026-10-08"
+    notes: "brain migrer : un brain clone par git passe au paquet, une fois, et peut revenir. Depuis le programme installe (pipx install brain-cortex), brain migrer <dossier> refuse d'abord tout ce qui se perdrait (travail non commite ou non pousse dans le clone ou un satellite, une retouche locale d'un fichier du programme, un paquet plus ancien que le clone) ; puis il copie le dossier a cote (<dossier>.avant-paquet, avec les unites systemd et les reglages de Claude Code qui le designent), retire du dossier ce qui est programme, en fait un depot de donnees neuf, pose ce que brain init pose (pointeur, vue, base Dolt locale, unites, hooks) et joue brain doctor. --a-blanc dit ce qu'il ferait sans rien toucher ; --annuler remet le clone ; --laisser-l-instance laisse a la copie les chemins propres a l'instance. Seules les unites systemd qui designent le dossier sont arretees. Les dependances du moteur ont une borne haute a la majeure suivante. La suite de tests arrete ses serveurs meme quand elle est tuee. Mise a jour depuis la v3.5.2 : brain maj, brain maj --appliquer, puis brain doctor."

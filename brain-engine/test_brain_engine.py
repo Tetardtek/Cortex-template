@@ -2276,6 +2276,7 @@ class TestRagScript(unittest.TestCase):
 # brain-db-sync.sh — tests bash (--check mode)
 # ══════════════════════════════════════════════════════════════════════════════
 
+import signal
 import subprocess
 
 BRAIN_ROOT_PATH = Path(__file__).parent.parent
@@ -2318,12 +2319,43 @@ def dossier_de_test(test: unittest.TestCase, prefixe: str) -> Path:
     return d
 
 
+def lie_a_la_suite():
+    """Le `preexec_fn` d'un processus qui ne doit pas survivre à la suite : sous Linux,
+    `prctl(PR_SET_PDEATHSIG, SIGTERM)` — le noyau lui envoie SIGTERM quand le processus
+    des tests meurt, SIGKILL compris, là où aucun `addCleanup` ne se joue. Mesuré le 8/10 :
+    un test tué au SIGKILL laissait son `dolt sql-server`, rattaché à `systemd --user`.
+
+    Le signal suit le THREAD qui a lancé le processus : les lancements de la suite se font
+    du thread principal (les threads de la suite ne servent que des `http.server`
+    internes). Si le parent est déjà mort entre `fork` et `prctl`, l'enfant s'arrête
+    lui-même. Ailleurs que sous Linux : `None`, rien ne change — un test tué y laisse
+    toujours son serveur."""
+    if not sys.platform.startswith('linux'):
+        return None
+    import ctypes
+    try:
+        prctl = ctypes.CDLL(None, use_errno=True).prctl     # chargé ICI, pas après le fork
+    except (OSError, AttributeError):
+        return None
+    parent = os.getpid()
+
+    def poser():
+        prctl(1, signal.SIGTERM, 0, 0, 0)                    # 1 = PR_SET_PDEATHSIG
+        if os.getppid() != parent:
+            os.kill(os.getpid(), signal.SIGTERM)
+    return poser
+
+
 def serveur_de_test(test: unittest.TestCase, commande: list, **popen) -> subprocess.Popen:
     """Un serveur de test (`dolt sql-server`…), arrêté QUOI QU'IL ARRIVE : le nettoyage
     est posé dès le démarrage, pas dans `tearDown`. Un `setUp` qui tombait après lui (une
     préparation en échec, une assertion) le laissait vivre : 44 serveurs orphelins,
     4,4 Go, relevés le 8/10. Les nettoyages se jouent à rebours : le serveur s'arrête
-    avant que son dossier ne parte."""
+    avant que son dossier ne parte.
+
+    Et si le processus des tests est TUÉ (un `timeout`, un SIGKILL), aucun nettoyage ne
+    se joue : le serveur meurt alors avec lui, par `lie_a_la_suite`."""
+    popen.setdefault('preexec_fn', lie_a_la_suite())
     serveur = subprocess.Popen(commande, **popen)
 
     def arreter():
@@ -2337,6 +2369,62 @@ def serveur_de_test(test: unittest.TestCase, commande: list, **popen) -> subproc
 
     test.addCleanup(arreter)
     return serveur
+
+
+class TestLeServeurMeurtAvecLaSuite(unittest.TestCase):
+    """`lie_a_la_suite` : un processus lancé par la suite meurt quand le processus des
+    tests est tué — SIGKILL compris, sans aucun nettoyage joué. Un intermédiaire tient le
+    rôle de la suite : il lance un `sleep` lié, puis il est tué.
+    (L'essai réel, avec un `dolt sql-server` : `scripts/essai-test-tue.sh`.)"""
+
+    def setUp(self):
+        if not sys.platform.startswith('linux'):
+            self.skipTest('PR_SET_PDEATHSIG : Linux seulement')
+
+    def _jouer(self, lier: bool):
+        import inspect
+        code = ('import os, signal, subprocess, sys, time\n' + inspect.getsource(lie_a_la_suite)
+                + f"p = subprocess.Popen(['sleep', '60'], preexec_fn={'lie_a_la_suite()' if lier else 'None'})\n"
+                + 'print(p.pid, flush=True)\ntime.sleep(60)\n')
+        suite = subprocess.Popen([sys.executable, '-c', code], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (suite.kill(), suite.wait()))
+        enfant = int(suite.stdout.readline())
+
+        def balayer():
+            try:
+                os.kill(enfant, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        self.addCleanup(balayer)
+        suite.kill()
+        suite.wait(10)
+        for _ in range(50):
+            try:
+                os.kill(enfant, 0)
+            except ProcessLookupError:
+                return False                                    # mort
+            # Un zombie n'est pas vivant : son parent est mort, init le récolte.
+            try:
+                if Path(f'/proc/{enfant}/stat').read_text().split(') ', 1)[1].startswith('Z'):
+                    return False
+            except (OSError, IndexError):
+                return False
+            time.sleep(0.1)
+        return True                                             # survit
+
+    def test_le_temoin_sans_lien_survit(self):
+        """Sans le lien, l'enfant survit à la suite tuée — ce que l'essai doit voir."""
+        self.assertTrue(self._jouer(lier=False), "le témoin : sans lien, l'enfant devait survivre")
+
+    def test_lie_il_meurt_avec_la_suite_tuee(self):
+        self.assertFalse(self._jouer(lier=True), 'le processus lié a survécu à la suite tuée')
+
+    def test_serveur_de_test_pose_le_lien(self):
+        """`serveur_de_test` passe `lie_a_la_suite` à Popen, sauf `preexec_fn` fourni."""
+        vus = []
+        with patch.object(subprocess, 'Popen', side_effect=lambda c, **k: vus.append(k) or MagicMock()):
+            serveur_de_test(self, ['vrai'])
+        self.assertTrue(callable(vus[0].get('preexec_fn')), vus)
 
 
 def avec_le_core(moteur: Path) -> None:
@@ -4142,8 +4230,8 @@ class TestDoltSetup(unittest.TestCase):
         env_local = (self.brain / 'brain-engine' / '.env.local').read_text()
         self.assertIn('BRAIN_DB_BACKEND=dolt', env_local)
         self.assertIn(f'BRAIN_DOLT_PORT={self.port}', env_local)
-        serveur = subprocess.Popen(['dolt', 'sql-server', '--config', 'config.yaml'], cwd=base,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        serveur = serveur_de_test(self, ['dolt', 'sql-server', '--config', 'config.yaml'], cwd=base,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             import socket, time as _t
             for _ in range(100):
@@ -4243,7 +4331,8 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             autre = self._brain(Path(tmp) / 'autre')
             ici = self._brain(Path(tmp) / 'ici')
-            moteur = subprocess.Popen(['python3', str(autre / 'brain-engine' / 'server.py')])
+            moteur = subprocess.Popen(['python3', str(autre / 'brain-engine' / 'server.py')],
+                                      preexec_fn=lie_a_la_suite())
             try:
                 time.sleep(0.3)
                 env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
@@ -4258,7 +4347,8 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
                 moteur.wait()
 
     def _lancer(self, brain: Path, *, fichier_de_pid: bool):
-        moteur = subprocess.Popen(['python3', str(brain / 'brain-engine' / 'server.py')])
+        moteur = subprocess.Popen(['python3', str(brain / 'brain-engine' / 'server.py')],
+                                  preexec_fn=lie_a_la_suite())
         if fichier_de_pid:
             (brain / '.brain-engine.pid').write_text(str(moteur.pid))
         time.sleep(0.3)
@@ -4290,7 +4380,7 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
         # n'importe quel processus : `kill -0` seul le faisait tuer par `stop`.
         with tempfile.TemporaryDirectory() as tmp:
             ici = self._brain(Path(tmp) / 'ici')
-            inconnu = subprocess.Popen(['sleep', '60'])
+            inconnu = subprocess.Popen(['sleep', '60'], preexec_fn=lie_a_la_suite())
             try:
                 (ici / '.brain-engine.pid').write_text(str(inconnu.pid))
                 self._stop(ici)
@@ -4330,7 +4420,7 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
             autre = Path(tmp) / 'autre' / 'brain-dolt'
             autre.mkdir(parents=True)
             port = self._port_libre()
-            base = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
+            base = serveur_de_test(self, [sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
                                     cwd=autre, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 time.sleep(0.8)
@@ -4350,7 +4440,7 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
             ici = self._brain(Path(tmp) / 'ici')
             (ici / 'brain-dolt').mkdir()
             port = self._port_libre()
-            base = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
+            base = serveur_de_test(self, [sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
                                     cwd=ici / 'brain-dolt', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 time.sleep(0.8)
@@ -4366,7 +4456,7 @@ class TestBrainEngineNeTouchePasLesAutres(unittest.TestCase):
             ici = self._brain(Path(tmp) / 'ici')
             (ici / 'brain-dolt').mkdir()
             port = self._port_libre()
-            base = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
+            base = serveur_de_test(self, [sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
                                     cwd=ici / 'brain-dolt', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 time.sleep(0.8)
@@ -5775,7 +5865,8 @@ class TestLaSuiteNeJouePasUnProgrammeInstalle(unittest.TestCase):
         (data / 'brain-compose.local.yml').write_text(
             'instances:\n  essai:\n    active: true\n    posture: master\n')
         moteur = subprocess.Popen(['bash', '-c',
-                                   f"exec -a 'python3 {prog}/brain-engine/server.py' sleep 120"])
+                                   f"exec -a 'python3 {prog}/brain-engine/server.py' sleep 120"],
+                                  preexec_fn=lie_a_la_suite())
         self.addCleanup(lambda: (moteur.kill(), moteur.wait()))
         (data / '.brain-engine.pid').write_text(str(moteur.pid))
         time.sleep(0.3)
@@ -5932,6 +6023,89 @@ class TestConstruireLaRoue(unittest.TestCase):
         (self.tmp / 'brain-engine' / 'requirements.txt').write_text('-e ../myeline\n')
         with self.assertRaises(SystemExit):
             self.m.dependances(self.tmp)
+
+    # ── La provenance, et la construction depuis un tag signé ──────────────
+
+    def test_setuptools_est_epingle_et_la_provenance_emballee(self):
+        pp = self.m.pyproject('9.8.7', ['PyYAML>=6.0,<7'])
+        self.assertIn(f'requires = ["setuptools=={self.m.SETUPTOOLS}"]', pp)
+        self.assertRegex(self.m.SETUPTOOLS, r'^\d+\.\d+\.\d+$', 'une version exacte')
+        self.assertIn('"provenance.json"', pp)
+
+    def test_la_provenance_est_stable_et_sans_date(self):
+        une = self.m.provenance('9.8.7', 'v9.8.7', 'abc', 'tag', True, 'Ran 3 tests · OK')
+        self.assertEqual(une, self.m.provenance('9.8.7', 'v9.8.7', 'abc', 'tag', True, 'Ran 3 tests · OK'))
+        d = json.loads(une)
+        self.assertEqual((d['tag'], d['commit'], d['source']), ('v9.8.7', 'abc', 'tag'))
+        self.assertEqual(d['suite'], {'etat': 'jouee', 'bilan': 'Ran 3 tests · OK'})
+        self.assertEqual(set(d['outils']), {'python', 'setuptools', 'node', 'npm'})
+        self.assertEqual(list(d), sorted(d), 'clés triées')
+        self.assertNotRegex(une, r'20\d\d-\d\d-\d\d|\d\d:\d\d', 'rien d\'horodaté')
+        sans = json.loads(self.m.provenance('9.8.7', None, None, 'arbre de travail', False, 'Ran 3'))
+        self.assertEqual(sans['suite'], {'etat': 'non jouee', 'bilan': ''})
+        self.assertIsNone(sans['tag'])
+
+    def test_le_bilan_de_la_suite_perd_sa_duree(self):
+        self.assertEqual(self.m.bilan_stable(['Ran 813 tests in 95.204s', 'OK (skipped=12)']),
+                         'Ran 813 tests · OK (skipped=12)')
+
+    def _depot_signe(self, version_compose, tag, signe=True):
+        """Un clone de gabarit jetable : un commit, un tag — signé par une clé SSH jetable,
+        vérifiable par sa config LOCALE (rien de global)."""
+        depot = self.tmp / 'gabarit'
+        depot.mkdir()
+        env = {**os.environ, 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_AUTHOR_NAME': 't',
+               'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t',
+               'GIT_COMMITTER_DATE': '1700000000 +0000', 'GIT_AUTHOR_DATE': '1700000000 +0000'}
+        (depot / 'brain-compose.yml').write_text(f'name: x\nversion: "{version_compose}"\n')
+        cle = self.tmp / 'cle'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 't@t', '-f', str(cle)], check=True)
+        (self.tmp / 'signataires').write_text(f't@t {(self.tmp / "cle.pub").read_text()}')
+        cmds = [['init', '-q'], ['config', 'gpg.format', 'ssh'], ['config', 'user.signingkey', str(cle)],
+                ['config', 'gpg.ssh.allowedSignersFile', str(self.tmp / 'signataires')],
+                ['config', 'tag.gpgSign', 'false'],
+                ['add', 'brain-compose.yml'], ['commit', '-q', '--no-verify', '-m', 'x'],
+                ['tag', '-s', '-m', tag, tag] if signe else ['tag', tag]]
+        for c in cmds:
+            subprocess.run(['git', *c], cwd=depot, env=env, check=True)
+        return depot
+
+    def test_le_tag_signe_donne_son_commit_et_sa_date(self):
+        if not shutil.which('ssh-keygen'):
+            self.skipTest('ssh-keygen absent')
+        depot = self._depot_signe('1.0.0', 'v1.0.0')
+        commit, date = self.m.tag_du_depot(depot, 'v1.0.0')
+        tete = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=depot, capture_output=True, text=True).stdout.strip()
+        self.assertEqual((commit, date), (tete, 1700000000))
+
+    def test_un_tag_non_signe_est_refuse(self):
+        if not shutil.which('ssh-keygen'):
+            self.skipTest('ssh-keygen absent')
+        depot = self._depot_signe('1.0.0', 'v1.0.0', signe=False)
+        with self.assertRaises(SystemExit) as e:
+            self.m.tag_du_depot(depot, 'v1.0.0')
+        self.assertIn("n'est pas signé", str(e.exception))
+
+    def _lancer(self, *args, cwd):
+        env = {k: v for k, v in os.environ.items() if k != 'SOURCE_DATE_EPOCH'}
+        env['TMPDIR'] = str(self.tmp)
+        return subprocess.run([sys.executable, str(self.OUTIL), *args], cwd=cwd, env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def test_un_tag_qui_porte_une_autre_version_n_emballe_rien(self):
+        if not shutil.which('ssh-keygen'):
+            self.skipTest('ssh-keygen absent')
+        depot = self._depot_signe('1.0.0', 'v2.0.0')
+        r = self._lancer('--tag', 'v2.0.0', '--sans-suite', cwd=depot)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('git archive v2.0.0', r.stdout)
+        self.assertIn('porte la version 1.0.0', r.stdout)
+        self.assertFalse(list(self.tmp.rglob('*.whl')))
+
+    def test_tag_et_rendu_s_excluent(self):
+        r = self._lancer('--tag', 'v1.0.0', '--rendu', str(self.tmp), cwd=self.tmp)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("s'excluent", r.stderr)
 
 
 class TestUnitesDuProgrammeAPart(unittest.TestCase):
@@ -6531,7 +6705,8 @@ class TestInstallSystemd(unittest.TestCase):
         # ce script ». Un faux moteur de CE brain — la ligne de commande que
         # `pid_en_cours` reconnaît, sans port — tient le rôle de systemd.
         serveur = self.racine / 'brain-engine' / 'server.py'      # le brain du script : la racine jetable
-        faux = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', str(serveur)])
+        faux = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', str(serveur)],
+                                preexec_fn=lie_a_la_suite())
         try:
             r, _ = self._installer()
         finally:
@@ -7275,9 +7450,12 @@ class TestForgePaquet(unittest.TestCase):
 
     Elle paraît sous le nom de l'humain : refusée en autonomie. Sa version a une
     provenance : le tag `v<version>` signé ici (`git tag -v`) et présent sur la forge au
-    même commit. Création seulement. Le fichier publié est relu : sha256 identique à la
-    roue, sinon sortie 1. Joué contre une FAUSSE forge à état : `conf` lève ; `call`,
-    `envoyer_roue` et `tag_signe_ici` sont remplacés — ni réseau, ni jeton, ni git."""
+    même commit. Elle vient de ce tag : sa provenance le nomme (construite par `--tag`,
+    suite jouée, même commit) et son `programme/` est le `git archive` du tag, aux trois
+    écarts de la construction près. Création seulement. Le fichier publié est
+    relu : sha256 identique à la roue, sinon sortie 1. Joué contre une FAUSSE forge à
+    état : `conf` lève ; `call`, `envoyer_roue`, `tag_signe_ici` et `arbre_du_tag` sont
+    remplacés — ni réseau, ni jeton, ni git."""
 
     SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-forge.py'
     COMMIT = 'c0ffee' * 6 + 'c0ff'
@@ -7297,6 +7475,19 @@ class TestForgePaquet(unittest.TestCase):
         self.bf.AUTONOME = False
         self.d = Path(tempfile.mkdtemp(prefix='forge-paquet-'))
         self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
+        # Le `git archive` du tag : chemin → (contenu, exécutable).
+        self.tag_arbre = {
+            'KERNEL.md': (b'# le noyau\n', False),
+            'scripts/brain': (b'#!/bin/bash\necho brain\n', True),
+            'brain-ui/src/main.ts': (b'le dashboard\n', False),
+            '.github/workflows/ci.yml': (b'on: push\n', False),
+        }
+        # Ce que la construction en fait : `.github` retiré ; la marque et `dist/` ajoutés.
+        self.programme = {k: v for k, v in self.tag_arbre.items() if not k.startswith('.github/')}
+        self.programme['.cortex-programme'] = (b'brain-cortex 1.2.3\n', False)
+        self.programme['brain-ui/dist/index.html'] = (b'<html></html>\n', False)
+        self.prov = {'nom': 'brain-cortex', 'version': '1.2.3', 'source': 'tag', 'tag': 'v1.2.3',
+                     'commit': self.COMMIT, 'suite': {'etat': 'jouee', 'bilan': 'Ran 9 tests · OK'}}
         self.roue = self._roue('1.2.3')
         self.appels, self.envois, self.cles = [], [], []
         self.tags = {'v1.2.3': self.COMMIT}          # sur la forge : tag → commit
@@ -7305,15 +7496,26 @@ class TestForgePaquet(unittest.TestCase):
         self.code_envoi = 201
         self.alterer = None                          # ce que la forge fait du sha
 
-    def _roue(self, version, version_meta=None, nom='brain_cortex'):
+    def _roue(self, version, version_meta=None, nom='brain_cortex', prov='defaut', programme=None):
         import zipfile
+        prov = self.prov if prov == 'defaut' else prov
         roue = self.d / f'{nom}-{version}-py3-none-any.whl'
         with zipfile.ZipFile(roue, 'w') as z:
             z.writestr(f'{nom}-{version}.dist-info/METADATA',
                        f"Metadata-Version: 2.1\nName: brain-cortex\nVersion: {version_meta or version}\n"
                        "Requires-Python: >=3.12\nSummary: le brain\n\nle corps\n")
             z.writestr('brain_cortex/__init__.py', '')
+            if prov is not None:
+                z.writestr('brain_cortex/provenance.json', json.dumps(prov))
+            for chemin, (contenu, exe) in (self.programme if programme is None else programme).items():
+                info = zipfile.ZipInfo(f'brain_cortex/programme/{chemin}')
+                info.external_attr = (0o100755 if exe else 0o100644) << 16
+                z.writestr(info, contenu)
         return roue
+
+    def _arbre(self, fichiers):
+        import hashlib
+        return {k: (hashlib.sha256(c).hexdigest(), e) for k, (c, e) in fichiers.items()}
 
     def _forge(self):
         import hashlib
@@ -7348,6 +7550,7 @@ class TestForgePaquet(unittest.TestCase):
         self.bf.call = call
         self.bf.envoyer_roue = envoyer
         self.bf.tag_signe_ici = lambda tag: self.signe if tag in ('v1.2.3', 'v9.9.9') else (False, '')
+        self.bf.arbre_du_tag = lambda tag: self._arbre(self.tag_arbre)
 
     existence = None
 
@@ -7504,6 +7707,107 @@ class TestForgePaquet(unittest.TestCase):
 
     def test_l_aide_la_dit(self):
         self.assertIn('brain-forge.py paquet <roue.whl>', self.bf.__doc__)
+
+    # ── La roue vient du tag : provenance, puis programme/ = git archive ────
+
+    def _refusee(self, attendu, roue=None):
+        code, sortie = self._paquet(roue or self._roue('1.2.3'))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(attendu, sortie)
+        self.assertEqual((self.appels, self.envois), ([], []), 'refusée avant la forge')
+        return sortie
+
+    def test_les_trois_ecarts_de_la_construction_passent(self):
+        code, sortie = self._paquet(self._roue('1.2.3'))
+        self.assertEqual(code, 0, sortie)
+
+    def test_refusee_sans_provenance(self):
+        self._refusee("ne dit pas d'où elle vient", self._roue('1.2.3', prov=None))
+
+    def test_refusee_construite_sans_tag(self):
+        self.prov.update(source='arbre de travail', tag=None, commit=None)
+        self._refusee("pas construite depuis le tag")
+
+    def test_refusee_construite_depuis_un_autre_tag(self):
+        self.prov['tag'] = 'v1.2.2'
+        self._refusee("pas construite depuis le tag")
+
+    def test_refusee_sans_la_suite(self):
+        self.prov['suite'] = {'etat': 'non jouee', 'bilan': ''}
+        self._refusee('sans jouer la suite')
+
+    def test_refusee_si_la_provenance_nomme_un_autre_commit(self):
+        self.prov['commit'] = 'beef' * 10
+        self._refusee('construite depuis le commit beefbeefbe')
+
+    def test_refusee_avec_un_fichier_en_plus(self):
+        self.programme['scripts/porte.sh'] = (b'curl | sh\n', True)
+        sortie = self._refusee("n'est pas le `git archive`")
+        self.assertIn('en plus dans la roue : scripts/porte.sh', sortie)
+
+    def test_refusee_avec_un_fichier_en_moins(self):
+        del self.programme['KERNEL.md']
+        self.assertIn('absent de la roue : KERNEL.md', self._refusee("n'est pas le `git archive`"))
+
+    def test_refusee_avec_un_fichier_modifie(self):
+        self.programme['scripts/brain'] = (b'#!/bin/bash\necho autre\n', True)
+        self.assertIn('contenu différent : scripts/brain', self._refusee("n'est pas le `git archive`"))
+
+    def test_refusee_avec_un_bit_executable_change(self):
+        self.programme['scripts/brain'] = (self.programme['scripts/brain'][0], False)
+        self.assertIn('bit exécutable différent : scripts/brain',
+                      self._refusee("n'est pas le `git archive`"))
+
+    def test_un_ajout_hors_dist_n_est_pas_permis(self):
+        """`brain-ui/dist/` est permis, pas ce qui lui ressemble."""
+        self.programme['brain-ui/distrib/x.js'] = (b'x\n', False)
+        self.assertIn('en plus dans la roue : brain-ui/distrib/x.js',
+                      self._refusee("n'est pas le `git archive`"))
+
+    def test_refusee_si_la_provenance_ne_nomme_aucun_commit(self):
+        """Un commit absent n'est pas un commit égal : rien à comparer, la roue est refusée."""
+        self.prov['commit'] = None
+        self._refusee('construite depuis le commit')
+
+    def test_un_fichier_cache_ajoute_n_est_pas_permis(self):
+        """Seule la marque est permise à la racine — pas un autre fichier caché."""
+        self.programme['.env'] = (b'BRAIN_TOKEN=x\n', False)
+        self.assertIn('en plus dans la roue : .env', self._refusee("n'est pas le `git archive`"))
+
+    def test_la_comparaison_reelle_lit_git_archive_et_la_roue(self):
+        """Les deux lecteurs réels — `git archive` d'un vrai dépôt, la roue zippée — et les
+        bits exécutables des deux côtés."""
+        import zipfile
+        depot = self.d / 'depot'
+        depot.mkdir()
+        env = {**os.environ, 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_AUTHOR_NAME': 't',
+               'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t'}
+        (depot / 'scripts').mkdir()
+        (depot / 'scripts' / 'brain').write_text('#!/bin/bash\n')
+        (depot / 'scripts' / 'brain').chmod(0o755)
+        (depot / 'KERNEL.md').write_text('noyau\n')
+        for c in (['init', '-q'], ['add', 'scripts', 'KERNEL.md'], ['commit', '-q', '-m', 'x'],
+                  ['tag', 'v1.2.3']):
+            subprocess.run(['git', *c], cwd=depot, env=env, check=True)
+        ici = os.getcwd()
+        os.chdir(depot)
+        try:
+            arbre = self.bf.arbre_du_tag('v1.2.3')
+            with self.assertRaises(ValueError):
+                self.bf.arbre_du_tag('v0.0.0')
+        finally:
+            os.chdir(ici)
+        self.assertEqual(sorted(arbre), ['KERNEL.md', 'scripts/brain'])
+        self.assertTrue(arbre['scripts/brain'][1])
+        self.assertFalse(arbre['KERNEL.md'][1])
+        self.programme = {'KERNEL.md': (b'noyau\n', False), 'scripts/brain': (b'#!/bin/bash\n', True)}
+        roue = self._roue('1.2.3')
+        self.assertEqual(self.bf.ecarts_au_tag(self.bf.programme_de_la_roue(roue), arbre), [])
+        self.programme['scripts/brain'] = (b'#!/bin/bash\n', False)
+        self.assertEqual(self.bf.ecarts_au_tag(self.bf.programme_de_la_roue(self._roue('1.2.3')), arbre),
+                         ['bit exécutable différent : scripts/brain'])
+        with zipfile.ZipFile(roue) as z:
+            self.assertIn('brain_cortex/provenance.json', z.namelist())
 
 
 class TestForgeRelease(unittest.TestCase):
@@ -9002,11 +9306,11 @@ class TestSaboter(unittest.TestCase):
         (self.tmp / 'verif.py').write_text(
             "import jouet, sys\nsys.exit(0 if 'b' in jouet.ROLES else 1)\n", encoding='utf-8')
 
-    def _saboter(self, motif: str, par: str, *commande: str, env=None):
+    def _saboter(self, motif: str, par: str, *commande: str, env=None, cible=None):
         commande = commande or (sys.executable, 'verif.py')
         return subprocess.run(
             [sys.executable, str(self.outil), '--motif', motif, '--par', par,
-             str(self.cible), '--', *commande],
+             str(cible or self.cible), '--', *commande],
             capture_output=True, text=True, cwd=self.tmp, timeout=60, env=env)
 
     def _rendu_intact(self, r):
@@ -9151,6 +9455,73 @@ class TestSaboter(unittest.TestCase):
         apres = self._importer_jouet(env)
         self.assertEqual(apres.returncode, 0, "l'import après restauration a servi le mutant")
 
+
+    # ── Le `.pyc` d'une cible sans extension, et sous un préfixe ─────────
+    # `pre-commit-zone`, chargé par `SourceFileLoader`, écrit `pre-commit-zonecpython-314.pyc`
+    # (sans point) : l'outil ne regardait que les `.py`, avec le motif `{stem}.*.pyc`.
+
+    SANS_EXTENSION = ("import os, sys\n"
+                      "from importlib.machinery import SourceFileLoader\n"
+                      "t = float(sys.argv[1])\n"
+                      "os.utime('jouet_hook', (t, t))\n"
+                      "m = SourceFileLoader('jouet_hook', os.path.abspath('jouet_hook')).load_module()\n"
+                      "sys.exit(0 if 'b' in m.ROLES else 1)\n")
+
+    def _hook_jouet(self):
+        hook = self.tmp / 'jouet_hook'
+        hook.write_text(self.ORIGINAL, encoding='utf-8')
+        (self.tmp / 'verif_hook.py').write_text(self.SANS_EXTENSION, encoding='utf-8')
+        return hook
+
+    def test_une_cible_sans_extension_n_est_pas_servie_par_son_ancien_pyc(self):
+        """Le hook chargé par `SourceFileLoader` a un `.pyc` à son nom sans point : sans
+        l'effacer, le mutant de même taille et même seconde garde l'ancien code — la
+        commande reste verte, et l'outil conclut à tort que le contrôle n'éprouve rien."""
+        env = self._env_qui_ecrit_les_pyc()
+        hook = self._hook_jouet()
+        t = str(hook.stat().st_mtime)
+        avant = subprocess.run([sys.executable, 'verif_hook.py', t], cwd=self.tmp, env=env,
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(avant.returncode, 0, avant.stdout + avant.stderr)   # pose le .pyc
+        self.assertTrue(list((self.tmp / '__pycache__').glob('jouet_hook*.pyc')), 'pas de .pyc posé')
+        r = self._saboter("'b'", "'x'", sys.executable, 'verif_hook.py', t, env=env, cible=hook)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('a rougi', r.stdout)
+        self.assertEqual(hook.read_text(encoding='utf-8'), self.ORIGINAL)
+        self.assertEqual(sorted(p.name for p in (self.tmp / '__pycache__').glob('jouet_hook*.pyc')), [],
+                         'un .pyc de la cible survit à la restauration')
+
+    def test_les_pyc_d_un_voisin_au_nom_proche_ne_sont_pas_touches(self):
+        """`jouet_hookx` + `cpython-314` s'écrit comme `jouet_hook` + un interpréteur
+        `xcpython` : seuls les interpréteurs connus comptent, les voisins gardent leurs `.pyc`."""
+        hook = self._hook_jouet()
+        cache = self.tmp / '__pycache__'
+        cache.mkdir()
+        tag = sys.implementation.cache_tag
+        voisins = [f'jouet_hookx{tag}.pyc', f'jouet_hook-x{tag}.pyc', f'jouet_hook.x.{tag}.pyc']
+        siens = [f'jouet_hook{tag}.pyc', 'jouet_hookcpython-299.opt-2.pyc']
+        for nom in voisins + siens:
+            (cache / nom).write_bytes(b'')
+        r = self._saboter("'b'", "'x'", sys.executable, '-c', 'import sys; sys.exit(1)', cible=hook)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(p.name for p in cache.iterdir()), sorted(voisins))
+
+    def test_sous_pythonpycacheprefix_le_pyc_de_la_cible_est_oublie_aussi(self):
+        """Avec `PYTHONPYCACHEPREFIX`, le `.pyc` vit sous le préfixe, pas dans `__pycache__` :
+        l'outil le cherchait à côté, le mutant gardait l'ancien code."""
+        env = self._env_qui_ecrit_les_pyc()
+        prefixe = self.tmp / 'prefixe'
+        env['PYTHONPYCACHEPREFIX'] = str(prefixe)
+        (self.tmp / 'verif_seconde.py').write_text(self.MEME_SECONDE, encoding='utf-8')
+        self.assertEqual(self._importer_jouet(env).returncode, 0)       # pose le .pyc sous le préfixe
+        self.assertTrue(list(prefixe.rglob('jouet.*.pyc')), 'pas de .pyc sous le préfixe')
+        self.assertFalse((self.tmp / '__pycache__').exists(), 'le .pyc est allé à côté')
+        t = str(self.cible.stat().st_mtime)
+        r = self._saboter("'b'", "'x'", sys.executable, 'verif_seconde.py', t, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('a rougi', r.stdout)
+        self._rendu_intact(r)
+        self.assertEqual(list(prefixe.rglob('jouet.*.pyc')), [], 'le .pyc du mutant survit sous le préfixe')
 
 class TestIsolationVoitLaVue(unittest.TestCase):
     """Le contrôle d'isolation lit les agents d'une vue de liens.
@@ -12878,7 +13249,8 @@ class TestBrainServe(unittest.TestCase):
         import subprocess as sp
         enfants = {
             'http': sp.Popen([sys.executable, '-c', 'import sys; sys.exit(3)']),
-            'mcp': sp.Popen([sys.executable, '-c', 'import time; time.sleep(60)']),
+            'mcp': sp.Popen([sys.executable, '-c', 'import time; time.sleep(60)'],
+                            preexec_fn=lie_a_la_suite()),
         }
         debut = time.monotonic()
         code = self.serve.surveiller(enfants, dire=lambda _m: None)
@@ -13146,6 +13518,294 @@ class TestEcouteLocaleParDefaut(unittest.TestCase):
         for serveur in ('server.py', 'mcp_server.py'):
             with self.subTest(serveur=serveur):
                 self.assertEqual(self._hote(serveur, '192.0.2.1'), '192.0.2.1')
+
+
+
+class TestBrainMigrer(unittest.TestCase):
+    """`brain migrer` (scripts/migrer.py) : un brain git passe au paquet, une fois.
+
+    Joué contre un programme FACTICE (marqué, avec le vrai `scripts/vue.py`, qui dit les
+    entrées du programme) et un clone jetable poussé vers une origine nue. Ce qui est jugé
+    ici : ce qui BLOQUE (avant tout geste), ce qui est rangé comme programme, la config du
+    moteur, ce que le dépôt neuf reprend, l'empreinte, et `--annuler`. La migration de bout
+    en bout, roue et pipx compris : `scripts/essai-migrer.sh`."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'migrer.py'
+    VUE = BRAIN_ROOT_PATH / 'scripts' / 'vue.py'
+    PROGRAMME = {
+        'brain-compose.yml': 'version: "3.5.2"\n',
+        'KERNEL.md': '# le noyau\n',
+        'kernel.lock': 'generated_at: "2026-10-08T10:00"\n',
+        'scripts/brain': '#!/bin/bash\necho brain\n',
+        'noyau/agents/coach.md': '# coach\n',
+    }
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('migrer.py absent')
+        self.tmp = Path(tempfile.mkdtemp(prefix='brain-migrer-'))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.P = self.tmp / 'programme'
+        self._ecrire(self.P, {**self.PROGRAMME, '.cortex-programme': 'brain-cortex 3.5.2\n',
+                              'scripts/vue.py': self.VUE.read_text(encoding='utf-8')})
+        self.D = self.tmp / 'home' / 'Brain'
+        self._ecrire(self.D, {**self.PROGRAMME, 'scripts/vue.py': self.VUE.read_text(encoding='utf-8'),
+                              'focus.md': '# ma direction\n',
+                              '.gitignore': '__pycache__/\n/projets/\n.env.local\n'})
+        self._g(self.tmp, 'init', '-q', '--bare', str(self.tmp / 'origine.git'))
+        self._g(self.D, 'init', '-q', '-b', 'main')
+        self._commit(self.D, 'le clone')
+        self._g(self.D, 'remote', 'add', 'origin', str(self.tmp / 'origine.git'))
+        self._g(self.D, 'push', '-q', '-u', 'origin', 'main')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_migrer', self.SCRIPT)
+        self.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.m)
+        self.m.PROGRAMME = self.P
+
+    def _g(self, cwd, *args):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=cwd,
+                              check=True, capture_output=True, text=True)
+
+    def _ecrire(self, racine, fichiers):
+        for rel, texte in fichiers.items():
+            (racine / rel).parent.mkdir(parents=True, exist_ok=True)
+            (racine / rel).write_text(texte, encoding='utf-8')
+
+    def _commit(self, racine, msg, pousser=False):
+        self._g(racine, 'add', '-A')
+        self._g(racine, 'commit', '-qm', msg)
+        if pousser:
+            self._g(racine, 'push', '-q')
+
+    def _bloque(self, laisser=False):
+        return self.m.examiner(self.D, laisser)[0]
+
+    def _satellite(self):
+        sat = self.D / 'projets'
+        self._ecrire(sat, {'projet-a.md': '# A\n'})
+        self._g(self.tmp, 'init', '-q', '--bare', str(self.tmp / 'projets.git'))
+        self._g(sat, 'init', '-q', '-b', 'main')
+        self._commit(sat, 'A')
+        self._g(sat, 'remote', 'add', 'origin', str(self.tmp / 'projets.git'))
+        self._g(sat, 'push', '-q', '-u', 'origin', 'main')
+        return sat
+
+    # ── Ce qui bloque, avant tout geste ──
+
+    def test_un_clone_propre_et_pousse_ne_bloque_pas(self):
+        self.assertEqual(self._bloque(), [])
+
+    def test_du_travail_non_commite_bloque(self):
+        (self.D / 'focus.md').write_text('# changé\n')
+        self.assertTrue(any('non commité' in b and 'focus.md' in b for b in self._bloque()), self._bloque())
+
+    def test_des_commits_non_pousses_bloquent(self):
+        (self.D / 'focus.md').write_text('# changé\n')
+        self._commit(self.D, 'local')
+        self.assertTrue(any('1 commit(s) non poussé(s)' in b for b in self._bloque()), self._bloque())
+
+    def test_un_satellite_sale_bloque_en_le_nommant(self):
+        sat = self._satellite()
+        self.assertEqual(self._bloque(), [])
+        (sat / 'projet-a.md').write_text('# A, en cours\n')
+        self.assertTrue(any('satellite projets' in b and 'non commité' in b for b in self._bloque()),
+                        self._bloque())
+
+    def test_une_copie_deja_la_bloque(self):
+        self.D.with_name('Brain.avant-paquet').mkdir()
+        self.assertTrue(any('existe déjà' in b for b in self._bloque()), self._bloque())
+
+    def test_une_retouche_locale_du_programme_bloque_en_la_nommant(self):
+        (self.D / 'scripts' / 'brain').write_text('#!/bin/bash\necho retouché\n')
+        self._commit(self.D, 'retouche', pousser=True)
+        self.assertIn('retouche locale (diffère du paquet) : scripts/brain', self._bloque())
+
+    def test_un_paquet_plus_ancien_que_le_clone_bloque(self):
+        (self.D / 'brain-compose.yml').write_text('version: "3.6.0"\n')
+        self._commit(self.D, 'plus récent', pousser=True)
+        self.assertTrue(any('plus ancien que le clone (3.6.0)' in b for b in self._bloque()), self._bloque())
+
+    def test_un_script_de_l_instance_bloque_sauf_s_il_est_laisse_a_la_copie(self):
+        self._ecrire(self.D, {'scripts/forge-a-moi.py': 'print(1)\n'})
+        self._commit(self.D, 'instance', pousser=True)
+        self.assertTrue(any('scripts/forge-a-moi.py' in b and '--laisser-l-instance' in b
+                            for b in self._bloque()), self._bloque())
+        self.assertEqual(self._bloque(laisser=True), [])
+
+    def test_un_satellite_dans_une_entree_du_programme_bloque_sauf_laisse_a_la_copie(self):
+        """Une instance versionne parfois une entrée du programme à part (`brain-ui/`, son
+        dépôt à lui) : le paquet ne la porte pas telle quelle — elle reste à la copie."""
+        self._ecrire(self.P, {'brain-ui/src/main.ts': 'le paquet\n'})
+        ui = self.D / 'brain-ui'
+        self._ecrire(ui, {'src/main.ts': 'le dépôt de l instance\n'})
+        self._g(self.tmp, 'init', '-q', '--bare', str(self.tmp / 'ui.git'))
+        self._g(ui, 'init', '-q', '-b', 'main')
+        self._commit(ui, 'ui')
+        self._g(ui, 'remote', 'add', 'origin', str(self.tmp / 'ui.git'))
+        self._g(ui, 'push', '-q', '-u', 'origin', 'main')
+        with open(self.D / '.gitignore', 'a') as f:
+            f.write('/brain-ui/\n')
+        self._commit(self.D, 'ui à part', pousser=True)
+        self.assertTrue(any('brain-ui/ (satellite)' in b for b in self._bloque()), self._bloque())
+        self.assertEqual(self._bloque(laisser=True), [])
+
+    def test_un_dossier_deja_au_paquet_est_refuse(self):
+        shutil.rmtree(self.D / 'scripts')
+        (self.D / 'scripts').symlink_to(self.P / 'scripts')
+        self.assertTrue(any('déjà servi par un programme' in b for b in self._bloque()), self._bloque())
+
+    def test_lance_depuis_un_programme_non_marque_il_refuse_sans_rien_toucher(self):
+        """Le vrai script, depuis ce brain (pas un programme installé) : refusé."""
+        if (BRAIN_ROOT_PATH / '.cortex-programme').exists():
+            self.skipTest('programme installé : ce brain EST marqué')
+        r = subprocess.run([sys.executable, str(self.SCRIPT), str(self.D)], capture_output=True,
+                           text=True, timeout=60)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('se lance depuis le programme installé', r.stdout)
+        self.assertFalse(self.D.with_name('Brain.avant-paquet').exists())
+
+    # ── Ce qui est rangé comme programme ──
+
+    def test_le_classement_ne_prend_que_le_programme_et_ce_qui_est_genere(self):
+        self._ecrire(self.D, {'scripts/__pycache__/brain.cpython-314.pyc': 'pyc'})
+        c = self.m.classer(self.D, self.P)
+        self.assertEqual(c['programme'], sorted(['KERNEL.md', 'brain-compose.yml', 'kernel.lock',
+                                                 'noyau/agents/coach.md', 'scripts/brain', 'scripts/vue.py']))
+        self.assertEqual(c['generes'], ['scripts/__pycache__/brain.cpython-314.pyc'])
+        tout = [x for v in c.values() for x in v]
+        self.assertNotIn('focus.md', tout)
+        self.assertEqual(c['retouches'] + c['instance'] + c['satellites'], [])
+
+    def test_kernel_lock_d_un_autre_rendu_n_est_pas_une_retouche(self):
+        """Il porte une date de génération : chaque rendu l'écrit autrement."""
+        (self.D / 'kernel.lock').write_text('generated_at: "2026-10-08T16:40"\n')
+        self._commit(self.D, 'un autre rendu', pousser=True)
+        self.assertIn('kernel.lock', self.m.classer(self.D, self.P)['programme'])
+        self.assertEqual(self._bloque(), [])
+
+    def test_la_config_du_moteur_et_une_base_sqlite_sont_rangees_a_part(self):
+        self._ecrire(self.D, {'brain-engine/.env.local': 'BRAIN_DB_BACKEND=dolt\n',
+                              'brain-engine/brain.db': ''})
+        (self.P / 'brain-engine').mkdir()
+        c = self.m.classer(self.D, self.P, entrees=['brain-engine'])
+        self.assertEqual((c['config'], c['bases']), (['brain-engine/.env.local'], ['brain-engine/brain.db']))
+
+    # ── La config du moteur, ce que le dépôt neuf reprend ──
+
+    def test_sans_base_au_clone_la_base_d_avant_quitte_la_config(self):
+        texte = 'BRAIN_DB_BACKEND=dolt\nBRAIN_DOLT_PORT=13307\nBRAIN_DOLT_HOST=10.0.0.2\nBRAIN_X=garde\n'
+        lignes, retirees = self.m.config_des_donnees(texte, base_locale=False)
+        self.assertEqual(retirees, ['BRAIN_DOLT_PORT', 'BRAIN_DOLT_HOST'])
+        self.assertEqual(lignes, 'BRAIN_DB_BACKEND=dolt\nBRAIN_X=garde\n')
+
+    def test_avec_une_base_au_clone_la_config_passe_telle_quelle(self):
+        texte = 'BRAIN_DB_BACKEND=dolt\nBRAIN_DOLT_PORT=3317\n'
+        self.assertEqual(self.m.config_des_donnees(texte, base_locale=True), (texte, []))
+
+    def test_le_depot_neuf_ne_reprend_rien_de_ce_qui_vit_dans_un_satellite(self):
+        """Le clone suivait `projets/README.md` avant d'en faire un satellite : le reprendre
+        ferait un gitlink sans `.gitmodules`."""
+        self._ecrire(self.D, {'projets/README.md': '# projets\n'})
+        self._g(self.D, 'add', '-f', 'projets/README.md')
+        self._commit(self.D, 'readme', pousser=True)
+        self._satellite()
+        reprend = self.m.a_reprendre(self.D, self.D)
+        self.assertIn('focus.md', reprend)
+        self.assertFalse([p for p in reprend if p.startswith('projets/')], reprend)
+
+    # ── Les unités de CE brain, et seulement elles ──
+
+    def test_seules_les_unites_qui_designent_le_dossier_sont_prises(self):
+        """Migrer un clone d'essai sur le fixe ne coupe pas les services du vrai brain : le nom
+        `brain*` ne suffit pas, le service doit désigner le dossier ; un timer suit son service ;
+        un voisin au nom proche (`Brain-essai`) et un tunnel ssh ne sont pas pris."""
+        u = self.tmp / 'conf' / 'systemd' / 'user'
+        u.mkdir(parents=True)
+        D, voisin = self.D, f'{self.D}-essai'
+        (u / 'brain-engine.service').write_text(f'[Service]\nWorkingDirectory={D}\n')
+        (u / 'brain-maj.service').write_text(f'[Service]\nEnvironment=BRAIN_ROOT={D}\n')
+        (u / 'brain-maj.timer').write_text('[Timer]\nOnCalendar=daily\n')
+        (u / 'brain-tunnel-dolt.service').write_text('[Service]\nExecStart=/usr/bin/ssh -N x\n')
+        (u / 'brain-voisin.service').write_text(f'[Service]\nWorkingDirectory={voisin}\n')
+        (u / 'brain-voisin.timer').write_text('[Timer]\nUnit=brain-voisin.service\n')
+        ancien = os.environ.get('XDG_CONFIG_HOME')
+        os.environ['XDG_CONFIG_HOME'] = str(self.tmp / 'conf')
+        try:
+            noms = [p.name for p in self.m.unites_du_brain(self.D)]
+        finally:
+            if ancien is None:
+                os.environ.pop('XDG_CONFIG_HOME', None)
+            else:
+                os.environ['XDG_CONFIG_HOME'] = ancien
+        self.assertEqual(noms, ['brain-engine.service', 'brain-maj.service', 'brain-maj.timer'])
+
+    # ── L'empreinte, et --annuler ──
+
+    def test_l_empreinte_voit_contenu_bit_executable_et_lien(self):
+        copie = self.tmp / 'copie'
+        subprocess.run(['cp', '-a', str(self.D), str(copie)], check=True)
+        ref = self.m.empreinte(self.D)
+        self.assertEqual(self.m.empreinte(copie), ref)
+        (copie / 'lien').symlink_to('focus.md')
+        (self.D / 'lien').symlink_to('KERNEL.md')
+        self.assertNotEqual(self.m.empreinte(copie)[0], self.m.empreinte(self.D)[0])
+        (copie / 'lien').unlink(); (copie / 'lien').symlink_to('KERNEL.md')
+        self.assertEqual(self.m.empreinte(copie)[0], self.m.empreinte(self.D)[0])
+        (copie / 'scripts' / 'brain').chmod(0o755)
+        (self.D / 'scripts' / 'brain').chmod(0o644)
+        self.assertNotEqual(self.m.empreinte(copie)[0], self.m.empreinte(self.D)[0])
+
+    def _migre(self):
+        """Une migration faite : la copie et son état, le dossier changé."""
+        copie = self.D.with_name('Brain.avant-paquet')
+        subprocess.run(['cp', '-a', str(self.D), str(copie)], check=True)
+        sig, n = self.m.empreinte(copie)
+        (copie / '.migrer').mkdir()
+        (copie / '.migrer' / 'etat.json').write_text(json.dumps(
+            {'empreinte': sig, 'entrees': n, 'unites': [], 'lien_brain': None, 'pointeur': None}))
+        shutil.rmtree(self.D / 'scripts')
+        (self.D / 'scripts').symlink_to(self.P / 'scripts')
+        return copie
+
+    def _annuler(self):
+        ancien = os.environ.get('HOME'), os.environ.get('XDG_CONFIG_HOME')
+        os.environ['HOME'] = str(self.tmp / 'home'); os.environ['XDG_CONFIG_HOME'] = str(self.tmp / 'conf')
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                code = self.m.annuler(self.D, sans_service=True)
+        finally:
+            for k, v in zip(('HOME', 'XDG_CONFIG_HOME'), ancien):
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return code, sortie.getvalue()
+
+    def test_annuler_rend_le_clone_a_l_identique_et_garde_le_migre(self):
+        avant = self.m.empreinte(self.D)[0]
+        copie = self._migre()
+        code, sortie = self._annuler()
+        self.assertEqual(code, 0, sortie)
+        self.assertEqual(self.m.empreinte(self.D)[0], avant)
+        self.assertFalse(copie.exists())
+        migres = list(self.D.parent.glob('Brain.migre-*'))
+        self.assertEqual(len(migres), 1)
+        self.assertTrue((migres[0] / 'scripts').is_symlink())
+        self.assertFalse((self.D / '.migrer').exists())
+
+    def test_annuler_sort_1_si_la_copie_a_change(self):
+        copie = self._migre()
+        (copie / 'focus.md').write_text('# touchée après la migration\n')
+        code, sortie = self._annuler()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("n'a pas l'empreinte d'avant", sortie)
+
+    def test_annuler_sans_copie_ne_touche_rien(self):
+        avant = self.m.empreinte(self.D)[0]
+        code, sortie = self._annuler()
+        self.assertEqual(code, 1, sortie)
+        self.assertEqual(self.m.empreinte(self.D)[0], avant)
 
 
 if __name__ == '__main__':

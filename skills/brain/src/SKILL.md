@@ -40,6 +40,8 @@ tort — et c'est un défaut à signaler, pas à contourner.*
 - publier le gabarit ;
 - installer un brain sur une machine : `brain init` (`brain init --verifier` : les
   prérequis seulement, rien n'est écrit) ;
+- passer un brain cloné par git au paquet `brain-cortex`, une fois : `brain migrer`
+  (`--a-blanc` d'abord ; `--annuler` le ramène) ;
 - savoir si le brain est sain : `brain doctor`.
 
 ## Les règles qui ne se discutent pas
