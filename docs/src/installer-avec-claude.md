@@ -98,10 +98,14 @@ pipx install <chemin/vers/brain_cortex-VERSION-py3-none-any.whl>
 La version s'écrit **exacte** (`==`) : les dépendances viennent de PyPI, et pip
 prend la plus haute version qu'il voit sur les deux index.
 
-**Un index privé demande un jeton.** Sans lui, pip répond `401`. C'est à **la
-personne** de l'écrire, pas à toi : un jeton est un secret (règle 2). Dis-lui de
-créer `~/.netrc`, lisible d'elle seule, avec l'hôte de l'index, son identifiant
-et son jeton de **lecture** :
+**Pas de jeton à demander** : l'index du gabarit se lit sans compte, et
+l'installation ci-dessus suffit. Un jeton ne sert qu'à **publier** une roue, pas à
+l'installer.
+
+*Seulement si l'index en exige un* — une forge privée, celle d'un fork par
+exemple : pip répond alors `401`. C'est à **la personne** d'écrire le jeton, pas à
+toi : un jeton est un secret (règle 2). Dis-lui de créer `~/.netrc`, lisible
+d'elle seule, avec l'hôte de l'index, son identifiant et un jeton de **lecture** :
 
 ```text
 machine <hôte de l'index>
@@ -220,6 +224,14 @@ le sert.
 cd <DOSSIER> && claude
 ```
 
+**La première fois, Claude Code lui demande d'approuver le dossier : qu'elle
+l'accepte.** Le programme vit hors du dossier — `KERNEL.md`, `agents/`,
+`contexts/` y sont des liens vers lui —, et `brain init` l'a déclaré dans
+`.claude/settings.json` (`permissions.additionalDirectories`). Mais Claude Code
+ignore les réglages d'un dossier qu'on n'a pas approuvé : avant, il ne lit ni le
+noyau ni les agents, et `claude -p` s'arrête sur une demande de permission.
+L'approbation est sa décision à elle : ne l'écris jamais à sa place.
+
 Puis elle tape `brain boot`. Un brain neuf est vide : il se remplit en
 travaillant. Dis-le-lui, et donne-lui la page **Sessions** pour la suite.
 
@@ -231,4 +243,4 @@ travaillant. Dis-le-lui, et donne-lui la page **Sessions** pour la suite.
   demandaient son accord ;
 - le dossier du brain, et le résultat de `brain doctor` ;
 - ce qu'elle doit faire elle-même : brancher Claude Code (étape 7) si ce n'est
-  pas fait, puis la première session (étape 8).
+  pas fait, puis la première session (étape 8), où elle approuve le dossier.

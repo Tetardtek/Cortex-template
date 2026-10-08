@@ -12617,6 +12617,100 @@ class TestEssaiInstallationGuidee(unittest.TestCase):
         self.assertEqual(manquantes, [], 'le faux suit des commandes que la page ne donne pas')
 
 
+class TestClaudeVoitLeProgramme(unittest.TestCase):
+    """`scripts/claude-programme.py` : un brain servi par un programme à part déclare ce
+    programme à Claude Code (`permissions.additionalDirectories`) — sans quoi une session
+    ne lit ni le noyau ni les agents, des liens hors du projet."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'claude-programme.py'
+
+    def setUp(self):
+        if not self.SCRIPT.exists():
+            self.skipTest('claude-programme.py absent')
+        self.t = Path(tempfile.mkdtemp(prefix='claude-programme-'))
+        self.addCleanup(shutil.rmtree, self.t, True)
+        self.venv = self.t / 'venv'
+        self.prog = self.venv / 'lib' / 'python3.14' / 'site-packages' / 'brain_cortex' / 'programme'
+        (self.prog / 'scripts').mkdir(parents=True)
+        (self.venv / 'pyvenv.cfg').write_text('home = /usr/bin\n')
+        (self.prog / '.cortex-programme').write_text('brain-cortex 3.5.3\n')
+        shutil.copy(self.SCRIPT, self.prog / 'scripts' / 'claude-programme.py')
+        self.b = self.t / 'brain'
+        self.b.mkdir()
+        (self.b / 'scripts').symlink_to(self.prog / 'scripts')
+        self.reglages = self.b / '.claude' / 'settings.json'
+
+    def _lance(self, cmd, brain=None):
+        return subprocess.run([sys.executable, str(self.prog / 'scripts' / 'claude-programme.py'), cmd,
+                               '--brain', str(brain or self.b)], capture_output=True, text=True)
+
+    def _declares(self):
+        return json.loads(self.reglages.read_text())['permissions']['additionalDirectories']
+
+    def test_poser_declare_la_racine_du_venv(self):
+        """Le venv, pas `site-packages` : son chemin survit à un changement de version de Python."""
+        self.assertEqual(self._lance('poser').returncode, 0)
+        self.assertEqual(self._declares(), [str(self.venv)])
+        self.assertEqual(self._lance('etat').returncode, 0)
+
+    def test_sans_venv_le_programme_lui_meme(self):
+        (self.venv / 'pyvenv.cfg').unlink()
+        self._lance('poser')
+        self.assertEqual(self._declares(), [str(self.prog)])
+
+    def test_le_garde_de_lecture_et_un_reglage_a_soi_restent(self):
+        self.reglages.parent.mkdir()
+        self.reglages.write_text(json.dumps({
+            'hooks': {'PreToolUse': [{'matcher': 'Read', 'hooks': [{'type': 'command', 'command': 'garde'}]}]},
+            'permissions': {'allow': ['Bash(ls)'], 'additionalDirectories': ['/a/moi']}}))
+        self.assertEqual(self._lance('poser').returncode, 0)
+        d = json.loads(self.reglages.read_text())
+        self.assertEqual(d['hooks']['PreToolUse'][0]['hooks'][0]['command'], 'garde')
+        self.assertEqual(d['permissions']['allow'], ['Bash(ls)'])
+        self.assertEqual(d['permissions']['additionalDirectories'], ['/a/moi', str(self.venv)])
+
+    def test_deux_fois_rien_de_plus(self):
+        self._lance('poser')
+        avant = self.reglages.read_text()
+        self._lance('poser')
+        self.assertEqual(self.reglages.read_text(), avant)
+
+    def test_un_reglage_illisible_n_est_jamais_reecrit(self):
+        self.reglages.parent.mkdir()
+        self.reglages.write_text('{ pas du json')
+        self.assertEqual(self._lance('poser').returncode, 2)
+        self.assertEqual(self.reglages.read_text(), '{ pas du json')
+
+    def test_etat_rougit_sans_declaration_ou_sur_un_autre_dossier(self):
+        self.assertEqual(self._lance('etat').returncode, 1)
+        self.reglages.parent.mkdir()
+        self.reglages.write_text(json.dumps({'permissions': {'additionalDirectories': [str(self.t / 'ailleurs')]}}))
+        r = self._lance('etat')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('brain init', r.stdout)
+
+    def test_un_brain_git_n_a_rien_a_declarer(self):
+        git = self.t / 'git'
+        (git / 'scripts').mkdir(parents=True)
+        shutil.copy(self.SCRIPT, git / 'scripts' / 'claude-programme.py')
+        r = subprocess.run([sys.executable, str(git / 'scripts' / 'claude-programme.py'), 'poser',
+                            '--brain', str(git)], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+        self.assertFalse((git / '.claude').exists())
+        self.assertTrue(self._lance('etat', git).stdout.startswith('SKIP'))
+
+    def test_un_lien_vers_un_dossier_non_marque_n_est_pas_un_programme(self):
+        """Seule la marque `.cortex-programme` dit un programme installé à part."""
+        (self.prog / '.cortex-programme').unlink()
+        self.assertEqual(self._lance('poser').returncode, 0)
+        self.assertFalse(self.reglages.exists())
+
+    def test_brain_init_le_pose_pour_un_programme_a_part(self):
+        """L'étape 13 de `brain init` l'appelle, pour un programme à part seulement."""
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text()
+        self.assertRegex(texte, r'if \$A_PART; then\n  if python3 "\$PROGRAMME/scripts/claude-programme.py" poser')
+
+
 class TestEssaiGardeLecture(unittest.TestCase):
     """L'essai de bout en bout du garde de lecture juge ce que Claude Code a passé aux hooks.
 

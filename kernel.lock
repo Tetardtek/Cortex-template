@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.3"
-generated_at: "2026-10-08T17:47"
+kernel_version: "3.5.4"
+generated_at: "2026-10-08T19:03"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 2f3022e52b074d93f3787d836c23c09422f55fb31058c9131d42f8e87a1357f2
+  brain-compose.yml: 91d813de1c70978ceba2f29fa7eaf4de7b017a0d6fa3273d931a3c20a9e1037a
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -74,7 +74,7 @@ files:
   scripts/brain: 6ae6dc2f10824d0875377580731c478394f8357b3af6e044cf169c14d2a30ffc
   scripts/brain-db-sync.sh: 4487a7caa1f6510b2e623f72ffbe695c3d7806afe5e73671c84201aece883083
   scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
-  scripts/brain-init.sh: 7dc783afb40c10be66f761f89f307ca3fe30624869b18f16d67a3f0a2df79773
+  scripts/brain-init.sh: 308721169e49f5414cd15b7137a0d2f3cf7fbe68fa47340e03f45a723fc5dc73
   scripts/brain-satellites.py: fc9b4949d28d19c794f85602f20fffa5532d42752fcd179b1f3f364857358b74
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
@@ -82,6 +82,7 @@ files:
   scripts/bsi-claim.sh: dd456565452377a5ed6f8e8dfc62e4f9bbca5ead49ecb1a0e66d53bb5b413974
   scripts/bsi-query.sh: 1ec6312dfcd2af3b4633951d1ec5c9ce5f5074be9f7bc999c8211a70f18109e1
   scripts/bsi-signal.sh: a9126500543535fdd19194ad80e6e336b9095caf1cacd3b936a20b132f2b30bc
+  scripts/claude-programme.py: 3dbe6777e2e3f3e571925e109400f8aa892c8a1ed4afc41a17441d693d5d06b2
   scripts/docs-generer.py: f92731cca2dc48342a26f1db4a6119510bbb85b9e68a374e78ceba87ee36cbe1
   scripts/docs-verite.py: 2298d8d7a3bb90bb7daf1d634ace3fc990869164350d0e5a096306592d68210e
   scripts/dolt-dump-reparer.py: 958ebb311df192f26a3a0eec6cc2ab086fc0f9ffffb111cc7dc1231e8ef4836b

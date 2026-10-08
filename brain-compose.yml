@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.5.3"
+version: "3.5.4"
 
 # ---
 # Ownership — kerneluser
@@ -223,3 +223,6 @@ changelog:
   - version: "3.5.3"
     date: "2026-10-08"
     notes: "brain migrer : un brain clone par git passe au paquet, une fois, et peut revenir. Depuis le programme installe (pipx install brain-cortex), brain migrer <dossier> refuse d'abord tout ce qui se perdrait (travail non commite ou non pousse dans le clone ou un satellite, une retouche locale d'un fichier du programme, un paquet plus ancien que le clone) ; puis il copie le dossier a cote (<dossier>.avant-paquet, avec les unites systemd et les reglages de Claude Code qui le designent), retire du dossier ce qui est programme, en fait un depot de donnees neuf, pose ce que brain init pose (pointeur, vue, base Dolt locale, unites, hooks) et joue brain doctor. --a-blanc dit ce qu'il ferait sans rien toucher ; --annuler remet le clone ; --laisser-l-instance laisse a la copie les chemins propres a l'instance. Seules les unites systemd qui designent le dossier sont arretees. Les dependances du moteur ont une borne haute a la majeure suivante. La suite de tests arrete ses serveurs meme quand elle est tuee. Mise a jour depuis la v3.5.2 : brain maj, brain maj --appliquer, puis brain doctor."
+  - version: "3.5.4"
+    date: "2026-10-08"
+    notes: "Claude Code voit le programme d'un brain servi par le paquet. Installe a part (pipx install brain-cortex), le programme vit hors du dossier du brain : KERNEL.md, agents/ et contexts/ y sont des liens vers lui, et Claude Code ne les lisait pas sans permission (en claude -p, il s'arretait la). brain init declare le programme dans .claude/settings.json du brain (permissions.additionalDirectories, la racine du venv qui le porte) ; relance, il ne refait rien de ce qui est deja la ; un brain clone par git n'a rien a declarer. Claude Code ignore les reglages d'un dossier non approuve : ouvrir claude une premiere fois dans le dossier du brain et l'accepter (la fin de brain init et docs/installer-avec-claude.md le disent). Le doctor a le controle Claude Code voit le programme. Installer ne demande aucun jeton : l'index du gabarit se lit sans compte, un jeton ne sert qu'a publier. Mise a jour depuis la v3.5.3 : un brain clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier> relance, approuver le dossier dans claude, puis brain doctor."

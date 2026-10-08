@@ -590,6 +590,16 @@ if python3 "$BRAIN_ROOT/scripts/garde-lecture.py" brancher --brain "$BRAIN_ROOT"
 else
   warn "le garde de lecture n'est pas posé — .claude/settings.json illisible ? relancer : python3 scripts/garde-lecture.py brancher"
 fi
+# Installé à part, le programme est hors du dossier : Claude Code ne lit ni le noyau
+# ni les agents (des liens vers lui) sans permission. Il est déclaré dans les mêmes
+# réglages — qui ne s'appliquent qu'une fois le dossier approuvé dans Claude Code.
+if $A_PART; then
+  if python3 "$PROGRAMME/scripts/claude-programme.py" poser --brain "$BRAIN_ROOT" >/dev/null; then
+    ok "Claude Code voit le programme (permissions.additionalDirectories, .claude/settings.json)"
+  else
+    warn "le programme n'est pas déclaré à Claude Code — relancer : python3 scripts/claude-programme.py poser --brain $BRAIN_ROOT"
+  fi
+fi
 
 # ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""
@@ -627,6 +637,12 @@ echo "  → Brancher Claude Code sur le brain :"
 echo "      claude mcp add --transport http brain http://127.0.0.1:${BRAIN_MCP_PORT:-7701}/mcp"
 echo "  → Une session :"
 echo "      claude → brain boot"
+if $A_PART; then
+  # Les réglages du projet (le programme déclaré) ne valent qu'une fois le dossier
+  # approuvé : avant, Claude Code ne lit ni le noyau ni les agents.
+  echo "    La première fois, ouvre claude dans $BRAIN_ROOT et approuve le dossier :"
+  echo "    avant, il ne lit ni le noyau ni les agents (le programme est hors du dossier)."
+fi
 echo ""
 # Le résumé dit ce que le setup a FAIT : ce message était inconditionnel, et
 # chaque fork lisait « verrouillé » alors que son push était ouvert.

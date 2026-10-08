@@ -79,6 +79,10 @@ Garanties :
                           sync-template.sh écrit ; reformulé d'un côté ⇒ rouge
     garde de lecture      son hook absent de `.claude/settings.json`, ou ce fichier
                           illisible ⇒ rouge ; branché par `brancher`, vert
+    Claude Code / programme  un brain servi par un programme à part, sans
+                          `permissions.additionalDirectories` qui le couvre, ou un
+                          réglage illisible ⇒ rouge ; posé par `poser`, vert ; un
+                          brain git s'abstient
     gardes / témoin       sans claim 409, avec un claim 200 ⇒ vert ; « avec » rendu
                           403 (un autre refus) ou 503 (une panne) ⇒ rouge
     gardes / effets       le PUT qui aboutit n'atteint ni la réindexation ni les
@@ -2518,6 +2522,36 @@ def cmd_close_stale():
                       "la version éprouvée n'est pas éprouvée")
     else:
         print("  ⏭  garde de lecture / scripts/garde-lecture.py (avec brancher) absent du vrai brain — rien à éprouver")
+
+    # Claude Code voit le programme : la déclaration, mesurée par le brain lui-même.
+    cp_src = VRAI_BRAIN / "scripts" / "claude-programme.py"
+    if _outils_presents("claude_voit_programme.py") and cp_src.is_file():
+        with tempfile.TemporaryDirectory(prefix="temoin-programme-") as tmp:
+            t = Path(tmp)
+            prog, b = t / "venv" / "lib" / "programme", t / "brain"
+            (prog / "scripts").mkdir(parents=True)
+            (t / "venv" / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+            (prog / ".cortex-programme").write_text("brain-cortex\n", encoding="utf-8")
+            shutil.copy(cp_src, prog / "scripts" / "claude-programme.py")
+            b.mkdir()
+            (b / "scripts").symlink_to(prog / "scripts")
+            garantie("Claude Code / programme : non déclaré", joue("claude_voit_programme.py", b), 1)
+            (b / ".claude").mkdir()
+            (b / ".claude" / "settings.json").write_text("{ pas du json", encoding="utf-8")
+            garantie("Claude Code / programme : réglages illisibles", joue("claude_voit_programme.py", b), 1)
+            (b / ".claude" / "settings.json").write_text(json.dumps(
+                {"permissions": {"additionalDirectories": [str(t / "ailleurs")]}}), encoding="utf-8")
+            garantie("Claude Code / programme : un autre dossier déclaré", joue("claude_voit_programme.py", b), 1)
+            (b / ".claude" / "settings.json").unlink()
+            subprocess.run([sys.executable, str(prog / "scripts" / "claude-programme.py"), "poser",
+                            "--brain", str(b)], capture_output=True)
+            garantie("Claude Code / programme : posé", joue("claude_voit_programme.py", b), 0)
+            git = t / "git"
+            (git / "scripts").mkdir(parents=True)
+            shutil.copy(cp_src, git / "scripts" / "claude-programme.py")
+            garantie("Claude Code / programme : brain git, abstenu", joue("claude_voit_programme.py", git), 0)
+    else:
+        print("  ⏭  Claude Code / programme : scripts/claude-programme.py absent du vrai brain — rien à éprouver")
 
     print()
     if echecs:
