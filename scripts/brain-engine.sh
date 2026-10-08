@@ -13,7 +13,7 @@
 #   brain-engine stop             Arrêter proprement ce que CE brain a lancé
 #   brain-engine status           PID, port, mode, uptime
 #   brain-engine embed            Lancer un embedding one-shot
-#   brain-engine logs             Tail des logs (journald ou fichier)
+#   brain-engine logs [--fin]     Tail des logs (journald ou fichier) ; --fin : les 50 dernières, sans suivre
 #   brain-engine install pm2      Installer via pm2 (restart on crash)
 #   brain-engine install systemd  Unités systemd UTILISATEUR (survit au reboot, sans sudo)
 #
@@ -525,24 +525,29 @@ cmd_embed() {
 }
 
 cmd_logs() {
+  # `--fin` : les 50 dernières lignes, sans suivre — la commande rend la main (un Claude qui
+  # suit une procédure resterait bloqué sur `-f`).
+  local suivre=true
+  [[ "${1:-}" == "--fin" ]] && suivre=false
   # systemd ?
   if systemctl --user is-active --quiet brain-engine 2>/dev/null; then
     info "source: journald"
-    journalctl --user -u brain-engine -f --no-hostname
+    if $suivre; then journalctl --user -u brain-engine -f --no-hostname
+    else journalctl --user -u brain-engine -n 50 --no-pager --no-hostname; fi
     return
   fi
 
   # pm2 ?
   if command -v pm2 &>/dev/null && pm2 describe brain-engine &>/dev/null 2>&1; then
     info "source: pm2"
-    pm2 logs brain-engine
+    if $suivre; then pm2 logs brain-engine; else pm2 logs brain-engine --nostream --lines 50; fi
     return
   fi
 
   # fichier
   if [[ -f "$LOG_FILE" ]]; then
     info "source: $LOG_FILE"
-    tail -f "$LOG_FILE"
+    if $suivre; then tail -f "$LOG_FILE"; else tail -n 50 "$LOG_FILE"; fi
   else
     warn "aucun log trouvé"
   fi
@@ -962,7 +967,7 @@ case "$cmd" in
   stop)    cmd_stop ;;
   status)  cmd_status ;;
   embed)   cmd_embed ;;
-  logs)    cmd_logs ;;
+  logs)    cmd_logs "$@" ;;
   install) cmd_install "$@" ;;
   *)
     echo "brain-engine — CLI lifecycle"
@@ -974,7 +979,7 @@ case "$cmd" in
     echo "  stop               Arrêter proprement"
     echo "  status             PID, port, mode, uptime"
     echo "  embed              Embedding one-shot"
-    echo "  logs               Tail des logs"
+    echo "  logs [--fin]       Tail des logs (--fin : les 50 dernières lignes, sans suivre)"
     echo "  install pm2        Installer via pm2"
     echo "  install systemd    Installer via systemd"
     echo ""

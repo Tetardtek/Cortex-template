@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.5.1.
+> travail. Kernel v3.5.2.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -35,6 +35,10 @@ Tu restes libre de mettre à jour, ou non.
 brain maj                  # le plan : ta version, celle de l'amont, ce qui change — rien ne bouge
 brain maj --appliquer      # la recevoir
 ```
+
+Sans la commande `brain` — elle est posée par `install systemd` : un brain installé avec
+`--sans-service`, ou dont `~/.local/bin` n'est pas dans le PATH, ne l'a pas —,
+`bash scripts/brain maj` fait la même chose.
 
 `brain maj` joue les étapes ci-dessous d'un bout à l'autre : il fusionne le
 tag, recalcule les fichiers que le brain génère, réinstalle les unités,
@@ -173,7 +177,7 @@ Une instance sur plusieurs machines (elle déclare ses satellites dans
 lances `brain maj`. Les autres reprennent son tronc :
 
 ```bash
-brain aligne
+brain aligne               # sans la commande `brain` : bash scripts/brain aligne
 ```
 
 Il récupère la branche suivie et la fusionne en avance rapide — jamais

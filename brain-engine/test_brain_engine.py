@@ -2309,6 +2309,36 @@ def script_d_instance(chemin: Path) -> Path:
     return chemin
 
 
+def dossier_de_test(test: unittest.TestCase, prefixe: str) -> Path:
+    """Un dossier jetable (sous `TMPDIR`), retiré QUOI QU'IL ARRIVE — même si le `setUp`
+    tombe après lui : unittest n'appelle pas `tearDown` quand `setUp` échoue, mais il
+    joue les nettoyages déjà posés."""
+    d = Path(tempfile.mkdtemp(prefix=prefixe))
+    test.addCleanup(shutil.rmtree, d, True)
+    return d
+
+
+def serveur_de_test(test: unittest.TestCase, commande: list, **popen) -> subprocess.Popen:
+    """Un serveur de test (`dolt sql-server`…), arrêté QUOI QU'IL ARRIVE : le nettoyage
+    est posé dès le démarrage, pas dans `tearDown`. Un `setUp` qui tombait après lui (une
+    préparation en échec, une assertion) le laissait vivre : 44 serveurs orphelins,
+    4,4 Go, relevés le 8/10. Les nettoyages se jouent à rebours : le serveur s'arrête
+    avant que son dossier ne parte."""
+    serveur = subprocess.Popen(commande, **popen)
+
+    def arreter():
+        if serveur.poll() is None:
+            serveur.terminate()
+            try:
+                serveur.wait(10)
+            except subprocess.TimeoutExpired:
+                serveur.kill()
+                serveur.wait(10)
+
+    test.addCleanup(arreter)
+    return serveur
+
+
 def avec_le_core(moteur: Path) -> None:
     """Un brain témoin reçoit le CORE quand le brain le livre (`brain-engine/core/`).
 
@@ -2318,6 +2348,57 @@ def avec_le_core(moteur: Path) -> None:
     core = BRAIN_ROOT_PATH / 'brain-engine' / 'core'
     if core.is_dir() and not (moteur / 'core').exists():
         (moteur / 'core').symlink_to(core.resolve())
+
+class TestUnServeurDeTestNeSurvitPasASonSetUp(unittest.TestCase):
+    """Un `setUp` qui tombe après avoir démarré son `dolt sql-server` ne le laisse pas vivre,
+    ni son dossier.
+
+    `TestFixeVoitLeLaptop` démarre son serveur, puis lance `dolt-laptop.sh --appliquer` et
+    l'exige vert : quand le script échouait (une suite lancée sans les liens satellites,
+    7/10), `tearDown` n'était jamais appelé — 44 serveurs orphelins, 4,4 Go. Joué ici sur
+    la vraie classe, le script forcé en échec ; les serveurs comptés sont ceux que CE
+    témoin a lancés (enregistrés à leur `Popen`), jamais un `pgrep` qui verrait les autres."""
+
+    CIBLE = 'test_brain_engine.TestFixeVoitLeLaptop.test_bsi_query_open_voit_le_laptop'
+
+    def test_le_serveur_et_son_dossier_partent_meme_si_le_setup_tombe(self):
+        if not shutil.which('dolt'):
+            self.skipTest('dolt absent')
+        script_d_instance(BRAIN_ROOT_PATH / 'scripts' / 'dolt-laptop.sh')
+        vrai_run, vrai_popen = subprocess.run, subprocess.Popen
+        lances = []
+
+        def faux_run(args, *a, **k):
+            mots = args if isinstance(args, (list, tuple)) else [args]
+            if any('dolt-laptop.sh' in str(m) for m in mots):
+                return subprocess.CompletedProcess(args, 1, 'échec forcé du témoin', '')
+            return vrai_run(args, *a, **k)
+
+        def faux_popen(*a, **k):
+            p = vrai_popen(*a, **k)
+            lances.append(p)
+            return p
+
+        def eteindre_les_miens():   # le témoin ne laisse rien, même rouge
+            for p in lances:
+                if p.poll() is None:
+                    p.kill()
+                    p.wait(10)
+        self.addCleanup(eteindre_les_miens)
+
+        suite = unittest.defaultTestLoader.loadTestsFromName(self.CIBLE)
+        cas = next(iter(suite))
+        resultat = unittest.TestResult()
+        with patch('subprocess.run', faux_run), patch('subprocess.Popen', faux_popen):
+            suite.run(resultat)
+
+        self.assertTrue(resultat.failures or resultat.errors, 'le setUp devait tomber (échec forcé)')
+        self.assertTrue(lances, 'le setUp devait démarrer son serveur avant de tomber')
+        vivants = [p.pid for p in lances if p.poll() is None]
+        self.assertEqual(vivants, [], 'un serveur de test survit à son setUp tombé')
+        self.assertFalse(getattr(cas, 'tmp', Path('/nonexistent-my281')).exists(),
+                         'le dossier du test survit à son setUp tombé')
+
 
 class TestSetupResoutPaths(unittest.TestCase):
     """L'étape 3.1 du setup résout CHAQUE marqueur de `PATHS.md`, chacun pour lui.
@@ -4562,6 +4643,23 @@ class TestDocsVerite(unittest.TestCase):
         code, sortie = self._juger('rien\n', sans_agents=True)
         self.assertEqual(code, 2, sortie)
 
+    def test_un_clone_neuf_se_juge_par_son_noyau(self):
+        """`agents/` est une VUE, construite par `brain init` et ignorée par git : un clone
+        neuf, ou l'archive d'une version, n'a que `noyau/agents/`. La commande documentée
+        (`docs-verite.py --gabarit .`) y sortait en 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gabarit(Path(tmp), 'Le coach (`coach`) répond. Copier `agents/coach.md`.\n')
+            (g / 'noyau').mkdir()
+            (g / 'agents').rename(g / 'noyau' / 'agents')
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)   # `agents/coach.md` : dans le noyau
+            (g / 'docs' / 'page.md').write_text('Copier `agents/absent.md`.\n')
+            r = subprocess.run([sys.executable, str(self.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)       # absent du noyau : faux
+        self.assertIn('agents/absent.md', r.stdout)
+
     # ── Le wiki jugé — les lignes sont celles du wiki du 29/09 ──
     def test_deux_spans_voisins_ne_font_pas_une_commande(self):
         """Recollés, `scripts/bsi-claim.sh` et `ttl_hours` faisaient la commande
@@ -5941,6 +6039,33 @@ class TestBrainInit(unittest.TestCase):
                            text=True, env=env, timeout=60)
         return r, avant, self._arbre()
 
+    def _node(self, version: str):
+        """Un faux `node` et un faux `npm` dans le PATH réduit."""
+        for outil, sortie in (('node', f'v{version}'), ('npm', '10.0.0')):
+            (self.bin / outil).write_text(f'#!/bin/sh\necho {sortie}\n', encoding='utf-8')
+            (self.bin / outil).chmod(0o755)
+        for outil in ('tr',):
+            vrai = shutil.which(outil)
+            if vrai and not (self.bin / outil).exists():
+                (self.bin / outil).symlink_to(vrai)
+
+    def test_verifier_voit_un_node_trop_ancien(self):
+        """`--verifier` disait les prérequis vérifiés, Node compris — il ne testait que la
+        présence de `node` : un Node 18 passait, puis le dashboard ne se construisait pas."""
+        self._poser()
+        self._node('18.19.0')
+        r, _, _ = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('recommandé : Node.js', r.stdout)
+        self.assertIn('18.19.0', r.stdout)
+
+    def test_verifier_tait_un_node_suffisant(self):
+        self._poser()
+        self._node('22.12.0')
+        r, _, _ = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('Node.js', r.stdout)
+
     def test_sans_git_init_s_arrete_avant_toute_ecriture(self):
         self._poser(git=False)
         r, avant, apres = self._jouer('scripts/brain', 'init', 'essai')
@@ -5948,6 +6073,31 @@ class TestBrainInit(unittest.TestCase):
         self.assertIn('git', r.stderr)
         self.assertIn("rien n'a été écrit", r.stderr)
         self.assertEqual(avant, apres, 'init a écrit avant de vérifier ses prérequis')
+
+    # ── Un programme installé à part (la marque) : `--verifier` sans dossier ──
+
+    def test_verifier_marche_sur_un_programme_installe(self):
+        """La procédure guidée lance `brain init --verifier` avant de choisir un dossier : sur
+        un programme marqué, il exigeait le dossier et sortait en 1 avant les prérequis."""
+        self._poser()
+        (self.b / '.cortex-programme').touch()
+        r, avant, apres = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('prérequis', r.stdout)
+        self.assertEqual(avant, apres, '--verifier a écrit')
+
+    def test_la_relance_dit_la_commande_du_cas(self):
+        """Il manque git : un clone se relance par `bash scripts/brain init`, un programme
+        installé par `brain init <nom> <dossier>`."""
+        self._poser(git=False)
+        r, _, _ = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('Puis relancer : bash scripts/brain init', r.stderr)
+        (self.b / '.cortex-programme').touch()
+        r, _, _ = self._jouer('scripts/brain', 'init', '--verifier')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('Puis relancer : brain init <nom> <dossier>', r.stderr)
+        self.assertNotIn('bash scripts/brain init', r.stderr)
 
     def test_un_python_trop_ancien_arrete_et_dit_sa_version(self):
         # Un 3.11.9 : il ne refuse QUE le seuil de 3.12 — le reste (venv, ensurepip) passe.
@@ -6852,6 +7002,46 @@ class TestForgeWhoami(unittest.TestCase):
         self.assertIsNone(self.bf.raison(500, None))
 
 
+class TestEtapesGenerees(unittest.TestCase):
+    """Les nombres d'étapes de la doc se calculent : `brain init` dans `ETAPES=` de son script,
+    la mise à jour dans les étapes numérotées de sa page. « Les sept étapes » restait écrit
+    quand la page en avait huit."""
+
+    def _mesures(self, etapes_init: str, etapes_maj: list[int]):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'docs_generer_etapes', BRAIN_ROOT_PATH / 'scripts' / 'docs-generer.py')
+        dg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dg)
+        d = Path(tempfile.mkdtemp(prefix='etapes-'))
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        (d / 'scripts').mkdir()
+        (d / 'scripts' / 'brain-init.sh').write_text(f'#!/bin/bash\n{etapes_init}\n', encoding='utf-8')
+        (d / 'docs' / 'src').mkdir(parents=True)
+        (d / 'docs' / 'src' / 'mettre-a-jour.md').write_text(
+            ''.join(f'**{n}. Une étape** : texte.\n\n' for n in etapes_maj), encoding='utf-8')
+        return dg, dg.Mesures(d)
+
+    def test_les_nombres_viennent_de_leurs_sources(self):
+        dg, m = self._mesures('ETAPES=4', [1, 2, 3])
+        self.assertEqual((dg.VALEURS['ETAPES_INIT'](m), dg.VALEURS['ETAPES_MAJ'](m)), ('4', '3'))
+
+    def test_une_numerotation_trouee_est_illisible(self):
+        dg, m = self._mesures('ETAPES=4', [1, 2, 4])
+        with self.assertRaises(dg.Illisible):
+            dg.VALEURS['ETAPES_MAJ'](m)
+
+    def test_sans_etapes_declarees_c_est_illisible(self):
+        dg, m = self._mesures('echo rien', [1])
+        with self.assertRaises(dg.Illisible):
+            dg.VALEURS['ETAPES_INIT'](m)
+
+    def test_le_vrai_brain_dit_ses_vrais_nombres(self):
+        page = (BRAIN_ROOT_PATH / 'docs' / 'demarrer.md').read_text(encoding='utf-8')
+        self.assertNotIn('sept étapes', page)
+        self.assertNotIn('treize étapes', page)
+
+
 class TestTypesDeCommitGeneres(unittest.TestCase):
     """La skill liste les types de commit que le hook `commit-msg` applique —
     lus au même endroit, de la même façon. Si l'extraction de l'un
@@ -7070,10 +7260,14 @@ class TestForgeMergeAvanceRapide(unittest.TestCase):
     def test_la_signature_de_call_ne_bouge_pas(self):
         # `myeline/tools/kanban.py` l'appelle ainsi.
         import inspect
+        # Les trois premiers restent ceux-là, dans cet ordre ; un paramètre ajouté APRÈS a une
+        # valeur par défaut (`cle`, le jeton du registre) : l'appel existant tient.
         params = inspect.signature(self.call_d_origine).parameters
-        self.assertEqual(list(params), ['method', 'path', 'payload'])
+        self.assertEqual(list(params)[:3], ['method', 'path', 'payload'])
         self.assertIs(params['payload'].default, None)
         self.assertIs(params['path'].default, inspect.Parameter.empty)
+        for nom in list(params)[3:]:
+            self.assertIsNot(params[nom].default, inspect.Parameter.empty, nom)
 
 
 class TestForgePaquet(unittest.TestCase):
@@ -7104,7 +7298,7 @@ class TestForgePaquet(unittest.TestCase):
         self.d = Path(tempfile.mkdtemp(prefix='forge-paquet-'))
         self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
         self.roue = self._roue('1.2.3')
-        self.appels, self.envois = [], []
+        self.appels, self.envois, self.cles = [], [], []
         self.tags = {'v1.2.3': self.COMMIT}          # sur la forge : tag → commit
         self.signe = (True, self.COMMIT)             # ce que `git tag -v` dit ici
         self.publies = {}                            # version → [fichiers]
@@ -7126,8 +7320,9 @@ class TestForgePaquet(unittest.TestCase):
         depot = '/repos/Owner/depot'
         paquet = '/packages/Owner/pypi/brain-cortex/'
 
-        def call(method, path, payload=None):
+        def call(method, path, payload=None, cle=None):
             self.appels.append((method, path))
+            self.cles.append((path, cle))
             if method == 'GET' and path.startswith(depot + '/tags/'):
                 tag = path[len(depot + '/tags/'):]
                 return ((200, {'name': tag, 'commit': {'sha': self.tags[tag]}})
@@ -7174,6 +7369,43 @@ class TestForgePaquet(unittest.TestCase):
         self.assertEqual((champs['name'], champs['version'], champs['requires_python']),
                          ('brain-cortex', '1.2.3', '>=3.12'))
         self.assertEqual(champs['sha256_digest'], hashlib.sha256(self.roue.read_bytes()).hexdigest())
+
+    # ── Le jeton du registre : une clé à lui, sans repli ─────────────────────
+
+    def test_le_registre_se_lit_avec_le_jeton_paquets_et_le_tag_avec_l_habituel(self):
+        code, sortie = self._paquet()
+        self.assertEqual(code, 0, sortie)
+        registre = [c for p, c in self.cles if p.startswith('/packages/')]
+        depot = [c for p, c in self.cles if p.startswith('/repos/')]
+        self.assertTrue(registre and all(c == 'GITEA_TOKEN_PAQUETS' for c in registre), self.cles)
+        self.assertTrue(depot and all(c is None for c in depot), self.cles)
+
+    def test_l_envoi_prend_le_jeton_paquets(self):
+        vues = []
+
+        class Arret(Exception):
+            pass
+
+        def conf_espion(cle=None):
+            vues.append(cle)
+            raise Arret()
+        self.bf.conf = conf_espion
+        with self.assertRaises(Arret):
+            self.bf.envoyer_roue('Owner', self.roue, {'name': 'brain-cortex'})
+        self.assertEqual(vues, ['GITEA_TOKEN_PAQUETS'])
+
+    def test_sans_la_cle_paquets_le_refus_ne_se_rabat_pas_sur_l_habituel(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('brain_forge_conf', self.SCRIPT)
+        bf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bf)
+        secrets = self.d / 'MYSECRETS'
+        secrets.write_text('GITEA_TOKEN=habituel\n', encoding='utf-8')
+        bf.SECRETS, bf.AUTONOME = secrets, False
+        with self.assertRaises(SystemExit) as e:
+            bf.conf('GITEA_TOKEN_PAQUETS')
+        self.assertIn('GITEA_TOKEN_PAQUETS absent', str(e.exception))
+        self.assertEqual(bf.conf()[1], 'habituel')   # le jeton habituel, lui, se lit
 
     def test_refusee_en_autonomie_sans_un_appel(self):
         self.bf.AUTONOME = True
@@ -7510,7 +7742,7 @@ class TestDoltLaptop(unittest.TestCase):
             self.skipTest('dolt absent')
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
-        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-laptop-'))
+        self.tmp = dossier_de_test(self, 'dolt-laptop-')
         self.base = self.tmp / 'brain-dolt'
         self.base.mkdir()
         env = {**os.environ, 'HOME': str(self.tmp)}
@@ -7518,19 +7750,13 @@ class TestDoltLaptop(unittest.TestCase):
         run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
         run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
         run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
-        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+        self.serveur = serveur_de_test(self, ['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
                                         cwd=self.base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
                 socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
             except OSError:
                 time.sleep(0.1)
-
-    def tearDown(self):
-        if hasattr(self, 'serveur'):
-            self.serveur.terminate(); self.serveur.wait(10)
-        if hasattr(self, 'tmp'):
-            shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _lancer(self, *args, script=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
@@ -7595,7 +7821,7 @@ class TestDoltSauvegarde(unittest.TestCase):
             self.skipTest('dolt absent')
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
-        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-sauvegarde-'))
+        self.tmp = dossier_de_test(self, 'dolt-sauvegarde-')
         base = self.tmp / 'brain-dolt'
         base.mkdir()
         env = {**os.environ, 'HOME': str(self.tmp)}
@@ -7604,7 +7830,7 @@ class TestDoltSauvegarde(unittest.TestCase):
         run('dolt', 'sql', '-q', "CREATE TABLE claims (sess_id varchar(64) primary key); "
                                  "INSERT INTO claims VALUES ('a'); CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','un')")
         run('dolt', 'sql', '-q', "INSERT INTO claims VALUES ('b'); CALL DOLT_COMMIT('-Am','deux')")
-        self.serveur = subprocess.Popen([self.dolt, 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+        self.serveur = serveur_de_test(self, [self.dolt, 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
                                         cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
@@ -7613,12 +7839,6 @@ class TestDoltSauvegarde(unittest.TestCase):
                 time.sleep(0.1)
         self.sauvegardes = self.tmp / 'Sauvegardes'
         self.sauvegardes.mkdir()
-
-    def tearDown(self):
-        if hasattr(self, 'serveur'):
-            self.serveur.terminate(); self.serveur.wait(10)
-        if hasattr(self, 'tmp'):
-            shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _declarer(self):
         import pymysql
@@ -7838,7 +8058,7 @@ class TestDoltBrancheRafraichir(unittest.TestCase):
             self.skipTest('dolt absent')
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
-        self.tmp = Path(tempfile.mkdtemp(prefix='dolt-rafraichir-'))
+        self.tmp = dossier_de_test(self, 'dolt-rafraichir-')
         base = self.tmp / 'brain-dolt'
         base.mkdir()
         env = {**os.environ, 'HOME': str(self.tmp)}
@@ -7846,7 +8066,7 @@ class TestDoltBrancheRafraichir(unittest.TestCase):
         run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
         run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
         run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
-        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+        self.serveur = serveur_de_test(self, ['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
                                         cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
@@ -7867,12 +8087,6 @@ class TestDoltBrancheRafraichir(unittest.TestCase):
         (self.brain / 'brain-compose.local.yml').write_text('machine: laptop\n')
         r = self._lancer('dolt-laptop.sh', '--appliquer', laptop=False)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-
-    def tearDown(self):
-        if hasattr(self, 'serveur'):
-            self.serveur.terminate(); self.serveur.wait(10)
-        if hasattr(self, 'tmp'):
-            shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _lancer(self, script, *args, laptop=True, chemin=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
@@ -7949,7 +8163,7 @@ class TestFixeVoitLeLaptop(unittest.TestCase):
             self.skipTest('dolt absent')
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
-        self.tmp = Path(tempfile.mkdtemp(prefix='fixe-voit-laptop-'))
+        self.tmp = dossier_de_test(self, 'fixe-voit-laptop-')
         base = self.tmp / 'brain-dolt'
         base.mkdir()
         env = {**os.environ, 'HOME': str(self.tmp)}
@@ -7957,7 +8171,7 @@ class TestFixeVoitLeLaptop(unittest.TestCase):
         run('dolt', 'init', '--name', 'essai', '--email', 'essai@local')
         run('dolt', 'sql', input=(BRAIN_ROOT_PATH / 'brain-engine' / 'schema-dolt.sql').read_text())
         run('dolt', 'sql', '-q', "CALL DOLT_ADD('-A'); CALL DOLT_COMMIT('-m','schema')")
-        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+        self.serveur = serveur_de_test(self, ['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
                                         cwd=base, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
@@ -7977,12 +8191,6 @@ class TestFixeVoitLeLaptop(unittest.TestCase):
                   ins.format('sess-l1.laptop', 'd', 'open'),
                   "UPDATE claims SET status='closed' WHERE sess_id='sess-l2.laptop'",
                   "CALL DOLT_ADD('claims')", "CALL DOLT_COMMIT('-m','laptop')")
-
-    def tearDown(self):
-        if hasattr(self, 'serveur'):
-            self.serveur.terminate(); self.serveur.wait(10)
-        if hasattr(self, 'tmp'):
-            shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _env(self, base='brain-dolt', user='root'):
         env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
@@ -8185,7 +8393,7 @@ class TestLaptopNomadeRapatrier(unittest.TestCase):
             self.skipTest('dolt absent')
         import socket
         s = socket.socket(); s.bind(('127.0.0.1', 0)); self.port = s.getsockname()[1]; s.close()
-        self.tmp = Path(tempfile.mkdtemp(prefix='laptop-nomade-'))
+        self.tmp = dossier_de_test(self, 'laptop-nomade-')
         self.env = {**os.environ, 'HOME': str(self.tmp)}
         fixe = self.tmp / 'fixe'
         fixe.mkdir()
@@ -8209,19 +8417,13 @@ class TestLaptopNomadeRapatrier(unittest.TestCase):
         self._run(photo, 'dolt', 'commit', '-Am', 'fermé hors ligne')
         self._run(photo, 'dolt', 'gc')
         self.noms = photo / '.dolt' / 'noms'
-        self.serveur = subprocess.Popen(['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
+        self.serveur = serveur_de_test(self, ['dolt', 'sql-server', '--host', '127.0.0.1', '--port', str(self.port)],
                                         cwd=fixe, env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
                 socket.create_connection(('127.0.0.1', self.port), 0.2).close(); break
             except OSError:
                 time.sleep(0.1)
-
-    def tearDown(self):
-        if hasattr(self, 'serveur'):
-            self.serveur.terminate(); self.serveur.wait(10)
-        if hasattr(self, 'tmp'):
-            shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _run(self, cwd, *cmd):
         return subprocess.run(cmd, cwd=cwd, env=self.env, capture_output=True, text=True, check=True)
@@ -8304,6 +8506,25 @@ class TestWikiChangelog(unittest.TestCase):
         with open(self.brain / 'brain-compose.yml', 'a') as f:
             f.write('  - version: "2.3.7"\n    date: "2026-09-30"\n    notes: "suite"\n')
         self.assertEqual(self._run('--check').returncode, 1, "une version ajoutée se voit")
+
+    def test_un_journal_hors_d_ordre_rougit_et_se_rend_dans_l_ordre(self):
+        """Une version insérée au milieu (le 7/10 : 3.5.1, 3.5.0, 3.4.3 avant 3.4.2) : le fichier
+        n'est plus dans l'ordre (date, version), et la page la mettait de travers. Le `--check`
+        rougit — un vert malgré le désordre était le défaut ; la page, elle, se rend dans
+        l'ordre. L'entrée 2.1.0 du 07/04 reste avant la 2.0.0 : c'est la date qui ordonne."""
+        (self.brain / 'brain-compose.yml').write_text(
+            'version: "2.3.8"\nchangelog:\n'
+            '  - version: "2.1.0"\n    date: "2026-04-07"\n    notes: "avant le realignement"\n'
+            '  - version: "2.0.0"\n    date: "2026-04-24"\n    notes: "realignement"\n'
+            '  - version: "2.3.8"\n    date: "2026-09-28"\n    notes: "la huit"\n'
+            '  - version: "2.3.7"\n    date: "2026-09-28"\n    notes: "la sept"\n')
+        self.assertEqual(self._run('--ecrire').returncode, 0)
+        r = self._run('--check')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("pas dans l'ordre", r.stdout)
+        page = self._run().stdout
+        a, b, c, d = (page.index(f'## {v} — ') for v in ('2.3.8', '2.3.7', '2.0.0', '2.1.0'))
+        self.assertTrue(a < b < c < d, 'la plus récente en haut, la date puis le numéro')
 
     def test_sans_wiki_le_check_s_abstient(self):
         (self.brain / 'wiki').rmdir()
@@ -8594,6 +8815,50 @@ class TestPostureVoitLeNoyau(unittest.TestCase):
     def test_une_fusion_ne_couvre_pas_une_retouche_du_noyau(self):
         """Pendant la fusion, un fichier du noyau qui diffère de la version reçue reste refusé."""
         self.assertEqual(self._fusion(retouche=True), 1)
+
+    def _renommer(self, posture: str, source: str, cible: str, noyau: str | None = None,
+                  sans_niveaux: bool = False) -> int:
+        """Un fichier du noyau commité, puis `git mv` hors de lui : le hook voit-il la sortie ?
+        `git diff --cached --name-only` ne liste que la destination d'un renommage."""
+        with tempfile.TemporaryDirectory(prefix='brain-posture-mv-') as tmp:
+            b = Path(tmp)
+            copies = ['scripts/hooks/pre-commit-posture', 'scripts/hooks/pre-commit-zone',
+                      'scripts/lib/python.sh', 'scripts/posture-gate-check.sh']
+            if not sans_niveaux:          # sans lui, le hook prend sa liste de secours
+                copies.append('NIVEAUX.yml')
+            for rel in copies:
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+            (b / 'brain-engine').mkdir()
+            (b / 'brain-engine' / '.venv').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / '.venv')
+            if (BRAIN_ROOT_PATH / 'brain-engine' / 'core').is_dir():
+                (b / 'brain-engine' / 'core').symlink_to(BRAIN_ROOT_PATH / 'brain-engine' / 'core')
+            cle = f'    noyau: {noyau}\n' if noyau else ''
+            (b / 'brain-compose.local.yml').write_text(
+                f'instances:\n  ici:\n    active: true\n    posture: {posture}\n{cle}')
+            g = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                                          cwd=b, capture_output=True, text=True)
+            g('init', '-q')
+            (b / source).parent.mkdir(parents=True, exist_ok=True)
+            (b / source).write_text('# un agent du noyau\n')
+            g('add', source)
+            g('commit', '-q', '--no-verify', '-m', 'le noyau')
+            (b / cible).parent.mkdir(parents=True, exist_ok=True)
+            self.assertEqual(g('mv', source, cible).returncode, 0)
+            env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_MAIN', 'BRAIN_KERNEL_OVERRIDE')}
+            return subprocess.run(['bash', str(b / 'scripts/hooks/pre-commit-posture')], cwd=b,
+                                  capture_output=True, text=True, env=env, timeout=120).returncode
+
+    def test_un_fork_ne_sort_pas_un_fichier_du_noyau_par_un_renommage(self):
+        self.assertEqual(self._renommer('master', 'noyau/agents/x.md', 'instance/agents/x.md',
+                                        noyau='lecture'), 1)
+
+    def test_en_replica_un_renommage_hors_du_kernel_est_refuse(self):
+        self.assertEqual(self._renommer('replica-nomad', 'noyau/agents/x.md', 'projets/x.md'), 1)
+
+    def test_en_replica_sans_niveaux_le_repli_voit_aussi_le_renommage(self):
+        self.assertEqual(self._renommer('replica-nomad', 'noyau/agents/x.md', 'projets/x.md',
+                                        sans_niveaux=True), 1)
 
     def test_l_override_leve_le_refus_du_noyau(self):
         self.assertEqual(self._jouer('master', 'noyau/agents/x.md', noyau='lecture', override=True), 0)
@@ -11836,6 +12101,149 @@ class TestGardeLecture(unittest.TestCase):
                            input='pas du json', capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0)
         self.assertIn('lecture non jugée', r.stdout)
+
+
+class TestEssaiInstallationGuidee(unittest.TestCase):
+    """L'essai d'acceptation de l'installation guidée tient son Claude DANS le bac.
+
+    `essai-installation-guidee.sh` confie une vraie installation à un vrai Claude, lancé
+    avec le HOME réel (ses identifiants). Le hook `confiner-essai.py` réécrit chaque
+    commande Bash dans l'environnement du bac, refuse le HOME réel et les ports du vrai
+    brain, borne Read au bac. Et le faux Claude des témoins suit la page, pas une autre :
+    chacune de ses commandes y figure. Sans modèle, sans réseau."""
+
+    HOOK = BRAIN_ROOT_PATH / 'scripts' / 'confiner-essai.py'
+    FAUX = BRAIN_ROOT_PATH / 'scripts' / 'faux-claude-installation.py'
+    PAGE = BRAIN_ROOT_PATH / 'docs' / 'src' / 'installer-avec-claude.md'
+
+    def setUp(self):
+        import importlib.util
+        self.hook = script_d_instance(self.HOOK)
+        spec = importlib.util.spec_from_file_location('confiner_essai', self.hook)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        self.conf = {'bac': '/tmp/bac-essai', 'home_reel': '/maison/personne',
+                     'env': {'HOME': '/tmp/bac-essai/home', 'PATH': '/usr/bin:/bin'},
+                     'ports_interdits': [7700, 7701, 3307]}
+
+    def _decide(self, outil: str, entree: dict, conf: dict | None = None) -> dict:
+        return self.mod.decision({'tool_name': outil, 'tool_input': entree},
+                                 conf or self.conf)['hookSpecificOutput']
+
+    def test_chaque_commande_est_reecrite_dans_le_bac(self):
+        d = self._decide('Bash', {'command': 'pipx install brain-cortex'})
+        self.assertEqual(d['permissionDecision'], 'allow')
+        cmd = d['updatedInput']['command']
+        self.assertTrue(cmd.startswith('cd /tmp/bac-essai/home && env -i '), cmd)
+        self.assertIn('HOME=/tmp/bac-essai/home', cmd)
+        self.assertIn("bash -c 'pipx install brain-cortex'; __rc=$?", cmd)
+
+    def test_la_commande_reecrite_note_son_code_de_retour(self):
+        """L'essai juge que chaque étape a rendu 0 : la réécriture note le code sous l'id."""
+        bac = Path(tempfile.mkdtemp(prefix='bac-codes-'))
+        self.addCleanup(shutil.rmtree, bac, ignore_errors=True)
+        (bac / 'home').mkdir()
+        conf = {**self.conf, 'bac': str(bac), 'env': {'HOME': str(bac / 'home'), 'PATH': '/usr/bin:/bin'}}
+        for ident, commande, attendu in (('a1', 'true', 0), ('b2', 'exit 3', 3)):
+            d = self._decide_id('Bash', {'command': commande}, conf, ident)
+            r = subprocess.run(['bash', '-c', d['updatedInput']['command']], capture_output=True)
+            self.assertEqual(r.returncode, attendu, 'le code de la commande ne remonte plus')
+        self.assertEqual((bac / 'codes.txt').read_text().split(), ['a1', '0', 'b2', '3'])
+
+    def test_logs_fin_rend_la_main(self):
+        """`brain-engine.sh logs --fin` montre la fin du journal et rend la main — la page la
+        fait lancer à un Claude ; sans `--fin`, `tail -f` le bloquerait."""
+        tmp = Path(tempfile.mkdtemp(prefix='logs-fin-'))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        b = tmp / 'brain'
+        for rel in ('scripts/brain-engine.sh', 'scripts/lib/python.sh', 'scripts/lib/donnees.sh'):
+            (b / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+        (b / 'brain-engine.log').write_text(''.join(f'ligne {i}\n' for i in range(80)))
+        leurres = tmp / 'leurres'
+        leurres.mkdir()
+        (leurres / 'systemctl').write_text('#!/bin/sh\nexit 1\n')     # aucun service : le fichier
+        (leurres / 'systemctl').chmod(0o755)
+        env = {'PATH': f'{leurres}:/usr/bin:/bin', 'HOME': str(tmp / 'home'), 'LANG': 'C.UTF-8'}
+        r = subprocess.run(['bash', str(b / 'scripts' / 'brain-engine.sh'), 'logs', '--fin'],
+                           capture_output=True, text=True, env=env, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('ligne 79', r.stdout)
+        self.assertNotIn('ligne 29\n', r.stdout, 'plus que les 50 dernières lignes')
+
+    def _decide_id(self, outil, entree, conf, ident):
+        return self.mod.decision({'tool_name': outil, 'tool_input': entree}, conf, ident)['hookSpecificOutput']
+
+    def test_le_home_reel_est_refuse(self):
+        d = self._decide('Bash', {'command': 'ls /maison/personne/.ssh'})
+        self.assertEqual(d['permissionDecision'], 'deny')
+        self.assertNotIn('updatedInput', d)
+
+    def test_un_bac_sous_le_home_reel_reste_ouvert(self):
+        """Un TMPDIR sous le HOME met le HOME réel dans le chemin du bac : le bac lui-même
+        ne doit pas être refusé, le reste du HOME si."""
+        conf = {**self.conf, 'bac': '/maison/personne/tmp/bac'}
+        self.assertEqual(self._decide('Bash', {'command': 'ls /maison/personne/tmp/bac/home'}, conf)
+                         ['permissionDecision'], 'allow')
+        self.assertEqual(self._decide('Bash', {'command': 'ls /maison/personne/Documents'}, conf)
+                         ['permissionDecision'], 'deny')
+
+    def test_le_tmp_de_la_machine_est_refuse_celui_du_bac_non(self):
+        """Vu au premier essai réel : `dolt sql-server … > /tmp/dolt.log` — un fichier du
+        /tmp partagé, peut-être celui d'un autre. Le bac a son TMPDIR."""
+        for cmd in ('dolt sql-server > /tmp/dolt.log', 'ls /var/tmp', 'cat /tmp'):
+            self.assertEqual(self._decide('Bash', {'command': cmd})['permissionDecision'], 'deny', cmd)
+        for cmd in ('ls /tmp/bac-essai/home', 'echo "$TMPDIR"', 'ls ~/tmp-notes'):
+            self.assertEqual(self._decide('Bash', {'command': cmd})['permissionDecision'], 'allow', cmd)
+
+    def test_les_ports_du_vrai_brain_sont_refuses_pas_leurs_voisins(self):
+        for cmd in ('curl 127.0.0.1:7700/health', 'curl 127.0.0.1:7701/mcp', 'mysql -P 3307'):
+            self.assertEqual(self._decide('Bash', {'command': cmd})['permissionDecision'], 'deny', cmd)
+        self.assertEqual(self._decide('Bash', {'command': 'curl 127.0.0.1:17700/health'})
+                         ['permissionDecision'], 'allow')
+
+    def test_read_est_borne_au_bac_et_les_autres_outils_refuses(self):
+        with tempfile.TemporaryDirectory(prefix='bac-') as bac:
+            conf = {**self.conf, 'bac': bac}
+            (Path(bac) / 'PROCEDURE.md').write_text('x', encoding='utf-8')
+            self.assertEqual(self._decide('Read', {'file_path': f'{bac}/PROCEDURE.md'}, conf)
+                             ['permissionDecision'], 'allow')
+            self.assertEqual(self._decide('Read', {'file_path': '/etc/hostname'}, conf)
+                             ['permissionDecision'], 'deny')
+            self.assertEqual(self._decide('Write', {'file_path': f'{bac}/x'}, conf)
+                             ['permissionDecision'], 'deny')
+
+    def test_un_refus_se_journalise_dans_le_bac(self):
+        with tempfile.TemporaryDirectory(prefix='bac-') as bac:
+            conf = {**self.conf, 'bac': bac}
+            (Path(bac) / 'bac.json').write_text(json.dumps(conf), encoding='utf-8')
+            r = subprocess.run([sys.executable, str(self.hook), f'{bac}/bac.json'],
+                               input=json.dumps({'tool_name': 'Bash',
+                                                 'tool_input': {'command': 'cat /maison/personne/x'}}),
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(json.loads(r.stdout)['hookSpecificOutput']['permissionDecision'], 'deny')
+            lignes = (Path(bac) / 'refus.jsonl').read_text(encoding='utf-8').splitlines()
+            self.assertEqual(len(lignes), 1)
+            self.assertIn('HOME réel', json.loads(lignes[0])['raison'])
+
+    def test_le_faux_claude_suit_la_page(self):
+        """Chaque commande du faux figure dans la page — les valeurs de l'essai remplacées
+        par les repères de la page (`<NOM>`, `<DOSSIER>`, `<INDEX>`, `<VERSION>`)."""
+        import importlib.util
+        faux = script_d_instance(self.FAUX)
+        spec = importlib.util.spec_from_file_location('faux_claude', faux)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        page = self.PAGE.read_text(encoding='utf-8')
+        manquantes = []
+        for gabarit in mod.PROCEDURE:
+            texte = (gabarit.replace('brain init essai', 'brain init <NOM>')
+                     .replace('~/MonBrain', '<DOSSIER>')
+                     .replace('{index}', '<INDEX>').replace('{version}', '<VERSION>')
+                     .replace('{sans}', ''))
+            if texte not in page:
+                manquantes.append(texte)
+        self.assertEqual(manquantes, [], 'le faux suit des commandes que la page ne donne pas')
 
 
 class TestEssaiGardeLecture(unittest.TestCase):

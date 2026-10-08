@@ -37,7 +37,7 @@ Tout passe par `bash scripts/brain-engine.sh <commande>` :
 | `status` | PID, mode, port, `/health`, MCP — et si les unités systemd installées sont celles de cette version |
 | `logs` | suit le journal |
 | `embed` | indexe le corpus une fois (demande Ollama) |
-| `install systemd` | des unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp`, et le timer `brain-embed` (hors mode démo). Se rejoue sans risque : il réécrit les unités et les relance |
+| `install systemd` | des unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp`, et deux timers : `brain-embed`, l'indexation (ni en démo, ni sur un replica : les vecteurs sont au master), et `brain-maj`, qui lit une fois par jour les versions de l'amont (pas en démo). Se rejoue sans risque : il réécrit les unités et les relance |
 | `install pm2` | l'API et le serveur MCP sous pm2, par `brain serve`, relancés s'ils tombent — pas au démarrage de la session |
 
 `stop` n'arrête jamais un moteur qu'il n'a pas lancé : si systemd ou pm2 le
@@ -147,8 +147,8 @@ systemctl --user status brain-embed        # le dernier, et son échec éventuel
 
 Un brain ne casse pas d'un coup : un registre s'éloigne de sa source, un fichier
 déclaré au boot disparaît, un hook n'est plus posé, et rien ne lève d'erreur.
-**`brain doctor`** lance une soixantaine de contrôles, chacun gardant une de ces
-dérives, et dit lesquelles sont arrivées.
+**`brain doctor`** lance des dizaines de contrôles — il dit leur compte à la fin —,
+chacun gardant une de ces dérives, et dit lesquelles sont arrivées.
 
 ```bash
 brain doctor              # sans la commande `brain` : bash scripts/brain doctor

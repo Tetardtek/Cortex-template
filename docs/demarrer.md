@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v3.5.1.
+> machine. Kernel v3.5.2.
 
 ---
 
@@ -18,8 +18,9 @@ ordre: 1
 - **Python ≥ 3.12** avec son module `venv` (sur Debian : le paquet `python3-venv`)
 - **Node.js ^20.19 ou ≥ 22.12**, avec npm — le dashboard (vite 8) ne se construit pas avant
 - **Claude Code** — `npm install -g @anthropic-ai/claude-code`
-- **systemd en session utilisateur**, pour que la base démarre toute seule. Sans
-  lui : `--sans-service`, et tu lances la base à la main.
+- **systemd en session utilisateur**, pour que le brain démarre tout seul. Sans
+  lui : `--sans-service`, et tu le démarres à la main — `bash scripts/brain-engine.sh
+  start`, qui lance aussi la base (voir « Vérifier le moteur »).
 
 Facultatif : **Ollama** et le modèle `nomic-embed-text`, pour la recherche
 sémantique dans le brain. Sans eux, le brain tourne, mais ne retrouve rien par
@@ -50,11 +51,11 @@ les installer ; Claude Code et Node manquants se signalent sans arrêter. Puis i
 installe le brain **où il est cloné** (un second argument choisit un autre
 dossier). Il est idempotent : relancé, il ne change rien ; relance-le si une étape
 a échoué. L'ancien nom, `bash scripts/brain-setup.sh <nom>`, fait la même chose.
-Ses treize étapes :
+Ses 13 étapes :
 
 | Étape | Ce qu'elle fait |
 |---|---|
-| 1. Satellites | vérifie `profil/`, `todo/`, `toolkit/`, `progression/`, `reviews/` — les dossiers du gabarit. Rien n'est cloné. |
+| 1. Satellites | crée les dossiers de tes données s'ils manquent — `profil/`, `projets/`, `handoffs/`, `workspace/`, `todo/`… et `instance/agents/` pour tes surcharges ; ton dépôt les ignore. Rien n'est cloné, sauf si ton brain déclare ses dépôts dans `satellites.yml` : ils se clonent alors à l'étape 3 |
 | 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
 | 3. Configuration | crée `brain-compose.local.yml` (ta machine) — ton instance y déclare `noyau: lecture` : ton `noyau/` se lit, tes retouches vont dans `instance/` —, remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
 | 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
@@ -149,7 +150,7 @@ fiches. Il se remplit en travaillant.
 ## Mettre à jour depuis le gabarit
 
 Une nouvelle version se fusionne dans ton fork, puis le moteur se relance et la
-base suit le schéma : la page **Se mettre à jour** donne les sept étapes.
+base suit le schéma : la page **Se mettre à jour** donne les 8 étapes.
 
 ## MYSECRETS absent — c'est grave ?
 

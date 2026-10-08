@@ -20,12 +20,12 @@ Il faut : git, Python ≥ 3.12 (avec `venv`), Node.js ^20.19 ou ≥ 22.12, et Cl
 ```bash
 git clone <URL_DE_TON_FORK> ~/Dev/Brain
 cd ~/Dev/Brain
-bash scripts/brain init <nom-de-ton-brain>
-bash scripts/brain-engine.sh start
+bash scripts/brain init <nom-de-ton-brain>     # installe et démarre les services (systemd)
 claude mcp add --transport http brain http://127.0.0.1:7701/mcp
 ```
 
-Puis `claude`, et tape `brain boot`.
+Puis `claude`, et tape `brain boot`. Installé avec `--sans-service` (sans systemd), le moteur
+se démarre à la main : `bash scripts/brain-engine.sh start`.
 
 > L'installation écrit `~/.claude/CLAUDE.md` s'il n'existe pas ; s'il existe et diffère,
 > elle n'y touche pas et pose le modèle à côté (`CLAUDE.md.modele`). Le détail de chaque

@@ -163,10 +163,21 @@ def types_de_session(gabarit: Path) -> set[str]:
     return types
 
 
+def dossier_agents(dossier: Path) -> Path:
+    """Où vivent les agents d'un gabarit : `agents/` — la vue, construite par `brain init`
+    et ignorée par git —, sinon `noyau/agents/`, ce qu'a un clone neuf ou l'archive d'une
+    version."""
+    vue = dossier / "agents"
+    if vue.is_dir():
+        return vue
+    noyau = dossier / "noyau" / "agents"
+    return noyau if noyau.is_dir() else vue
+
+
 def agents(dossier: Path) -> set[str]:
     """Les agents d'un dossier — ni `reviews/` ni `archive/`, comme le catalogue :
     sans ça, des noms de revues (`echange`…) devenaient des « agents connus »."""
-    racine = dossier / "agents"
+    racine = dossier_agents(dossier)
     return {p.stem for p in racine.rglob("*.md")
             if not p.name.startswith("_") and p.name != "AGENTS.md"
             and p.relative_to(racine).parts[0] not in ("reviews", "archive")}
@@ -243,7 +254,7 @@ def renvois(gabarit: Path, brain: Path) -> list[tuple[str, int, str, str]]:
     dans un agent, c'est le pseudo-code d'une délégation (`→ coach-scribe`)."""
     # `archive/` compte ici : un agent archivé chez l'auteur n'est pas chez le fork.
     def tous(d: Path) -> set[str]:
-        r = d / "agents"
+        r = dossier_agents(d)
         return {p.stem for p in r.rglob("*.md") if not p.name.startswith("_")
                 and p.name != "AGENTS.md" and p.relative_to(r).parts[0] != "reviews"}
     absents = tous(brain) - tous(gabarit)
@@ -254,7 +265,7 @@ def renvois(gabarit: Path, brain: Path) -> list[tuple[str, int, str, str]]:
     motif = re.compile(r"(?<![\w/-])(%s)(?![\w-]|\.\w)" % "|".join(
         re.escape(a) for a in sorted(absents, key=len, reverse=True)))
     faux = []
-    for page in sorted((gabarit / "agents").glob("*.md")):
+    for page in sorted(dossier_agents(gabarit).glob("*.md")):
         rel = str(page.relative_to(gabarit))
         lignes = page.read_text(encoding="utf-8").splitlines()
         entete = bool(lignes) and lignes[0].strip() == "---"
@@ -274,8 +285,8 @@ def renvois(gabarit: Path, brain: Path) -> list[tuple[str, int, str, str]]:
 def juger(gabarit: Path, brain: Path | None = None,
           motifs: tuple[str, ...] = PAGES, wiki: bool = False) -> list[tuple[str, int, str, str]]:
     """(page, ligne, règle, message) pour chaque affirmation fausse. Pur sur le disque."""
-    if not (gabarit / "agents").is_dir():
-        raise Illisible(f"{gabarit} n'a pas de agents/ — ce n'est pas un gabarit")
+    if not dossier_agents(gabarit).is_dir():
+        raise Illisible(f"{gabarit} n'a ni agents/ ni noyau/agents/ — ce n'est pas un gabarit")
     types = types_de_session(gabarit)
     publies = agents(gabarit)
     connus = publies | set(AGENTS_RETIRES) | (agents(brain) if brain else set())
@@ -329,7 +340,13 @@ def juger(gabarit: Path, brain: Path | None = None,
                 # script » laissait passer une doc de la vue sur un gabarit sans vue —
                 # « rien de faux », mesuré le 3/10.
                 du_noyau = chemin == "noyau" or chemin.startswith("noyau/")
-                if not (gabarit / chemin).exists() and (
+                # `agents/x` d'un clone neuf : la vue n'est pas encore construite, l'agent
+                # est dans `noyau/agents/x` — il existe.
+                vu = (gabarit / chemin).exists() or (
+                    (chemin == "agents" or chemin.startswith("agents/"))
+                    and not (gabarit / "agents").exists()
+                    and (gabarit / "noyau" / chemin).exists())
+                if not vu and (
                         du_noyau or not ecrit_par_un_script(gabarit, chemin)):
                     dire("chemin", f"`{chemin}` n'existe pas dans le gabarit")
 

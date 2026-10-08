@@ -43,14 +43,18 @@ BRAIN_ROOT="${POSITIONNELS[1]:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 PROGRAMME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 A_PART=false
 if [[ -e "$PROGRAMME/.cortex-programme" ]]; then
-  if [[ -z "${POSITIONNELS[1]:-}" ]]; then
+  # `--verifier` n'écrit rien : il n'a pas besoin du dossier — la procédure guidée le lance
+  # AVANT d'en choisir un. Il exigeait le dossier, et sortait en 1 avant les prérequis.
+  if [[ -z "${POSITIONNELS[1]:-}" ]] && ! $VERIFIER; then
     echo "❌ brain init : ce programme est installé à part — dis où créer le brain : brain init <nom> <dossier>" >&2
     exit 1
   fi
-  BRAIN_ROOT="$(realpath -m "$BRAIN_ROOT")"
-  if [[ "$BRAIN_ROOT" == "$PROGRAMME" || "$BRAIN_ROOT/" == "$PROGRAMME/"* ]]; then
-    echo "❌ brain init : $BRAIN_ROOT est dans le programme — un brain vit à part de lui" >&2
-    exit 1
+  if [[ -n "${POSITIONNELS[1]:-}" ]]; then
+    BRAIN_ROOT="$(realpath -m "$BRAIN_ROOT")"
+    if [[ "$BRAIN_ROOT" == "$PROGRAMME" || "$BRAIN_ROOT/" == "$PROGRAMME/"* ]]; then
+      echo "❌ brain init : $BRAIN_ROOT est dans le programme — un brain vit à part de lui" >&2
+      exit 1
+    fi
   fi
   A_PART=true
 fi
@@ -112,13 +116,26 @@ command -v git >/dev/null 2>&1 || manque+=("git — $(installer git git git git)
 if (( ${#manque[@]} )); then
   echo "❌ brain init : il manque ce sans quoi le brain ne fonctionne pas — rien n'a été écrit." >&2
   for m in "${manque[@]}"; do echo "   • $m" >&2; done
-  echo "   Puis relancer : bash scripts/brain init" >&2
+  # La commande du cas : un clone se relance par son script, un programme installé par
+  # la commande que pipx a posée.
+  if $A_PART; then echo "   Puis relancer : brain init <nom> <dossier>" >&2
+  else echo "   Puis relancer : bash scripts/brain init" >&2; fi
   exit 1
 fi
+# Node, pour construire le dashboard : sa PRÉSENCE ne suffit pas — un Node 18 passait
+# `--verifier`, puis le build échouait. Une seule règle, l'amorçage et l'étape 5 la lisent.
+node_suffit() {
+  command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || return 1
+  local v maj min
+  v=$(node --version 2>/dev/null | tr -d v)
+  IFS=. read -r maj min _ <<< "$v"
+  [[ "$maj" =~ ^[0-9]+$ && "$min" =~ ^[0-9]+$ ]] || return 1
+  (( maj > 22 || (maj == 22 && min >= 12) || (maj == 20 && min >= 19) ))
+}
 recommandes=()
 command -v claude >/dev/null 2>&1 || recommandes+=("Claude Code — npm install -g @anthropic-ai/claude-code")
-$PAQUET || { command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; } \
-  || recommandes+=("Node.js ^20.19 ou >= 22.12, pour le dashboard — nvm install --lts")
+$PAQUET || node_suffit \
+  || recommandes+=("Node.js ^20.19 ou >= 22.12 (ici : $(node --version 2>/dev/null || echo absent)), pour le dashboard — nvm install --lts")
 if $VERIFIER; then
   echo "✅ prérequis : python3 >= $PY_MIN, git — brain init peut tourner"
   for r in ${recommandes[@]+"${recommandes[@]}"}; do echo "⚠️  recommandé : $r"; done
@@ -388,8 +405,7 @@ fi
 NODE_OK=false
 if command -v node &>/dev/null && command -v npm &>/dev/null; then
   nv=$(node --version | tr -d v)
-  IFS=. read -r nmaj nmin _ <<< "$nv"
-  if (( nmaj > 22 || (nmaj == 22 && nmin >= 12) || (nmaj == 20 && nmin >= 19) )); then
+  if node_suffit; then
     ok "Node.js $nv / npm $(npm --version)"
     NODE_OK=true
   else

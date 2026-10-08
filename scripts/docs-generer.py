@@ -23,7 +23,7 @@ Dans `docs/src/*.md`, deux formes, remplacées dans `docs/*.md` :
     <!-- genere:NOM -->            un bloc — la ligne entière est remplacée
 
     valeurs   VERSION, NB_AGENTS, NB_SESSIONS, NB_TABLES, NB_VUES,
-              NB_ROUTES, NB_OUTILS
+              NB_ROUTES, NB_OUTILS, ETAPES_INIT, ETAPES_MAJ
     blocs     sessions   les types de session, depuis contexts/session-*.yml
               agents     les agents, groupés par portée × rôle (frontmatter)
               tables     les tables et les vues, depuis le schéma Dolt
@@ -279,6 +279,29 @@ class Mesures:
         return outils_mcp(self.brain)
 
     @functools.cached_property
+    def etapes_init(self) -> int:
+        """Les étapes de `brain init`, lues dans `ETAPES=` de `scripts/brain-init.sh` — celui
+        qui les affiche. La doc les écrivait en lettres, à la main."""
+        script = self.brain / "scripts" / "brain-init.sh"
+        m = re.search(r"^ETAPES=(\d+)$", script.read_text(encoding="utf-8"), re.M) \
+            if script.is_file() else None
+        if not m:
+            raise Illisible("scripts/brain-init.sh sans `ETAPES=` — les étapes n'ont pas de source")
+        return int(m.group(1))
+
+    @functools.cached_property
+    def etapes_maj(self) -> int:
+        """Les étapes numérotées de `docs/src/mettre-a-jour.md` (`**1. …**`), qui doivent se
+        suivre de 1 à n. « Les sept étapes » restait écrit quand la page en avait huit."""
+        page = self.brain / "docs" / "src" / "mettre-a-jour.md"
+        if not page.is_file():
+            raise Illisible("docs/src/mettre-a-jour.md introuvable — les étapes n'ont pas de source")
+        nums = [int(x) for x in re.findall(r"^\*\*(\d+)\. ", page.read_text(encoding="utf-8"), re.M)]
+        if not nums or nums != list(range(1, len(nums) + 1)):
+            raise Illisible(f"mettre-a-jour.md : étapes numérotées {nums}, pas 1 à n")
+        return len(nums)
+
+    @functools.cached_property
     def types_commit(self) -> list[str]:
         """Les types de commit, lus dans `KERNEL.md` « Commit types » — COMME le
         hook `commit-msg` les lit : la section, jusqu'au titre suivant, puis les
@@ -422,6 +445,8 @@ VALEURS = {
     "NB_ROUTES": lambda m: str(len(m.routes)),
     "NB_OUTILS": lambda m: str(len(m.outils)),
     "NB_SATELLITES": lambda m: str(len(m.satellites)),
+    "ETAPES_INIT": lambda m: str(m.etapes_init),
+    "ETAPES_MAJ": lambda m: str(m.etapes_maj),
     "TYPES_DE_COMMIT": lambda m: ", ".join(f"`{x}:`" for x in m.types_commit),
 }
 

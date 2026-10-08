@@ -38,8 +38,10 @@ if [ "${BRAIN_KERNEL_OVERRIDE:-0}" = "1" ]; then
 fi
 
 # --- Un fork qui lit son noyau : `noyau/` seul est refusé ---
+# `--no-renames` partout : un renommage ne se liste que par sa DESTINATION — `git mv noyau/x
+# instance/x` sortait un fichier du noyau sans que le garde le voie.
 if [ "$POSTURE" != "replica-nomad" ]; then
-  NOYAU_FILES=$(git diff --cached --name-only | grep -E '^noyau/' || true)
+  NOYAU_FILES=$(git diff --cached --name-only --no-renames | grep -E '^noyau/' || true)
   [ -z "$NOYAU_FILES" ] && exit 0
   # Une version reçue à la main (`git merge <version>`, quand `brain maj` laisse un conflit) :
   # le commit qui clôt la fusion porte tout le noyau reçu. Un fichier identique à celui de
@@ -83,7 +85,7 @@ fi
 # une troisième copie, et elle ignorait `noyau/` : en posture replica-nomad, un agent
 # du noyau se commitait sans un mot (vu le 3/10).
 source "$BRAIN_ROOT/scripts/lib/python.sh" 2>/dev/null || true
-KERNEL_FILES=$(git diff --cached --name-only | python3 -c '
+KERNEL_FILES=$(git diff --cached --name-only --no-renames | python3 -c '
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -107,7 +109,7 @@ if [ $? -ne 0 ]; then
   # (test_brain_engine.py) joue le hook en repli et rougit sinon.
   echo "⚠️ pre-commit-posture : NIVEAUX.yml ou le CORE illisible — liste de secours des chemins kernel" >&2
   KERNEL_PATHS_REGEX='^(agents/|noyau/|profil/|scripts/|KERNEL\.md|brain-compose\.yml|CLAUDE\.md\.example|NIVEAUX\.yml|BRAIN-INDEX\.md|PATHS\.md|brain-constitution\.md|brain-compose\.local\.yml\.example|contexts/|docs/|gabarit/|kernel\.lock|LICENSE|MYSECRETS\.example|README\.md|skills/|toolkit/|vie/|wiki)'
-  KERNEL_FILES=$(git diff --cached --name-only | grep -E "$KERNEL_PATHS_REGEX" || true)
+  KERNEL_FILES=$(git diff --cached --name-only --no-renames | grep -E "$KERNEL_PATHS_REGEX" || true)
 fi
 
 if [ -z "$KERNEL_FILES" ]; then
