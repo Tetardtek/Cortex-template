@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.5.5"
+version: "3.5.6"
 
 # ---
 # Ownership — kerneluser
@@ -229,3 +229,6 @@ changelog:
   - version: "3.5.5"
     date: "2026-10-08"
     notes: "Un brain servi par le paquet sur un dossier qui a deja ses donnees, et le garde des commandes livre. brain init sur un dossier qui porte deja ses satellites : le .gitignore du dossier les tait (chaque depot git present, et ceux que satellites.yml declare), un premier commit garde les donnees, la base neuve recoit ce que le disque porte (handoffs, sessions), et un semis (README.md, .gitkeep) ne va plus que dans un dossier absent ou vide. Relance apres pipx upgrade brain-cortex, brain init met kernel_version a la version recue dans brain-compose.local.yml. satellites.yml declare les satellites de l'utilisateur d'un brain servi par le paquet, sans rien verrouiller. Le doctor ne plante plus sur une machine sans crontab, compte les satellites de satellites.yml, et ne juge plus le programme dans les liens morts. Le garde des commandes (hook PreToolUse sur Bash) part au gabarit : brain init et brain maj le posent dans .claude/settings.json du brain ; il refuse rm par motif dans workspace/scratch/, git add -A dans le brain, source sur MYSECRETS, grep -r sans suivre les liens dans un dossier fait de liens, sed -i sur un lien. Mise a jour depuis la v3.5.4 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.5.6"
+    date: "2026-10-12"
+    notes: "La skill d'un brain servi par le paquet voit ses pages d'instance, et le doctor dit quand un satellite ne se lit plus. Chez un programme installe a part, skills/brain/ devient un dossier du brain dont chaque fichier est relie au programme ; le lien des pages d'instance (instance/skill/) s'y pose, jamais dans le programme. profil/ quand c'est un satellite (un depot, ou declare dans satellites.yml) : ses entrees reelles sont voulues, une information et plus un avertissement. Le doctor a le controle chaque satellite se lit : chaque depot sous le brain, et ceux que satellites.yml declare ailleurs, interroge par git ls-remote, borne, sans question ; un refus de la forge (403, identifiants absents, cle refusee, depot introuvable) ou un retard sans avance rapide possible est rouge, hors reseau il s'abstient. La doc de mise a jour a sa section pour un brain servi par le paquet. Mise a jour depuis la v3.5.5 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."

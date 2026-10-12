@@ -96,6 +96,12 @@ ménage des satellites :
 Ici, `satellites.yml` ne verrouille rien : il n'y a pas de noyau dans ton
 dossier.
 
+Partout, le doctor (« chaque satellite se lit ») interroge la forge de chaque
+satellite par `git ls-remote`, sans rien écrire ni demander de mot de passe : il
+rougit quand elle refuse (identifiants absents, clé refusée, dépôt introuvable) ou
+quand un satellite est en retard sans pouvoir avancer en avance rapide ; hors
+réseau, il s'abstient.
+
 ---
 
 ## La règle

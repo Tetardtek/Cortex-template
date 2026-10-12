@@ -608,6 +608,15 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
         Controle("le TTL des claims suit leur type",
                  "une session longue fermée à tort, faute du bon TTL",
                  [sys.executable, str(OUTILS / "ttl_des_claims.py"), "--brain", str(brain)]),
+        # Le 12/10 : le laptop ne lisait plus aucun de ses satellites depuis une semaine
+        # (HTTPS sans identifiants : 403 ; SSH vers le mauvais port), et rien ne le disait —
+        # un refus de la forge était compté « injoignable », et l'abstention suivait. Un
+        # refus n'est pas une absence de réseau. De portée gabarit : il juge les dépôts sous
+        # le brain, sans `satellites.yml` ni `machine:` — le laptop et les forks le jouent.
+        # Lecture seule (`ls-remote`), sans demander de mot de passe.
+        Controle("chaque satellite se lit",
+                 "une machine qui ne tire plus ses satellites, et rien qui le dise",
+                 [sys.executable, str(OUTILS / "satellites_se_lisent.py"), "--brain", str(brain)]),
         Controle("les satellites à jour",
                  "une machine qui travaille sur un état que l'autre n'a pas",
                  [sys.executable, str(brain / "scripts" / "brain-satellites.py"),

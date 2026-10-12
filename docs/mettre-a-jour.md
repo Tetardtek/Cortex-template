@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.5.5.
+> travail. Kernel v3.5.6.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -190,6 +190,32 @@ que rien n'a pu effacer est signalé, jamais effacé. Il déclare la version
 reçue (`kernel_version`) et branche le garde de lecture. Comme `brain maj`,
 c'est l'`aligne.py` de la version reçue qui fait le travail : s'il diffère du
 tien, il prend la main.
+
+---
+
+## Un brain servi par le paquet : `pipx upgrade brain-cortex`
+
+Installé par le paquet `brain-cortex`, ton dossier ne porte pas le programme :
+il n'y a rien à fusionner, et `brain maj` (qui fusionne un tag dans un fork) n'est
+pas le chemin. La version se reçoit en trois commandes :
+
+```bash
+pipx upgrade brain-cortex          # le programme : la nouvelle version, depuis l'index de l'installation
+brain init <nom> <dossier>         # le même nom, le même dossier qu'à l'installation
+brain doctor                       # le verdict : son code de sortie
+```
+
+- **`pipx upgrade` garde l'index** donné à `pipx install` : il n'y a pas à le
+  redonner. `pipx list` dit la version installée.
+- **`brain init` relancé sur ton dossier** ne recrée rien de ce qui existe : ta
+  config locale reste (seule sa ligne `kernel_version` suit la version reçue), tes
+  données et tes satellites aussi — un modèle du gabarit ne se pose que dans un
+  dossier absent ou vide. Il repose la vue du programme (les liens vers la version
+  installée), réinstalle les unités et relance les services, rebranche les gardes de
+  Claude Code. Installé avec `--sans-service`, relance-le avec. Ton `~/.claude/CLAUDE.md`
+  n'est pas touché : s'il diffère du modèle, le modèle est posé à côté
+  (`CLAUDE.md.modele`).
+- **`brain doctor`** dit si le brain est sain sur la nouvelle version.
 
 ---
 

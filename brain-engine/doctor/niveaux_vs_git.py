@@ -51,7 +51,24 @@ JAMAIS = ("etat", "artefact")
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _programme_a_part import programme_a_part  # noqa: E402 — le programme installé à part
+from _programme_a_part import programme_a_part, programme_du_brain  # noqa: E402 —
+
+
+def relie_fichier_par_fichier(cible: Path, prog: Path) -> bool:
+    """Un dossier du brain qui n'est QUE des liens, dont au moins un vers le programme :
+    une entrée du programme reliée fichier par fichier — `skills/`, dont le dossier
+    `skills/brain/` porte aussi le lien des pages d'instance (vers `instance/skill/`).
+    Un seul fichier réel dedans, et ce n'est plus une vue."""
+    import os
+    vers_le_programme = False
+    for racine, dossiers, fichiers in os.walk(cible):
+        for nom in [*dossiers, *fichiers]:
+            p = Path(racine) / nom
+            if p.is_symlink():
+                vers_le_programme |= programme_a_part(p) == prog
+            elif not p.is_dir():
+                return False
+    return vers_le_programme
 
 
 def gitignore(racine: Path, chemin: str) -> bool:
@@ -79,6 +96,7 @@ def main() -> int:
     entrees = yaml.safe_load(source.read_text(encoding="utf-8")).get("entrees", {})
 
     fautifs, depots, ici, non_declares, vues, a_part = [], 0, 0, [], 0, 0
+    prog = programme_du_brain(racine)
     for nom, val in sorted(entrees.items()):
         niveau = val.get("niveau") if isinstance(val, dict) else val
         court = nom.rstrip("/")
@@ -96,7 +114,9 @@ def main() -> int:
 
         # Un lien vers le programme installé à part : versionné avec le programme, pas
         # ici — ignoré par le git du brain, comme il se doit ; suivi, il rougit.
-        if programme_a_part(cible) is not None:
+        if programme_a_part(cible) is not None or (
+                prog is not None and niveau in VERSIONNE and cible.is_dir()
+                and not cible.is_symlink() and relie_fichier_par_fichier(cible, prog)):
             if gitignore(racine, court):
                 a_part += 1
             else:

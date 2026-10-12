@@ -54,6 +54,11 @@ programme, et la skill les trouve « à côté » d'elle, comme avant. Ignoré p
 dossier réel à sa place (les pages d'avant le déménagement) est signalé, jamais
 touché ; un lien sans `instance/skill/` est retiré.
 
+Chez un programme installé à part, `skills/brain/` est un dossier du dossier de
+données, chacun de ses fichiers relié au programme : le lien des pages s'y pose
+sans jamais écrire dans le programme, et la skill que Claude Code charge (par
+`~/.claude/skills/brain`, qui mène à ce dossier) voit les pages.
+
 ── Ce qu'il calcule ────────────────────────────────────────────────────────
 
 `agents/CATALOG.yml` : le catalogue de ce que l'instance voit vraiment — le noyau, ses
@@ -129,10 +134,14 @@ SOURCE_PAGES = Path("instance/skill")
 
 
 def etat_pages(brain: Path) -> str:
-    """Le lien des pages d'instance de la skill : juste, a_poser, a_retirer, reel, ou rien."""
+    """Le lien des pages d'instance de la skill : juste, a_poser, a_retirer, reel, rien — ou
+    a_part : `skills/brain/` mène encore DANS le programme installé à part (la vue d'avant),
+    où le lien ne s'écrit jamais ; `brain vue --construire` en fait un dossier de données."""
     lien, source = brain / PAGES_SKILL, brain / SOURCE_PAGES
     if not lien.parent.is_dir():
         return "rien"                                  # pas de skill dans ce brain
+    if programme_a_part(brain) and _dans_le_programme(lien.parent):
+        return "a_part"
     # Un dossier VIDE ne porte rien : celui que laissent les pages déménagées.
     vide = lien.is_dir() and not lien.is_symlink() and not any(lien.iterdir())
     if source.is_dir():
@@ -169,6 +178,13 @@ def construire_pages(brain: Path) -> str:
 # une fois, s'il manque : c'est à l'utilisateur. Sans la marque, rien de tout cela.
 
 MARQUE_PROGRAMME = ".cortex-programme"
+#: `skills/brain/` n'est pas relié en bloc : c'est un dossier du dossier de données, chacun
+#: de ses fichiers relié au programme. Le lien des pages d'instance (`skills/brain/instance`)
+#: vit DANS ce dossier — relié en bloc, le poser aurait écrit dans le programme installé, et
+#: la skill que Claude Code charge (`~/.claude/skills/brain` → `<brain>/skills/brain`) ne
+#: voyait pas `instance/skill/` (le laptop, 12/10). Mesuré : Claude Code charge une skill
+#: dont `SKILL.md` est un lien, et son dossier de base est celui du lien.
+SKILL_ECLATEE = "skills/brain"
 ENTREES_PROGRAMME = (
     "brain-engine", "scripts", "noyau", "contexts", "docs", "skills", "brain-ui",
     "KERNEL.md", "NIVEAUX.yml", "brain-compose.yml", "brain-constitution.md", "kernel.lock",
@@ -186,6 +202,48 @@ def programme() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _dans_le_programme(p: Path) -> bool:
+    prog, r = programme(), Path(p).resolve()
+    return r == prog or prog in r.parents
+
+
+def entrees_programme(prog: Path) -> list[str]:
+    """Les entrées reliées une à une : `ENTREES_PROGRAMME`, où `skills` se détaille —
+    chaque fichier de `skills/brain/`, et les autres skills en bloc."""
+    sortie = []
+    for rel in ENTREES_PROGRAMME:
+        if rel == "skills" and (prog / rel).is_dir() and not (prog / rel).is_symlink():
+            for s in sorted((prog / rel).iterdir()):
+                r = f"{rel}/{s.name}"
+                if r == SKILL_ECLATEE and s.is_dir() and not s.is_symlink():
+                    sortie += [f"{r}/{f.name}" for f in sorted(s.iterdir())
+                               if f.name != PAGES_SKILL.name]
+                else:
+                    sortie.append(r)
+        else:
+            sortie.append(rel)
+    return sortie
+
+
+def _lien_d_avant(brain: Path, rel: str) -> Path | None:
+    """Un dossier parent de `rel`, dans le dossier de données, qui est un lien vers le
+    programme — la vue d'avant (`skills` → le programme) : c'est le sien, il se remplace."""
+    p = Path(brain)
+    for part in Path(rel).parts[:-1]:
+        p = p / part
+        if p.is_symlink() and _dans_le_programme(p):
+            return p
+    return None
+
+
+#: Les entrées de `profil/` que la vue relie : quand `profil/` est un satellite (un dépôt,
+#: ou déclaré dans `satellites.yml`), il peut les suivre lui-même — celui de l'owner en est
+#: la source sur une autre machine. Réelles, elles sont voulues : dit, jamais un défaut.
+def du_satellite_profil(brain: Path, rel: str) -> bool:
+    return (rel.startswith("profil/")
+            and ((Path(brain) / "profil" / ".git").exists() or "profil" in satellites_a_part(brain)))
+
+
 def programme_a_part(brain: Path) -> bool:
     """Le brain servi est-il un dossier de données, le programme installé ailleurs ?"""
     prog = programme()
@@ -195,15 +253,17 @@ def programme_a_part(brain: Path) -> bool:
 def etat_programme(brain: Path) -> dict:
     """Les liens du programme dans le dossier de données : justes, à poser, réels (jamais touchés)."""
     prog = programme()
-    e = {"justes": [], "a_poser": [], "reels": []}
-    for rel in ENTREES_PROGRAMME:
+    e = {"justes": [], "a_poser": [], "reels": [], "du_satellite": []}
+    for rel in entrees_programme(prog):
         src, dst = prog / rel, Path(brain) / rel
         if not src.exists():
             continue
-        if dst.is_symlink():
+        if _lien_d_avant(brain, rel):
+            e["a_poser"].append(rel)
+        elif dst.is_symlink():
             (e["justes"] if dst.resolve() == src.resolve() else e["a_poser"]).append(rel)
         elif dst.exists():
-            e["reels"].append(rel)
+            e["du_satellite" if du_satellite_profil(brain, rel) else "reels"].append(rel)
         else:
             e["a_poser"].append(rel)
     return e
@@ -215,6 +275,9 @@ def relier_programme(brain: Path) -> dict:
     e = etat_programme(brain)
     for rel in e["a_poser"]:
         dst = brain / rel
+        avant = _lien_d_avant(brain, rel)
+        if avant is not None:
+            avant.unlink()                             # son lien vers le programme, jamais au-delà
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.is_symlink():
             dst.unlink()
@@ -655,8 +718,7 @@ def main() -> int:
         ep, semes = relier_programme(brain), semer(brain)
         print(f"brain vue --relier : {len(ep['a_poser'])} lien(s) du programme posé(s), "
               f"{len(semes)} fichier(s) semé(s)")
-        for rel in ep["reels"]:
-            print(f"  ⚠️ {rel} est réel dans le dossier de données — jamais touché")
+        dire_les_reels(ep)
         return 1 if ep["reels"] else 0
     if programme_a_part(brain):
         ep = relier_programme(brain) if o.construire else etat_programme(brain)
@@ -664,8 +726,7 @@ def main() -> int:
         print(f"\nBRAIN VUE — le programme, installé à part : {programme()}")
         print(f"  liens du programme {'posés' if o.construire else 'à poser'} : {len(ep['a_poser'])}, "
               f"justes : {len(ep['justes'])}" + (f", semés : {len(semes)}" if semes else ""))
-        for rel in ep["reels"]:
-            print(f"  ⚠️ {rel} est réel dans le dossier de données, là où le programme se relie — jamais touché")
+        dire_les_reels(ep)
         if ep["a_poser"] and not o.construire:
             print("  `brain vue --construire` pour les poser")
     noyau, _, _ = racines(brain)
@@ -677,10 +738,10 @@ def main() -> int:
         print("noyau/ modifiable — `brain vue --construire` le rendra à sa posture")
         return 0
     e = construire(brain) if o.construire else etat(brain)
-    # Le lien des pages d'instance vit DANS `skills/brain/` : chez un programme installé à
-    # part, ce serait écrire dans le programme. Pas de pages d'instance là.
-    pages = ("a_part" if programme_a_part(brain)
-             else construire_pages(brain) if o.construire else etat_pages(brain))
+    # Le lien des pages d'instance vit DANS `skills/brain/` — chez un programme installé à
+    # part, un dossier du dossier de données (la vue du programme vient d'être posée) ;
+    # jamais dans le programme : `etat_pages` dit « a_part » et rien ne s'écrit.
+    pages = construire_pages(brain) if o.construire else etat_pages(brain)
     verbe = "posés" if o.construire else "à poser"
     print(f"\nBRAIN VUE — {e['justes']} juste(s)")
     if pages == "a_poser":
@@ -689,6 +750,9 @@ def main() -> int:
     elif pages == "a_retirer":
         print(f"  lien des pages d'instance de la skill {'retiré' if o.construire else 'à retirer'} "
               f"— {SOURCE_PAGES}/ n'existe pas")
+    elif pages == "a_part":
+        print(f"  {PAGES_SKILL.parent}/ mène encore dans le programme : le lien des pages "
+              f"d'instance n'y est pas posé — `brain vue --construire`")
     elif pages == "reel":
         print(f"  ⚠️ {PAGES_SKILL}/ est un dossier réel — jamais touché. À ranger : ses pages dans "
               f"{SOURCE_PAGES}/, puis le retirer et `brain vue --construire`")
@@ -713,7 +777,8 @@ def main() -> int:
               f"n'existe pas (ni noyau/agents/{rel}, ni instance/agents/{rel}) — il n'est lu nulle part")
     bloque = e["reels"] or e["etrangers"] or e["complements_seuls"] or pages == "reel"
     if not o.construire:
-        a_faire = e["a_creer"] or e["a_corriger"] or e["orphelins"] or pages in ("a_poser", "a_retirer")
+        a_faire = (e["a_creer"] or e["a_corriger"] or e["orphelins"]
+                   or pages in ("a_poser", "a_retirer", "a_part"))
         # L'état dit aussi le verrou : la posture le décide, le disque peut l'avoir perdu
         # (un `--deverrouiller` resté sans `--construire`).
         ouvert = os.access(noyau, os.W_OK) and os.geteuid() != 0
@@ -741,6 +806,13 @@ def main() -> int:
     print("  noyau/ modifiable (posture qui écrit le kernel)" if ecrire
           else f"  🔒 noyau/ en lecture seule ({raison(brain)})")
     return 1 if bloque else 0
+
+
+def dire_les_reels(ep: dict) -> None:
+    for rel in ep["reels"]:
+        print(f"  ⚠️ {rel} est réel dans le dossier de données, là où le programme se relie — jamais touché")
+    for rel in ep["du_satellite"]:
+        print(f"  ℹ️ {rel} vient de ton satellite profil, pas du paquet — voulu, jamais touché")
 
 
 def dit_le_worktree(depot: Path) -> str:

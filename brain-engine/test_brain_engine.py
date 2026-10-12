@@ -5853,6 +5853,115 @@ class TestVueDuProgramme(unittest.TestCase):
         ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', 'perso'])
         self.assertEqual(ign.returncode, 0, 'le satellite n est pas ignoré par le dépôt')
 
+    # ── La skill d'un brain servi par le paquet voit `instance/skill/` ──
+
+    def _vue(self, *args):
+        env = {k: v for k, v in os.environ.items() if k not in ('BRAIN_ROOT', 'MYELINE_ROOT')}
+        env['BRAIN_ROOT'] = str(self.data)
+        return subprocess.run([sys.executable, str(self.prog / 'scripts' / 'vue.py'), *args],
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def _skill(self):
+        s = self.prog / 'skills' / 'brain'
+        (s / 'src').mkdir(parents=True)
+        (s / 'SKILL.md').write_text('# la skill\n')
+        (s / 'src' / 'SKILL.md').write_text('# sa source\n')
+        (self.data / 'instance' / 'skill').mkdir(parents=True)
+        (self.data / 'instance' / 'skill' / 'outils.md').write_text('mes outils\n')
+        return s
+
+    def _skill_vue_juste(self, s):
+        sk = self.data / 'skills' / 'brain'
+        self.assertFalse((self.data / 'skills').is_symlink(), 'skills/ mène encore au programme')
+        self.assertFalse(sk.is_symlink(), 'skills/brain mène encore au programme')
+        for f in ('SKILL.md', 'src'):
+            with self.subTest(f):
+                self.assertTrue((sk / f).is_symlink(), f)
+                self.assertEqual((sk / f).resolve(), (s / f).resolve())
+        self.assertTrue((sk / 'instance').is_symlink())
+        self.assertEqual((sk / 'instance' / 'outils.md').read_text(), 'mes outils\n',
+                         'la skill ne voit pas les pages de l instance')
+        self.assertFalse((s / 'instance').exists() or (s / 'instance').is_symlink(),
+                         'le lien des pages a été écrit DANS le programme')
+
+    def test_la_skill_d_un_brain_a_part_voit_ses_pages(self):
+        """Le 12/10 sur le laptop : `skills/` était un lien vers le programme ; le lien des
+        pages, qui vit dans `skills/brain/`, aurait écrit dans le paquet — il n'était pas
+        posé, et la skill ne voyait pas `instance/skill/` (`vue_juste` rouge)."""
+        s = self._skill()
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self._skill_vue_juste(s)
+        e = self._vue()
+        self.assertEqual(e.returncode, 0, e.stdout + e.stderr)
+
+    def test_l_ancien_lien_de_la_skill_cede_la_place(self):
+        """Un brain relié avant : `skills` → le programme. La vue le remplace (c'est son lien),
+        sans rien écrire dans le programme."""
+        s = self._skill()
+        (self.data / 'skills').symlink_to(self.prog / 'skills')
+        (self.data / 'noyau').symlink_to(self.prog / 'noyau')     # la vue d'avant, posée
+        e = self._vue()
+        self.assertEqual(e.returncode, 1, "l'ancien lien : l'état dit à construire\n" + e.stdout)
+        r = self._vue('--construire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self._skill_vue_juste(s)
+
+    def test_les_pages_ne_s_ecrivent_jamais_dans_le_programme(self):
+        """Garde de dernier recours : `skills/brain/` mène encore au programme (la vue d'avant,
+        pas reconstruite) — le lien des pages n'est pas posé à travers lui."""
+        import importlib.util
+        s = self._skill()
+        (self.data / 'skills').symlink_to(self.prog / 'skills')
+        spec = importlib.util.spec_from_file_location('_vue_prog', self.prog / 'scripts' / 'vue.py')
+        vue = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vue)
+        self.assertEqual(vue.etat_pages(self.data), 'a_part')
+        self.assertEqual(vue.construire_pages(self.data), 'a_part')
+        self.assertFalse((s / 'instance').exists() or (s / 'instance').is_symlink(),
+                         'le lien des pages a été écrit DANS le programme')
+
+    def test_un_dossier_reel_de_la_skill_n_est_jamais_touche(self):
+        s = self._skill()
+        (self.data / 'skills' / 'brain').mkdir(parents=True)
+        (self.data / 'skills' / 'brain' / 'SKILL.md').write_text('la mienne\n')
+        r = self._vue('--relier')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('skills/brain/SKILL.md est réel', r.stdout)
+        self.assertEqual((self.data / 'skills' / 'brain' / 'SKILL.md').read_text(), 'la mienne\n')
+        self.assertEqual((s / 'SKILL.md').read_text(), '# la skill\n')
+
+    # ── profil/ d'un satellite : ses fichiers réels sont voulus ──
+
+    def _profil_reel(self):
+        (self.data / 'profil' / 'specs').mkdir(parents=True)
+        (self.data / 'profil' / 'specs' / 'collaboration.md').write_text('les miennes\n')
+
+    def test_profil_d_un_satellite_est_une_information(self):
+        """Le satellite `profil` de l'owner suit `specs/` (il en est la source sur une autre
+        machine) : c'est voulu — dit comme tel, et la vue se pose."""
+        self._profil_reel()
+        subprocess.run(['git', 'init', '-q', str(self.data / 'profil')], check=True)
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('⚠️', r.stdout)
+        self.assertIn('profil/specs vient de ton satellite profil', r.stdout)
+        self.assertEqual((self.data / 'profil' / 'specs' / 'collaboration.md').read_text(), 'les miennes\n')
+
+    def test_profil_declare_dans_satellites_yml_aussi(self):
+        self._profil_reel()
+        (self.data / 'satellites.yml').write_text('satellites:\n  profil: {depot: profil}\n')
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('profil/specs vient de ton satellite profil', r.stdout)
+
+    def test_profil_ordinaire_reste_un_avertissement(self):
+        """Témoin : un `profil/` qui n'est pas un satellite — l'avertissement reste."""
+        self._profil_reel()
+        r = self._relier()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('⚠️ profil/specs est réel', r.stdout)
+
     def test_sans_la_marque_les_satellites_ne_touchent_pas_le_gitignore(self):
         (self.prog / '.cortex-programme').unlink()
         (self.data / '.gitignore').write_text('handoffs/*\n')

@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.5"
-generated_at: "2026-10-08T20:41"
+kernel_version: "3.5.6"
+generated_at: "2026-10-13T00:30"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 91a0708f747424fae99fce45fe8d171dda1b1b69750530916830787d2da15d47
+  brain-compose.yml: 1bd482badcf4cb6a7aa36abdcfeb19fb0f6126bbc1730e9a0f91267dc61579e6
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -110,5 +110,5 @@ files:
   scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be
-  scripts/vue.py: 3c0c99273621e5732f3dafe50880b55fe6efb7405a2ae23dfe05afca1681d0ee
+  scripts/vue.py: 2dbee7f7ed2ef4573b618f12df818fd2f6b65875f96fd286450f039c5736a2c8
   scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

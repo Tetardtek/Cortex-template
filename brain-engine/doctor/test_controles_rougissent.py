@@ -83,6 +83,10 @@ Garanties :
                           `permissions.additionalDirectories` qui le couvre, ou un
                           réglage illisible ⇒ rouge ; posé par `poser`, vert ; un
                           brain git s'abstient
+    satellites / lisent   un satellite que la forge refuse (403, 401 sans demander de
+                          mot de passe, dépôt introuvable) ou en retard sans pouvoir
+                          avancer ⇒ rouge ; à jour, ou derrière en avance rapide ⇒ vert ;
+                          hors réseau, ou sans satellite ⇒ abstention
     gardes / témoin       sans claim 409, avec un claim 200 ⇒ vert ; « avec » rendu
                           403 (un autre refus) ou 503 (une panne) ⇒ rouge
     gardes / effets       le PUT qui aboutit n'atteint ni la réindexation ni les
@@ -1055,6 +1059,44 @@ def cmd_close_stale():
         git_init(data)
         garantie("à part / niveaux→git : une vraie entrée ignorée rougit",
                  joue("niveaux_vs_git.py", data), 1)
+        # La skill reliée fichier par fichier : `skills/brain/` est un dossier du brain (il
+        # porte le lien des pages d'instance), chacun de ses fichiers un lien vers le
+        # programme. Que des liens, ignoré : versionné ailleurs. Un fichier réel dedans ⇒
+        # ce n'est plus une vue, l'entrée « programme » ignorée rougit.
+        (data / ".gitignore").write_text(gi, encoding="utf-8")
+        nv = (prog / "NIVEAUX.yml").read_text(encoding="utf-8")
+        (prog / "NIVEAUX.yml").write_text(nv.replace("entrees:\n", "entrees:\n  skills/: programme\n"),
+                                          encoding="utf-8")
+        (prog / "skills" / "brain").mkdir(parents=True)
+        (prog / "skills" / "brain" / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+        (data / "instance" / "skill").mkdir(parents=True)
+        (data / "skills" / "brain").mkdir(parents=True)
+        (data / "skills" / "brain" / "SKILL.md").symlink_to(prog / "skills" / "brain" / "SKILL.md")
+        (data / "skills" / "brain" / "instance").symlink_to("../../instance/skill")
+        (data / ".gitignore").write_text(gi + "/skills\n", encoding="utf-8")
+        shutil.rmtree(data / ".git")
+        git_init(data)
+        garantie("à part / niveaux→git : la skill reliée fichier par fichier",
+                 joue("niveaux_vs_git.py", data), 0)
+        (data / "skills" / "brain" / "notes.md").write_text("à moi\n", encoding="utf-8")
+        garantie("à part / niveaux→git : un fichier réel dans la skill reliée rougit",
+                 joue("niveaux_vs_git.py", data), 1)
+        (data / "skills" / "brain" / "notes.md").unlink()
+        # Une DONNÉE qui ne porte que des liens vers le programme (`profil/` d'un brain neuf :
+        # `specs/`, les modèles) reste une donnée — jugée comme telle, jamais comme le
+        # programme (l'essai du paquet, 12/10).
+        (prog / "NIVEAUX.yml").write_text(
+            (prog / "NIVEAUX.yml").read_text(encoding="utf-8")
+            + "  profil/:\n    niveau: donnee\n    versionne: ici\n", encoding="utf-8")
+        (prog / "profil" / "specs").mkdir(parents=True)
+        (data / "profil").mkdir()
+        (data / "profil" / "specs").symlink_to(prog / "profil" / "specs")
+        shutil.rmtree(data / ".git")
+        git_init(data)
+        garantie("à part / niveaux→git : une donnée faite de liens reste une donnée",
+                 joue("niveaux_vs_git.py", data), 0)
+        shutil.rmtree(data / "profil")
+        (data / ".gitignore").write_text(gi, encoding="utf-8")
 
     # ── Le BSI d'avant BRAIN-042 — ────────────────────────────────
     #
@@ -2587,6 +2629,80 @@ def cmd_close_stale():
             garantie("Claude Code / programme : brain git, abstenu", joue("claude_voit_programme.py", git), 0)
     else:
         print("  ⏭  Claude Code / programme : scripts/claude-programme.py absent du vrai brain — rien à éprouver")
+
+    # ── Chaque satellite se lit — ──────────────────────────────────
+    #
+    # Le 12/10 : le laptop ne lisait plus aucun de ses satellites depuis une semaine
+    # (HTTPS sans identifiants, 403 ; SSH vers le mauvais port), et le contrôle des
+    # satellites s'abstenait — « injoignable ». Ici une forge jouée en local : un
+    # dépôt nu (se lit), un serveur HTTP qui refuse (401, 403), un chemin qui n'existe
+    # pas, un nom de domaine introuvable (`.invalid` : hors réseau ⇒ abstention), un
+    # satellite en retard qui ne peut pas avancer.
+    if (OUTILS / "satellites_se_lisent.py").is_file():
+        import http.server
+        import threading
+
+        class _Refus(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):                                   # noqa: N802
+                code = 401 if "/prive/" in self.path else 403
+                self.send_response(code)
+                if code == 401:
+                    self.send_header("WWW-Authenticate", 'Basic realm="forge"')
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        serveur = http.server.HTTPServer(("127.0.0.1", 0), _Refus)
+        threading.Thread(target=serveur.serve_forever, daemon=True).start()
+        port = serveur.server_address[1]
+
+        def sat_git(*a, cwd=None):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                  cwd=cwd, capture_output=True, text=True)
+
+        def lisent(b: Path) -> int:
+            """Le code de sortie ; 9 pour une abstention (SKIP) — elle se distingue d'un vert."""
+            r = subprocess.run([sys.executable, str(OUTILS / "satellites_se_lisent.py"), "--brain", str(b)],
+                               capture_output=True, text=True, timeout=120)
+            return 9 if r.returncode == 0 and r.stdout.lstrip().startswith("SKIP") else r.returncode
+
+        with tempfile.TemporaryDirectory(prefix="temoin-satellites-") as tmp:
+            t = Path(tmp)
+            forge = t / "forge" / "sat.git"
+            sat_git("init", "-q", "--bare", "-b", "main", str(forge))
+            graine = t / "graine"
+            sat_git("clone", "-q", str(forge), str(graine))
+            (graine / "a.md").write_text("a\n", encoding="utf-8")
+            sat_git("add", "a.md", cwd=graine)
+            sat_git("commit", "-qm", "a", cwd=graine)
+            sat_git("push", "-q", "origin", "HEAD:main", cwd=graine)
+            b = t / "brain"
+            b.mkdir()
+            garantie("satellites / aucun : abstention", lisent(b), 9)
+            sat_git("clone", "-q", str(forge), str(b / "sat"))
+            garantie("satellites / se lit", lisent(b), 0)
+            sat_git("-C", str(b / "sat"), "remote", "set-url", "origin", str(t / "forge" / "absent.git"))
+            garantie("satellites / dépôt introuvable : refus", lisent(b), 1)
+            sat_git("-C", str(b / "sat"), "remote", "set-url", "origin", f"http://127.0.0.1:{port}/sat.git")
+            garantie("satellites / 403 : refus (le laptop, 12/10)", lisent(b), 1)
+            sat_git("-C", str(b / "sat"), "remote", "set-url", "origin", f"http://127.0.0.1:{port}/prive/sat.git")
+            garantie("satellites / 401, sans demander : refus", lisent(b), 1)
+            sat_git("-C", str(b / "sat"), "remote", "set-url", "origin", "https://forge.invalid/sat.git")
+            garantie("satellites / hors réseau : abstention", lisent(b), 9)
+            sat_git("-C", str(b / "sat"), "remote", "set-url", "origin", str(forge))
+            (graine / "b.md").write_text("b\n", encoding="utf-8")
+            sat_git("add", "b.md", cwd=graine)
+            sat_git("commit", "-qm", "b", cwd=graine)
+            sat_git("push", "-q", "origin", "HEAD:main", cwd=graine)
+            garantie("satellites / derrière, l'avance rapide suffit", lisent(b), 0)
+            (b / "sat" / "c.md").write_text("c\n", encoding="utf-8")
+            sat_git("add", "c.md", cwd=b / "sat")
+            sat_git("commit", "-qm", "c", cwd=b / "sat")
+            garantie("satellites / en retard sans pouvoir avancer", lisent(b), 1)
+        serveur.shutdown()
+    else:
+        print("  ⏭  satellites : satellites_se_lisent.py absent — rien à éprouver")
 
     print()
     if echecs:
