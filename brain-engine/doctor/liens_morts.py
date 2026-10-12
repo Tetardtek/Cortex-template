@@ -92,12 +92,37 @@ CHEMIN = re.compile(
     r"/[A-Za-z0-9_./-]+\.(?:md|py|sh|yml|sql))")
 
 
+#: La marque d'un programme installé à part (le paquet).
+MARQUE_PROGRAMME = ".cortex-programme"
+
+
+def programme_a_part(racine: Path) -> Path | None:
+    """Le programme qui sert ce brain, s'il est installé à part : `scripts/` est alors un
+    lien vers lui (la vue), et sa racine porte la marque. Sinon None (un brain git)."""
+    scripts = racine / "scripts"
+    if not scripts.is_symlink():
+        return None
+    prog = scripts.resolve().parent
+    return prog if (prog / MARQUE_PROGRAMME).exists() else None
+
+
 def cibles_mortes(racine: Path) -> dict[str, list[str]]:
+    # Un brain servi par le paquet : `scripts/`, `contexts/`, `brain-engine/`, les agents
+    # du noyau sont des liens vers le PROGRAMME. Le traverser jugeait le programme — ses
+    # exemples (`agents/X.md`) devenaient 40 liens morts sur le laptop, le 8/10 — alors
+    # qu'il se juge à sa construction. Seules les données comptent ici.
+    prog = programme_a_part(racine)
+
+    def du_programme(p: Path) -> bool:
+        return prog is not None and (p.resolve() == prog or prog in p.resolve().parents)
+
     fichiers = [p for z in ZONES for p in (racine / z).rglob("*")
                 if p.is_file() and p.suffix in SUFFIXES and not est_un_test(p)
                 and not (IGNORES & set(p.relative_to(racine).parts))
-                and not est_une_archive(p.relative_to(racine).parts)]
-    fichiers += [racine / f for f in RACINE_FICHIERS if (racine / f).is_file()]
+                and not est_une_archive(p.relative_to(racine).parts)
+                and not du_programme(p)]
+    fichiers += [racine / f for f in RACINE_FICHIERS
+                 if (racine / f).is_file() and not du_programme(racine / f)]
     morts: dict[str, list[str]] = {}
     for f in fichiers:
         try:
@@ -204,6 +229,22 @@ def auto_epreuve() -> int:
         morts = cibles_mortes(r)
         _verifie("une archive n est pas lue, le meme texte dans un agent vivant l est",
                  morts.get("agents/satellite-boot.md"), ["agents/vivant.md"])
+
+        # 6. Le 8/10 : un brain servi par le paquet — le programme est ailleurs, relié par
+        #    la vue. Ses exemples ne sont pas des liens morts du brain ; le même texte
+        #    dans une donnée l est.
+        prog = Path(tmp) / "programme"
+        (prog / "scripts").mkdir(parents=True)
+        (prog / MARQUE_PROGRAMME).write_text("brain-cortex\n", encoding="utf-8")
+        (prog / "scripts" / "outil.py").write_text("agents/fantome-du-programme.md\n", encoding="utf-8")
+        d = Path(tmp) / "donnees"
+        (d / "agents").mkdir(parents=True)
+        (d / "scripts").symlink_to(prog / "scripts")
+        (d / "agents" / "mien.md").write_text("agents/fantome-a-moi.md\n", encoding="utf-8")
+        morts = cibles_mortes(d)
+        _verifie("un brain servi par le paquet : le programme n est pas juge, ses donnees si",
+                 sorted(c for c in morts if c.startswith("agents/fantome-")),
+                 ["agents/fantome-a-moi.md"])
 
     print(f"\n  {_ok} vérification(s), {_ko} échec(s)")
     return 1 if _ko else 0

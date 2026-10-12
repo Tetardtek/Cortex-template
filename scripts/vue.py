@@ -243,13 +243,22 @@ def exclure_du_depot(brain: Path) -> None:
 
 def semer(brain: Path) -> list[str]:
     """Copier, s'il manque, ce que le programme sème : tout ce qui, à sa racine, n'est ni
-    une entrée du programme ni caché (sauf `.gitignore`). Rien n'est écrasé."""
+    une entrée du programme ni caché (sauf `.gitignore`). Rien n'est écrasé.
+
+    Un dossier ne se sème que s'il est **absent ou vide** — jamais dans un dossier qui a
+    déjà ses données, ni dans un dépôt (un satellite) : relancé sur le laptop le 8/10,
+    `brain init` posait `README.md` et `.gitkeep` dans `handoffs/` et `workspace/`, deux
+    dépôts qui ne les suivent pas — des fichiers non suivis, à retirer à la main."""
     prog, brain = programme(), Path(brain)
     semes = []
     for src in sorted(prog.iterdir()):
         nom = src.name
         if nom in ENTREES_PROGRAMME or nom in EXCLUS_DU_SEMIS or (nom.startswith(".") and nom != ".gitignore"):
             continue
+        if src.is_dir():
+            dst_dir = brain / nom
+            if dst_dir.is_symlink() or (dst_dir.is_dir() and any(dst_dir.iterdir())):
+                continue
         for f in ([src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())):
             dst = brain / f.relative_to(prog)
             if not dst.exists() and not dst.is_symlink():
@@ -257,6 +266,46 @@ def semer(brain: Path) -> list[str]:
                 shutil.copy2(f, dst)
                 semes.append(str(f.relative_to(prog)))
     return semes
+
+
+BLOC_SATELLITES = ("# brain init : les satellites, des dépôts à part — ce dépôt ne les suit pas",
+                   "# fin satellites")
+
+
+def satellites_a_part(brain: Path) -> list[str]:
+    """Les satellites de ce dossier de données : les dépôts git de premier niveau, et ceux
+    que `satellites.yml` déclare (clés de premier niveau, sans `chemin:` — un dépôt qui vit
+    hors du brain). Triés, sans doublon."""
+    brain = Path(brain)
+    noms = {p.parent.name for p in brain.glob("*/.git")}
+    f = brain / "satellites.yml"
+    if f.is_file():
+        try:
+            import yaml
+            sats = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("satellites") or {}
+        except Exception:                                    # noqa: BLE001 — illisible : les dépôts seuls
+            sats = {}
+        for cle, val in sats.items():
+            if "/" not in str(cle) and not (isinstance(val, dict) and val.get("chemin")):
+                noms.add(str(cle))
+    return sorted(noms)
+
+
+def ignorer_les_satellites(brain: Path) -> list[str]:
+    """Le `.gitignore` du dossier de données tait chaque satellite EN ENTIER (`/nom/`) : le
+    `.gitignore` semé n'en tait que le contenu (`handoffs/*`), et un `git add` y aurait vu
+    un dépôt imbriqué — un gitlink sans `.gitmodules`, que le contrôle des niveaux refuse.
+    Un bloc que `brain init` tient (réécrit, jamais dupliqué)."""
+    f = Path(brain) / ".gitignore"
+    lignes = f.read_text(encoding="utf-8").splitlines() if f.is_file() else []
+    if BLOC_SATELLITES[0] in lignes and BLOC_SATELLITES[1] in lignes:
+        i, j = lignes.index(BLOC_SATELLITES[0]), lignes.index(BLOC_SATELLITES[1])
+        lignes[i:j + 1] = []
+    noms = satellites_a_part(brain)
+    if noms:
+        lignes += [BLOC_SATELLITES[0], *(f"/{n}/" for n in noms), BLOC_SATELLITES[1]]
+    f.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+    return noms
 
 
 def donnee(rel: Path) -> bool:
@@ -585,10 +634,20 @@ def main() -> int:
     a.add_argument("--construire", action="store_true")
     a.add_argument("--relier", action="store_true",
                    help="programme installé à part : poser ses liens et semer, sans la vue des agents (brain init)")
+    a.add_argument("--satellites", action="store_true",
+                   help="programme installé à part : le .gitignore du dossier tait ses satellites (brain init)")
     a.add_argument("--deverrouiller", action="store_true",
                    help="rendre le noyau modifiable le temps d'une mise à jour (brain maj)")
     o = a.parse_args()
     brain = _racine_des_donnees(env_d_abord=True)
+    if o.satellites:
+        if not programme_a_part(brain):
+            print("brain vue --satellites : le programme n'est pas installé à part — le .gitignore est celui du gabarit.")
+            return 0
+        noms = ignorer_les_satellites(brain)
+        print(f"brain vue --satellites : {len(noms)} satellite(s) tus par le .gitignore"
+              + (f" — {', '.join(noms)}" if noms else ""))
+        return 0
     if o.relier:
         if not programme_a_part(brain):
             print("brain vue --relier : le programme n'est pas installé à part — rien à relier.")

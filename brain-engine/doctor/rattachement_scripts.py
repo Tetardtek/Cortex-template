@@ -94,8 +94,14 @@ def sans_prose(texte: str) -> str:
 def classer(brain: Path, outils: Path) -> list[tuple[str, int, str, bool]]:
     scripts = sorted(list((brain / "scripts").glob("*.sh"))
                      + list((brain / "scripts").glob("*.py")))
-    cron = subprocess.run(["crontab", "-l"], capture_output=True,
-                          text=True).stdout
+    # Une machine sans `crontab` (le laptop, 8/10) n'a aucune ligne de cron — ce n'est pas
+    # une raison de planter : le contrôle tombait en FileNotFoundError, et le banc des
+    # contrôles avec lui.
+    try:
+        cron = subprocess.run(["crontab", "-l"], capture_output=True,
+                              text=True).stdout
+    except FileNotFoundError:
+        cron = ""
     hooks = "".join(h.read_text(errors="replace")
                     for h in (brain / ".git" / "hooks").glob("*")
                     if h.is_file() and not h.name.endswith(".sample"))

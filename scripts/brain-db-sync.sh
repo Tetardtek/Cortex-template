@@ -28,6 +28,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/donnees.sh" 2>/dev/null || brain_donn
 BRAIN_ROOT="$(brain_donnees "$(cd "$(dirname "$0")/.." && pwd)")" || exit 1
 MIGRATE="$BRAIN_ROOT/brain-engine/migrate.py"
 LOG_FILE="$BRAIN_ROOT/brain-engine/sync.log"
+# Installé à part, `brain-engine/` de la data est un lien vers le programme, qui ne
+# s'écrit pas : le journal va avec les caches, `.cache/` de la data.
+# Le chemin PHYSIQUE : appelé par le lien `<data>/scripts/`, `cd ..` remonterait dans la data.
+if [[ -e "$(cd "$(dirname "$0")" && pwd -P)/../.cortex-programme" ]]; then
+    mkdir -p "$BRAIN_ROOT/.cache"
+    LOG_FILE="$BRAIN_ROOT/.cache/sync.log"
+fi
 QUIET=false
 CHECK_ONLY=false
 

@@ -558,11 +558,13 @@ def la_suite(brain: Path, cible: str, sans_unites: bool, dire) -> int:
         dire("  ⓘ unités non réinstallées : bash scripts/brain-engine.sh install systemd (ou stop/start)")
     # Le garde de lecture : son hook vit dans `.claude/settings.json`, que le
     # gabarit ne livre pas — la mise à jour l'y ajoute, sans toucher au reste.
-    garde = brain / "scripts" / "garde-lecture.py"
-    if garde.is_file():
-        r = subprocess.run([sys.executable, str(garde), "brancher", "--brain", str(brain)],
-                           capture_output=True, text=True, timeout=60)
-        dire(f"  {r.stdout.strip() or r.stderr.strip()}")
+    # Le garde des commandes aussi, dans les mêmes réglages.
+    for nom in ("garde-lecture.py", "garde-commandes.py"):
+        garde = brain / "scripts" / nom
+        if garde.is_file():
+            r = subprocess.run([sys.executable, str(garde), "brancher", "--brain", str(brain)],
+                               capture_output=True, text=True, timeout=60)
+            dire(f"  {r.stdout.strip() or r.stderr.strip()}")
     dire("\nEnsuite, à la main :")
     dire("  bash scripts/schema-retraits.sh      # à blanc : ce que la version retire de ta base")
     dire("  brain doctor")

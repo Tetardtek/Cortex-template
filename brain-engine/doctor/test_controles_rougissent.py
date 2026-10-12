@@ -459,6 +459,7 @@ def main() -> int:
         declare = "\n".join(f'  "{e}": programme' for e in entrees)
         niveaux.write_text(
             "version: 1\nniveaux:\n  programme: \"conçu, versionné\"\n"
+            "  satellite: \"monté à côté\"\n  donnee: \"à l'utilisateur\"\n"
             f"entrees:\n{declare}\n", encoding="utf-8")
         git_init(base)
         garantie("niveaux / brain cohérent",
@@ -468,6 +469,27 @@ def main() -> int:
         garantie("niveaux / entrée non déclarée",
                  joue("niveaux.py", base, "--check"), 1)
         (base / "surprise.md").unlink()
+
+        # Un satellite À SOI : un dépôt imbriqué que `NIVEAUX.yml` (celui du programme)
+        # ne connaît pas. Déclaré dans `satellites.yml` et ignoré par le dépôt, il est
+        # rattaché ; sans sa déclaration, il ne l'est pas. Mesuré sur le laptop le 8/10 :
+        # `echanges/`, `wiki/`.
+        perso = base / "perso"
+        perso.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=perso, check=True)
+        (base / ".gitignore").write_text("/perso/\n", encoding="utf-8")
+        garantie("niveaux / satellite à soi, non déclaré",
+                 joue("niveaux.py", base, "--check"), 1)
+        (base / "satellites.yml").write_text(
+            "satellites:\n  perso: {depot: perso, machines: [fixe]}\n"
+            "  ailleurs: {depot: x, machines: [fixe], chemin: ~/x}\n", encoding="utf-8")
+        garantie("niveaux / satellite déclaré dans satellites.yml",
+                 joue("niveaux.py", base, "--check"), 0)
+        (base / ".gitignore").unlink()
+        garantie("niveaux / satellite déclaré mais non ignoré",
+                 joue("niveaux.py", base, "--check"), 1)
+        shutil.rmtree(perso)
+        (base / "satellites.yml").unlink()
 
         vrai_niveaux = niveaux.read_text(encoding="utf-8")
         niveaux.write_text(vrai_niveaux + '  "fantome.md": programme\n',
@@ -2006,6 +2028,19 @@ def cmd_close_stale():
             f'#!/usr/bin/env bash\nbash "$BRAIN_MAIN/scripts/{par_hook}" --quiet\n')
         garantie("rattachement / une source de hook rattache",
                  joue("rattachement_scripts.py", base), 0)
+        # Sans `crontab` sur la machine : aucune ligne de cron, pas un plantage. Le PATH
+        # ne mène qu'à un dossier qui ne porte que l'interpréteur — le dossier de
+        # l'interpréteur lui-même (`/usr/bin`) porte aussi `crontab`, et le témoin passait
+        # sur l'ancien code. Mesuré le 8/10 sur le laptop.
+        seul = base / "bin-sans-cron"
+        seul.mkdir()
+        (seul / "python3").symlink_to(sys.executable)
+        sans_cron = {**os.environ, "PATH": str(seul)}
+        r = subprocess.run([sys.executable, str(OUTILS / "rattachement_scripts.py"),
+                            "--brain", str(base)], capture_output=True, text=True,
+                           env=sans_cron)
+        garantie("rattachement / sans crontab, il juge encore",
+                 r.returncode if "Traceback" not in r.stderr else 99, 0)
 
     # ── Le TTL des claims suit leur type — ──────────────────────────
     #

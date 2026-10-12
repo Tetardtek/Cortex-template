@@ -8,7 +8,7 @@ ordre: 1
 # Démarrer — du fork au premier `brain boot`
 
 > Ce que fait l'installation, étape par étape, et ce qu'elle touche sur ta
-> machine. Kernel v3.5.4.
+> machine. Kernel v3.5.5.
 
 ---
 
@@ -67,7 +67,7 @@ Ses 13 étapes :
 | 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |
 | 11. Les hooks git | installe les hooks du brain dans `.git/hooks` : le claim d'une session reste en vie, la base suit les handoffs, et **un commit doit porter un type déclaré dans `KERNEL.md`** (`feat:`, `fix:`, `todo:`…) — un message libre est refusé, en le disant |
 | 12. La vue des agents | construit `agents/` : des liens vers `noyau/agents/`, ou vers `instance/agents/` quand tu surcharges un agent (`brain vue --construire`) |
-| 13. Le garde de lecture | ajoute à `.claude/settings.json` un hook qui interdit à tout **sous-agent** de Claude Code (le worker de l'autonomie, un Explore…) de lire le personnel — `zone_personal` et `zone_aucune` de `NIVEAUX.yml` ; ta session lit librement. Il n'ajoute que son entrée : tes réglages et tes hooks restent. `brain maj` le pose aussi sur un fork déjà installé |
+| 13. Les gardes de Claude Code | ajoute à `.claude/settings.json` deux hooks. Le **garde de lecture** interdit à tout **sous-agent** de Claude Code (le worker de l'autonomie, un Explore…) de lire le personnel — `zone_personal` et `zone_aucune` de `NIVEAUX.yml` ; ta session lit librement. Le **garde des commandes** refuse, au moment où ils partent, cinq gestes qui ont chacun coûté un incident : `git add -A` dans le brain, ton fichier de secrets exécuté par le shell, `rm` par motif dans `workspace/scratch/`, une recherche qui ne suit pas les liens d'une vue, `sed -i` sur un lien. Chacun n'ajoute que son entrée : tes réglages et tes hooks restent. `brain maj` les pose aussi sur un fork déjà installé |
 
 > **L'étape 2 ne remplace pas un `~/.claude/CLAUDE.md` qui existe déjà.** S'il
 > diffère du modèle, elle pose le modèle à côté (`~/.claude/CLAUDE.md.modele`) :

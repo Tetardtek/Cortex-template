@@ -77,6 +77,26 @@ absolu ou en `~/…` : il est suivi et cloné là, et sa clé n'est plus qu'un n
 Sans `satellites.yml`, il ne fait rien : les satellites restent des dossiers.
 Avec lui, l'installation (`brain init`) clone ceux de la machine.
 
+### Un brain servi par le paquet
+
+Installé par le paquet `brain-cortex` (pipx, avec son index : `installer-avec-claude.md`), le programme vit à part et ton dossier
+ne garde que tes données — c'est un dépôt git à lui. `brain init` y fait le
+ménage des satellites :
+
+- son `.gitignore` tait **chaque satellite en entier** : les dossiers qui sont
+  des dépôts git, et ceux que `satellites.yml` déclare (un dépôt ne s'embarque
+  pas dans un autre) ;
+- un satellite **à toi**, que le gabarit ne connaît pas, se déclare dans
+  `satellites.yml` — le doctor (« niveaux déclarés ») le compte alors comme une
+  entrée du brain ;
+- les modèles du gabarit (`README.md`, `_template.md`, `.gitkeep`) ne se posent
+  que dans un dossier absent ou vide, jamais dans un satellite qui a déjà ses
+  données ;
+- un dossier qui arrive avec ses handoffs : la base neuve les reçoit.
+
+Ici, `satellites.yml` ne verrouille rien : il n'y a pas de noyau dans ton
+dossier.
+
 ---
 
 ## La règle

@@ -5801,6 +5801,67 @@ class TestVueDuProgramme(unittest.TestCase):
         self.assertFalse((self.data / 'KERNEL.md').exists())
 
 
+    # ── Un semis ne va que dans un dossier absent ou vide ──
+
+    def _depot(self, rel):
+        d = self.data / rel
+        d.mkdir(parents=True)
+        (d / 'mien.md').write_text('à moi\n')
+        subprocess.run(['git', 'init', '-q', str(d)], check=True)
+        return d
+
+    def test_un_satellite_existant_ne_recoit_aucun_semis(self):
+        """Relancé sur le laptop (8/10), `brain init` posait `README.md` et `.gitkeep` dans
+        des satellites qui ne les suivent pas : des fichiers non suivis, à retirer."""
+        d = self._depot('projets')
+        r = self._relier()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((d / '_template.md').exists(), 'un semis est entré dans un dépôt existant')
+
+    def test_un_dossier_vide_reçoit_son_semis(self):
+        (self.data / 'projets').mkdir()
+        self._relier()
+        self.assertEqual((self.data / 'projets' / '_template.md').read_text(), 'modèle\n')
+
+    def _satellites(self):
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        env['BRAIN_ROOT'] = str(self.data)
+        return subprocess.run([sys.executable, str(self.prog / 'scripts' / 'vue.py'), '--satellites'],
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def test_le_gitignore_tait_chaque_satellite_une_fois(self):
+        """Le `.gitignore` semé ne taisait que le CONTENU (`handoffs/*`) : un dépôt imbriqué
+        restait « ni déclaré ni ignoré ». Les dépôts présents et ceux de `satellites.yml`
+        sont tus en entier ; un dépôt qui vit ailleurs (`chemin:`) n'est pas un satellite
+        du dossier."""
+        self._depot('perso')
+        (self.data / '.gitignore').write_text('handoffs/*\n')
+        (self.data / 'satellites.yml').write_text(
+            'satellites:\n  autre: {depot: autre, machines: [fixe]}\n'
+            '  loin: {depot: loin, machines: [fixe], chemin: ~/loin}\n'
+            '  instance/agents: {depot: agents, machines: [fixe]}\n')
+        for _ in range(2):
+            r = self._satellites()
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        g = (self.data / '.gitignore').read_text()
+        self.assertEqual(g.count('# brain init : les satellites'), 1, g)
+        self.assertIn('handoffs/*', g, 'la ligne du gabarit a disparu')
+        for n in ('/autre/', '/perso/'):
+            self.assertIn(n, g)
+        for n in ('/loin/', '/instance/agents/'):
+            self.assertNotIn(n, g)
+        ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', 'perso'])
+        self.assertEqual(ign.returncode, 0, 'le satellite n est pas ignoré par le dépôt')
+
+    def test_sans_la_marque_les_satellites_ne_touchent_pas_le_gitignore(self):
+        (self.prog / '.cortex-programme').unlink()
+        (self.data / '.gitignore').write_text('handoffs/*\n')
+        self._depot('perso')
+        r = self._satellites()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.data / '.gitignore').read_text(), 'handoffs/*\n')
+
+
 class TestInitAPart(unittest.TestCase):
     """`brain init` d'un programme installé à part exige un dossier, hors du programme."""
 
@@ -12979,6 +13040,128 @@ class TestGardeCommandes(unittest.TestCase):
                        {'tool_name': 'Bash', 'cwd': '/', 'tool_input': {'command': 'echo "pas fermé'}}):
             r = self._hook(entree)
             self.assertEqual((r.returncode, r.stdout.strip()), (0, ''), entree)
+
+
+class TestGardeCommandesPaquet(unittest.TestCase):
+    """Le garde des commandes part au gabarit : `brain init` le pose dans les réglages du
+    projet, et installé à part il juge le brain de la commande — pas le programme."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'garde-commandes.py'
+    DONNEES = BRAIN_ROOT_PATH / 'brain-engine' / 'donnees.py'
+
+    def setUp(self):
+        if not self.SCRIPT.is_file():
+            self.skipTest('garde-commandes.py absent')
+        self.tmp = Path(tempfile.mkdtemp(prefix='garde-paquet-'))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self._env = {k: os.environ.get(k) for k in ('XDG_CONFIG_HOME', 'BRAIN_ROOT')}
+        os.environ['XDG_CONFIG_HOME'] = str(self.tmp / 'conf')      # aucun pointeur réel
+        os.environ.pop('BRAIN_ROOT', None)
+        self.addCleanup(self._rendre_env)
+
+    def _rendre_env(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _charger(self, script):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f'garde_{abs(hash(str(script)))}', script)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def _git(self, d):
+        subprocess.run(['git', 'init', '-q'], cwd=d, check=True)
+        (d / 'focus.md').write_text('# ma direction\n')
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', 'focus.md'], cwd=d, check=True)
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'a',
+                        '--no-verify'], cwd=d, check=True)
+
+    def _programme_a_part(self):
+        """Un programme marqué (le garde et `donnees.py` du vrai programme) et un dossier de
+        données à part : un dépôt git, son MYSECRETS, son workspace/scratch/."""
+        prog = self.tmp / 'programme'
+        (prog / 'scripts').mkdir(parents=True)
+        (prog / 'brain-engine').mkdir()
+        (prog / '.cortex-programme').write_text('brain-cortex\n')
+        shutil.copy2(self.SCRIPT, prog / 'scripts' / 'garde-commandes.py')
+        shutil.copy2(self.DONNEES, prog / 'brain-engine' / 'donnees.py')
+        data = self.tmp / 'MonBrain'
+        (data / 'workspace' / 'scratch').mkdir(parents=True)
+        (data / 'brain-compose.local.yml').write_text('instances: {}\n')
+        (data / 'MYSECRETS').write_text('CLE=x\n')
+        self._git(data)
+        return self._charger(prog / 'scripts' / 'garde-commandes.py'), prog, data
+
+    def test_installe_a_part_il_juge_le_brain_de_la_commande(self):
+        g, prog, data = self._programme_a_part()
+        self.assertEqual(g.brain_de(data / 'workspace').resolve(), data.resolve(),
+                         'le brain du dossier courant, en remontant jusqu\'à brain-compose.local.yml')
+        self.assertIsNotNone(g.juger('git add -A', data), 'git add -A dans le dépôt de données')
+        self.assertIsNotNone(g.juger('cd workspace && git add .', data))
+        self.assertIsNotNone(g.juger('rm -f workspace/scratch/pr-*.md', data))
+        self.assertIsNotNone(g.juger('source MYSECRETS', data))
+        # Témoins : un chemin nommé, et un dépôt qui n'est pas le brain.
+        self.assertIsNone(g.juger('git add focus.md', data))
+        ailleurs = self.tmp / 'ailleurs'
+        ailleurs.mkdir()
+        self._git(ailleurs)
+        self.assertIsNone(g.juger('git add -A', ailleurs), 'hors de tout brain : pas le brain')
+
+    def test_sans_brain_trouve_les_gestes_du_brain_ne_sont_pas_juges(self):
+        g, prog, data = self._programme_a_part()
+        nulle_part = self.tmp / 'nulle-part'
+        nulle_part.mkdir()
+        self.assertIsNone(g.brain_de(nulle_part))
+        self.assertIsNone(g.juger('git add -A', nulle_part))
+        self.assertIsNotNone(g.juger('source ~/MYSECRETS', nulle_part), 'MYSECRETS ne dépend pas du brain')
+
+    def test_un_brain_git_reste_juge_par_sa_position(self):
+        g = self._charger(self.SCRIPT)
+        self.assertEqual(g.brain_de(self.tmp), BRAIN_ROOT_PATH.resolve(),
+                         'sans la marque : le brain où vit le garde, quel que soit le dossier')
+
+    def test_brancher_fusionne_et_ne_double_pas(self):
+        g = self._charger(self.SCRIPT)
+        brain = self.tmp / 'b'
+        (brain / '.claude').mkdir(parents=True)
+        mien = {'type': 'command', 'command': 'echo a-moi'}
+        (brain / '.claude' / 'settings.json').write_text(json.dumps({
+            'permissions': {'additionalDirectories': ['/x']},
+            'hooks': {'PreToolUse': [{'matcher': 'Read', 'hooks': [mien]}]}}))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(g.brancher(brain), 0)
+            self.assertEqual(g.brancher(brain), 0)
+            self.assertEqual(g.etat(brain), 0)
+        d = json.loads((brain / '.claude' / 'settings.json').read_text())
+        entrees = d['hooks']['PreToolUse']
+        self.assertEqual(len(entrees), 2, 'son entrée, une fois')
+        self.assertEqual(entrees[0]['hooks'], [mien], 'un hook à soi reste')
+        self.assertEqual(d['permissions'], {'additionalDirectories': ['/x']})
+        self.assertEqual(entrees[1], {'matcher': 'Bash', 'hooks': [
+            {'type': 'command', 'command': 'python3 "$CLAUDE_PROJECT_DIR/scripts/garde-commandes.py" hook'}]})
+
+    def test_un_reglage_illisible_n_est_jamais_reecrit(self):
+        g = self._charger(self.SCRIPT)
+        brain = self.tmp / 'b'
+        (brain / '.claude').mkdir(parents=True)
+        (brain / '.claude' / 'settings.json').write_text('{ pas du json')
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(g.brancher(brain), 2)
+        self.assertEqual((brain / '.claude' / 'settings.json').read_text(), '{ pas du json')
+
+    def test_brain_init_et_brain_maj_le_branchent(self):
+        init = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
+        self.assertIn('garde-commandes.py" brancher --brain', init)
+        maj = (BRAIN_ROOT_PATH / 'scripts' / 'maj.py').read_text(encoding='utf-8')
+        self.assertIn('"garde-commandes.py"', maj)
+
+    def test_il_part_au_gabarit(self):
+        self.assertIn('# brain-distribuable: oui',
+                      self.SCRIPT.read_text(encoding='utf-8').splitlines()[:12])
 
 
 class TestScratchNettoyable(unittest.TestCase):

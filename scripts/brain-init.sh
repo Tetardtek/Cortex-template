@@ -263,16 +263,31 @@ KERNEL_VERSION=$(grep '^version:' "$BRAIN_ROOT/brain-compose.yml" | awk '{print 
 # `write_mode: readonly_kernel` ne se déclare que là où le push sera VRAIMENT
 # verrouillé — une machine de plus d'une instance, qui a un `satellites.yml`
 # (voir le verrou plus bas). Écrit partout, il mentait à chaque fork.
+# Installé à part, `satellites.yml` ne dit que les satellites de l'utilisateur (décision de
+# l'owner, 8/10) : il n'y a pas de noyau dans le dossier, rien à verrouiller.
+INSTANCE_MULTI=false
+[[ -f "$BRAIN_ROOT/satellites.yml" ]] && ! ${A_PART:-false} && INSTANCE_MULTI=true
 WRITE_MODE=""
-[[ -f "$BRAIN_ROOT/satellites.yml" ]] && WRITE_MODE="write_mode: readonly_kernel   # machine de plus d'une instance : son noyau se lit, il ne se pousse pas"
+$INSTANCE_MULTI && WRITE_MODE="write_mode: readonly_kernel   # machine de plus d'une instance : son noyau se lit, il ne se pousse pas"
 # Un fork (sans `satellites.yml`) lit son noyau : `noyau/` en lecture seule, ses
 # retouches dans `instance/`. Pas une posture — ni le mode ni les sessions ne
 # changent ; `noyau: ouvert` le garde modifiable.
 NOYAU_LECTURE=""
-[[ -f "$BRAIN_ROOT/satellites.yml" ]] || NOYAU_LECTURE="    noyau: lecture   # ton noyau/ se lit : tes retouches vont dans instance/ (noyau: ouvert pour le modifier)"
+$INSTANCE_MULTI || NOYAU_LECTURE="    noyau: lecture   # ton noyau/ se lit : tes retouches vont dans instance/ (noyau: ouvert pour le modifier)"
 
 if [[ -f "$LOCAL_COMPOSE" ]]; then
   warn "brain-compose.local.yml existe déjà — skip"
+  # Installé à part, le programme change par `pipx upgrade` : relancé ensuite, `brain init`
+  # déclare la version reçue — la seule ligne `kernel_version`, comme `brain maj` le fait
+  # pour un fork. Sans elle, le briefing annonçait la version d'avant (laptop, 8/10).
+  if ${A_PART:-false} && [[ -n "$KERNEL_VERSION" ]]; then
+    _avant=$(sed -n 's/^kernel_version: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$LOCAL_COMPOSE") || true
+    _avant=${_avant%%$'\n'*}
+    if [[ -n "$_avant" && "$_avant" != "$KERNEL_VERSION" ]]; then
+      sed -i "s/^kernel_version:.*/kernel_version: \"$KERNEL_VERSION\"/" "$LOCAL_COMPOSE"
+      ok "kernel_version : $_avant → $KERNEL_VERSION (brain-compose.local.yml)"
+    fi
+  fi
 else
   cat > "$LOCAL_COMPOSE" << EOF
 # brain-compose.local.yml — Registre machine ($BRAIN_NAME)
@@ -340,7 +355,9 @@ fi
 # machines se reconnaît à son `satellites.yml` ; un fork neuf n'en a pas.
 # Tranché par l'owner le 28/09.
 PUSH_VERROUILLE=false
-if [[ ! -f "$BRAIN_ROOT/satellites.yml" ]]; then
+if $A_PART; then
+  info "programme installé à part — le dossier est tes données, push laissé ouvert"
+elif [[ ! -f "$BRAIN_ROOT/satellites.yml" ]]; then
   info "pas de satellites.yml — brain autonome, push laissé ouvert"
 elif git -C "$BRAIN_ROOT" remote get-url origin >/dev/null 2>&1; then
   git -C "$BRAIN_ROOT" remote set-url --push origin no_push
@@ -519,6 +536,27 @@ else
   warn "le moteur n'est pas installé en service — relancer : bash scripts/brain-engine.sh install systemd"
 fi
 
+# ── Étape 9 (suite) — la base reçoit ce que le disque porte déjà ────────────
+#
+# Un dossier qui a déjà ses satellites (des handoffs, des projets) et une base neuve :
+# rien ne remplissait la base — 60 handoffs sur le disque, 0 en base, deux contrôles du
+# doctor rouges (laptop, 8/10). La réparation existait, personne ne la lançait. Le
+# `--check` répond sans écrire (et s'abstient si la base ne répond pas) ; la synchro
+# seulement s'il manque quelque chose.
+if [[ -f "$BRAIN_ROOT/scripts/brain-db-sync.sh" ]]; then
+  _rc=0
+  bash "$BRAIN_ROOT/scripts/brain-db-sync.sh" --check --quiet >/dev/null 2>&1 || _rc=$?
+  if [[ $_rc -eq 2 ]]; then
+    if bash "$BRAIN_ROOT/scripts/brain-db-sync.sh" --quiet >/dev/null 2>&1; then
+      ok "la base a reçu ce que le disque porte (handoffs, sessions…)"
+    else
+      warn "la base n'a pas reçu le disque — relancer : bash scripts/brain-db-sync.sh"
+    fi
+  elif $SANS_SERVICE; then
+    info "sans service — la base, une fois servie, reçoit le disque : bash scripts/brain-db-sync.sh"
+  fi
+fi
+
 # ── Étape 10 — la recherche sémantique (Ollama) ─────────────────────────────
 #
 # Facultative — le brain tourne sans — mais jusqu'au 28/09 personne ne le
@@ -577,18 +615,29 @@ else
   info "pas de noyau/agents/ — agents/ est un dossier ordinaire, rien à construire"
 fi
 
-# ── Étape 13 — le garde de lecture ─────────────────────────────────────────
+# ── Étape 13 — les gardes : lecture, commandes ─────────────────────────────
 #
 # Aucun sous-agent de Claude Code (le worker de l'autonomie, un Explore…) ne
 # lit le personnel : `zone_personal` et `zone_aucune` de NIVEAUX.yml. Le garde
 # est un hook `PreToolUse` du projet : il s'ajoute à `.claude/settings.json`
 # sans toucher au reste — un hook à toi reste à côté.
 echo ""
-echo "[13/$ETAPES] Le garde de lecture..."
+echo "[13/$ETAPES] Les gardes de Claude Code (lecture, commandes)..."
 if python3 "$BRAIN_ROOT/scripts/garde-lecture.py" brancher --brain "$BRAIN_ROOT" >/dev/null; then
   ok "garde de lecture branché — aucun sous-agent ne lit le personnel (.claude/settings.json)"
 else
   warn "le garde de lecture n'est pas posé — .claude/settings.json illisible ? relancer : python3 scripts/garde-lecture.py brancher"
+fi
+# Et le garde des commandes, dans les mêmes réglages : cinq gestes qui ont chacun coûté un
+# incident (`git add -A` dans le brain, `source` sur MYSECRETS, `rm` par motif dans
+# workspace/scratch/, une recherche qui saute les liens de la vue, `sed -i` sur un lien),
+# refusés au moment où ils partent.
+if [[ -f "$BRAIN_ROOT/scripts/garde-commandes.py" ]]; then
+  if python3 "$BRAIN_ROOT/scripts/garde-commandes.py" brancher --brain "$BRAIN_ROOT" >/dev/null; then
+    ok "garde des commandes branché — git add -A, source MYSECRETS… refusés au moment du geste (.claude/settings.json)"
+  else
+    warn "le garde des commandes n'est pas posé — relancer : python3 scripts/garde-commandes.py brancher"
+  fi
 fi
 # Installé à part, le programme est hors du dossier : Claude Code ne lit ni le noyau
 # ni les agents (des liens vers lui) sans permission. Il est déclaré dans les mêmes
@@ -598,6 +647,27 @@ if $A_PART; then
     ok "Claude Code voit le programme (permissions.additionalDirectories, .claude/settings.json)"
   else
     warn "le programme n'est pas déclaré à Claude Code — relancer : python3 scripts/claude-programme.py poser --brain $BRAIN_ROOT"
+  fi
+fi
+
+# ── Le dépôt de données : ses satellites tus, son premier commit ─────────────
+#
+# Installé à part, le dossier de données est un dépôt à lui (étape 0). Mesuré sur le
+# laptop le 8/10 : aucun commit, et son `.gitignore` (celui du gabarit, semé) ne taisait
+# que le CONTENU des satellites — 11 dépôts imbriqués « ni déclarés ni ignorés ». Le
+# `.gitignore` tait maintenant chaque satellite (les dépôts présents, ceux de
+# `satellites.yml`), et le premier commit garde les données d'origine.
+if $A_PART && git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  BRAIN_ROOT="$BRAIN_ROOT" python3 "$PROGRAMME/scripts/vue.py" --satellites >/dev/null \
+    && ok "les satellites, des dépôts à part : le .gitignore du dossier les tait" \
+    || warn "le .gitignore n'a pas tu les satellites — relancer : brain vue --satellites"
+  if ! git -C "$BRAIN_ROOT" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    if git -C "$BRAIN_ROOT" add -A >/dev/null 2>&1 \
+       && git -C "$BRAIN_ROOT" commit -q -m "scribe: le brain naît — ses données (brain init)" >/dev/null 2>&1; then
+      ok "le premier commit des données ($(git -C "$BRAIN_ROOT" rev-list --count HEAD) commit)"
+    else
+      warn "pas de premier commit (identité git absente ? git config user.name / user.email) — à faire : git -C $BRAIN_ROOT commit"
+    fi
   fi
 fi
 

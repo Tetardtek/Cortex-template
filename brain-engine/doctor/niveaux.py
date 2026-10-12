@@ -69,6 +69,24 @@ def main() -> int:
     def niveau_de(v):
         return v.get("niveau") if isinstance(v, dict) else v
 
+    # Les satellites À SOI se déclarent dans `satellites.yml` (décision de l'owner, 8/10) :
+    # `NIVEAUX.yml` est celui du programme — un brain servi par le paquet ne l'écrit pas.
+    # Une clé de premier niveau, sans `chemin:` (un dépôt hors du brain), est une entrée
+    # du brain ; `satellites.yml` se déclare lui-même.
+    sat_yml = root / "satellites.yml"
+    if sat_yml.is_file():
+        try:
+            sats = (yaml.safe_load(sat_yml.read_text(encoding="utf-8")) or {}).get("satellites") or {}
+        except yaml.YAMLError as exc:
+            print(f"\n  ❌ satellites.yml illisible ({exc}) — ses satellites ne se déclarent pas.\n")
+            return 1
+        declare = dict(declare)
+        declare.setdefault("satellites.yml", "donnee")
+        for cle, val in sats.items():
+            if "/" in str(cle) or (isinstance(val, dict) and val.get("chemin")):
+                continue
+            declare.setdefault(f"{cle}/", "satellite")
+
     # Un `-wal` ou un `-shm` n'est pas une entrée du brain : c'est un état
     # transitoire de la base qui porte le même nom, créé et détruit par SQLite
     # au gré des ouvertures. Le déclarer ferait rougir dans l'autre sens dès

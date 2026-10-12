@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.4"
-generated_at: "2026-10-08T19:03"
+kernel_version: "3.5.5"
+generated_at: "2026-10-08T20:41"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 91d813de1c70978ceba2f29fa7eaf4de7b017a0d6fa3273d931a3c20a9e1037a
+  brain-compose.yml: 91a0708f747424fae99fce45fe8d171dda1b1b69750530916830787d2da15d47
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -72,9 +72,9 @@ files:
   noyau/agents/watch.md: 8339cbe7fec7f31eb2cbcd13d4db000c08b7e29df14138a124139a7017afce9d
   scripts/aligne.py: f8a2e4e13a6e4a36d8043690a56284f8c3a4c539a3f7bdda97539d098e023351
   scripts/brain: 6ae6dc2f10824d0875377580731c478394f8357b3af6e044cf169c14d2a30ffc
-  scripts/brain-db-sync.sh: 4487a7caa1f6510b2e623f72ffbe695c3d7806afe5e73671c84201aece883083
+  scripts/brain-db-sync.sh: 63a1693df32efd1663a97aac5cabe615e8602a88ef798c5d44cb1fd021b5977e
   scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
-  scripts/brain-init.sh: 308721169e49f5414cd15b7137a0d2f3cf7fbe68fa47340e03f45a723fc5dc73
+  scripts/brain-init.sh: 4550e6b49ffcc6f68b9962dad711a3e640cb32b8f5f75e059b3aab5286981b7b
   scripts/brain-satellites.py: fc9b4949d28d19c794f85602f20fffa5532d42752fcd179b1f3f364857358b74
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
@@ -89,6 +89,7 @@ files:
   scripts/dolt-schema-gen.sh: 73564e28bf5810ff15ef7b9596810b044f4882ea15f7931a51b7bd5ca7f5cf70
   scripts/dolt-setup.sh: f12cbeabc15dcf2a6e239670a099138b9cf4e9a141539d034f46b7ee2a1a9f69
   scripts/file-lock.sh: ee1a077bfcbfc5e6b1d76d17cb7421bc43820a10250c6a24ff6713e3d8313615
+  scripts/garde-commandes.py: 8fc3181b52e75675ccb2e0ddf3a77267e4fb8ae641954724c1f96323ac9b332c
   scripts/garde-lecture.py: 0462366296f2cb38b3e111a2ca36e2802a5fc93bc28baef2a7ed621ec455c12d
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
@@ -102,12 +103,12 @@ files:
   scripts/lib/premieres.sh: 91bd6f53ca50bb2f448fcf699cf6c59ae7323860401531f0492e23d0cda4ae32
   scripts/lib/python.sh: 643ea746b6f30388227dcaf13ff445a9f39b99528f1cf491bad7d923010eca9f
   scripts/maj-disponible.py: 97f6537cb2ee7c2ae36931ffe9b17f043eef2bb1bc1eb942f94200c1d9d78c16
-  scripts/maj.py: 9c0fb1bff179c5ae18fc429322b737ed8e92c813904c9bf7850571150a0a58fa
+  scripts/maj.py: 6ba2685d43488941112215a780090591936bed620aae999a03783a7a5e0bd0ef
   scripts/migrer.py: 6d92515d8eecdf44c27aa4ec52d074ede9ccf2ae47aa46614dd1e2732a1780af
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
   scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
   scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be
-  scripts/vue.py: 449a593f9bb87b69e0a0eaa786ce302fa1718620f448ebad966dee7129dc923b
+  scripts/vue.py: 3c0c99273621e5732f3dafe50880b55fe6efb7405a2ae23dfe05afca1681d0ee
   scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

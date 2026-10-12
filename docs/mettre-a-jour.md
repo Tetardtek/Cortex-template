@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.5.4.
+> travail. Kernel v3.5.5.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -156,10 +156,12 @@ la nouvelle version. C'est la trace que les étapes après la fusion sont faites
 au boot, un écart entre elle et la version du gabarit signale une mise à jour
 pas terminée.
 
-**8. Brancher le garde de lecture** : `python3 scripts/garde-lecture.py brancher`
+**8. Brancher les gardes** : `python3 scripts/garde-lecture.py brancher`
 ajoute son hook à ton `.claude/settings.json`, que le dépôt ne suit pas — aucun
-sous-agent de Claude Code ne lira ton personnel. Il n'ajoute que son entrée, et
-ne fait rien s'il y est déjà ; `python3 scripts/garde-lecture.py etat` le dit.
+sous-agent de Claude Code ne lira ton personnel. `python3 scripts/garde-commandes.py
+brancher` y ajoute le garde des commandes (`git add -A` dans le brain, `source` sur
+`MYSECRETS`…, refusés au moment du geste). Chacun n'ajoute que son entrée, et ne
+fait rien s'il y est déjà ; `etat` à la place de `brancher` le dit.
 
 **Après une mise à jour de Claude Code** : `bash scripts/essai-garde-lecture.sh`.
 Le garde reconnaît un sous-agent à un champ que Claude Code passe à ses hooks, et
