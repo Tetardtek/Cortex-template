@@ -1,7 +1,7 @@
 <!-- Généré depuis docs/src/README.md par scripts/docs-generer.py — ne pas éditer ici. -->
 # La doc du brain
 
-> Kernel v3.5.8 — 58 agents, 6 types de session.
+> Kernel v3.5.9 — 58 agents, 6 types de session.
 
 | Page | Pour |
 |---|---|
@@ -12,6 +12,7 @@
 | [Architecture](architecture.md) | le noyau, les satellites, l'instance, les zones |
 | [Agents](agents.md) | les agents, groupés par ce qu'ils font |
 | [Recettes](recettes.md) | quelle session, quels agents, pour quoi |
+| [La méthode](methode.md) | une fiche, un worker, un juge — et les outils qui tiennent le backlog |
 | [Brain-engine](moteur.md) | le moteur : commandes, modes, accès, recherche |
 | [Satellites](satellites.md) | ta mémoire, à part du noyau |
 | [Pulse](pulse.md) | où j'en suis, en un bloc |

@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.8"
-generated_at: "2026-10-13T10:13"
+kernel_version: "3.5.9"
+generated_at: "2026-10-13T12:04"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 26faade6769e5ace349f5bdb69308e9faafff5480ba1dfdcb9325853915fb1e3
+  brain-compose.yml: c0bc00f2259fe47bb28ac4e0992a085ed44e867f7e99e97f964d90faa82ba2f3
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -40,7 +40,7 @@ files:
   noyau/agents/helloWorld.md: 72187fc6772f2702fcadb34f399b3b292b639eb7cebe011461edf4e111a3801d
   noyau/agents/i18n.md: 7e47bc0d938657019359f41242ea0e1e32e4fb85b2b2d0656d0f538e4cfcc536
   noyau/agents/integrator.md: aacf9041bd4ce2ac1529d829bcf26bd36684750cdc159ff11a6ddf80bd24e1be
-  noyau/agents/kanban-scribe.md: db5c898f329601b171e206db24b89a11c40ebc7e0b5475d1d6d081fa5a7fc7ff
+  noyau/agents/kanban-scribe.md: 180d7e3c92e1f0a63fc045c12919d5877698dab28c55aff232549f6c1cf6d229
   noyau/agents/learning-journal.md: 4f52bfadbab36c89e1491b57eb95dd10862d66e55682ca32328d62c093a03d33
   noyau/agents/mail.md: bcf0a5c15db2c26fdeabdedbebf480a125dbf138ac63b838751874fc2f61afb1
   noyau/agents/mentor.md: 24a69556056129b212959b512392ce51182f60cfb8e1a83acf1c929dbcb6e1d9
@@ -49,7 +49,7 @@ files:
   noyau/agents/optimizer-backend.md: 86c28aa3cdfec041c6edf36a0cae996eb5aef94d82acdace669d4ed4b6457170
   noyau/agents/optimizer-db.md: 2e05908892bd6685c926b8aabb3e1ee7dbd7d43e1e26377f5792c41b571bc0eb
   noyau/agents/optimizer-frontend.md: 264149b135242fd2f157bed1b49515bbd20e9c09c388b85500de4a24413e2dff
-  noyau/agents/orchestrator.md: 4d2e7b5ab7d7a9328ff5e67ff408ee4e7db8fb4c14e8dc4af8c5a83b2f0b3aee
+  noyau/agents/orchestrator.md: d86496bcbabc30d1f6c90b56ded50c630d6b2f5fd18eb94cd49e066caa88219a
   noyau/agents/orchestrator-scribe.md: 426f77e2c44dc31584691006b7b468c54e317551a0b7b6c6e8d1332bbd18c0c1
   noyau/agents/pathfinder.md: 80061adada01a5c306cec16a6894e3e93c86c2314ebf1fa0266d75748f2747ff
   noyau/agents/pm2.md: f920dc7414e3c59d235fe392df7fb01cbff70551453f0bc6203a18a077f4babf
@@ -91,7 +91,7 @@ files:
   scripts/dolt-setup.sh: f12cbeabc15dcf2a6e239670a099138b9cf4e9a141539d034f46b7ee2a1a9f69
   scripts/file-lock.sh: ee1a077bfcbfc5e6b1d76d17cb7421bc43820a10250c6a24ff6713e3d8313615
   scripts/garde-commandes.py: 8fc3181b52e75675ccb2e0ddf3a77267e4fb8ae641954724c1f96323ac9b332c
-  scripts/garde-lecture.py: 0462366296f2cb38b3e111a2ca36e2802a5fc93bc28baef2a7ed621ec455c12d
+  scripts/garde-lecture.py: fb87ad186a29f38a30ae74cbd1b8d1bd12ba1c84626d8591c589343ebf37422e
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
   scripts/install-brain-hooks.sh: 8e0432bb7201783990f5df86a3610d9ff3a6cf70dd9a35b8bd13ed3170722f85

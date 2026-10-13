@@ -78,6 +78,7 @@ onglet Docs) :
 | [Architecture](docs/architecture.md) | noyau, satellites, instance |
 | [Agents](docs/agents.md) | la liste complète, générée depuis les agents |
 | [Recettes](docs/recettes.md) | quelle session, quels agents, pour quoi |
+| [La méthode](docs/methode.md) | une fiche, un worker, un juge |
 | [Brain-engine](docs/moteur.md) | le moteur, ses commandes, ses accès |
 
 Les décisions qui expliquent la forme du brain : [ARCHITECTURE.md](ARCHITECTURE.md).

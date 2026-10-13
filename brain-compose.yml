@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.5.8"
+version: "3.5.9"
 
 # ---
 # Ownership — kerneluser
@@ -238,3 +238,6 @@ changelog:
   - version: "3.5.8"
     date: "2026-10-13"
     notes: "La statusline livree, l'installation completee, brain maj recoit les fichiers que brain init remplit. Une statusline Claude Code part avec le programme (scripts/brain-statusline.sh) : le claim de la session (scope, age, plusieurs, pas de claim), la branche, le dossier, le modele, le contexte ; brain init la branche seulement si aucune statusLine n'existe, sinon il donne la ligne a poser. Le .gitignore livre tait le coffre du brain en entier ; brain init pose un inventaire des secrets vide, sauf si le coffre est declare satellite ; --bootstrap du registre des secrets declare la machine courante. Un satellite devenu depot : ses hooks reposes, ses semis desuivis et annonces, une url: par satellite dans satellites.yml. brain maj recoit PATHS.md et focus.md par une fusion a trois sur les semis remplis : les lignes de la personne restent, ce qui n'est que du semis prend l'amont, une ligne changee des deux cotes garde la sienne et l'amont est pose a cote. PATHS.md renvoie a brain init. Mise a jour depuis la v3.5.7 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.5.9"
+    date: "2026-10-13"
+    notes: "La methode livree, et un garde de lecture qui juge ou menent les chemins. docs/methode.md decrit la boucle : la fiche (workspace/backlog/<projet>/), composer (orchestrator), le go, le worker dans son worktree, le juge (preuves rejouees, temoin negatif, mutant), la relecture, la fusion ; les paliers a/b/c, dev/autonome, les trois gardes. L'index et la cloture du backlog partent avec le doctor (brain-engine/doctor/index_backlog.py, cloture_backlog.py) ; --check ne depend plus d'ou l'outil est lance ; kanban-scribe et orchestrator donnent leurs commandes, la forge reste a l'outil de la personne. Le garde de lecture ne juge plus le texte d'une commande mais ou menent ses chemins : cd suivis, liens resolus, globs et accolades developpes, $(...) juge comme une commande ; un chemin qui tombe dans le personnel est refuse meme s'il ne le nomme pas ; un motif de grep, un message de commit, un heredoc ecrit ailleurs passent ; ce qu'il ne peut pas trancher (une variable, le code de python -c) est refuse, en le disant. Mise a jour depuis la v3.5.8 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."

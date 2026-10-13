@@ -75,17 +75,30 @@ python3 <outils>/kanban.py tenir --brain <BRAIN_ROOT> --a-blanc     # n'écrit r
 Sortie 0 : le backlog est tenu. Sortie 1 : l'étape qui a manqué est nommée — la
 rapporter telle quelle, ne pas la contourner.
 
+**Ce que le gabarit livre** — sans `kanban.py`, les deux premiers gestes se font
+avec les outils du doctor (`brain-engine/doctor/`), lancés depuis la racine du brain :
+
+```bash
+python3 brain-engine/doctor/index_backlog.py --brain . --projet <projet> --ecrire   # 1. l'index, régénéré
+python3 brain-engine/doctor/index_backlog.py --brain . --projet <projet> --check    #    puis vérifié
+python3 brain-engine/doctor/cloture_backlog.py --brain . --projet <projet>          # 2. chaque clôture porte sa preuve
+```
+
+Le troisième — la forge (issues, PR) — revient à la personne et à son outil
+(`gh`, `tea`, l'interface web) : le gabarit n'en livre pas. La boucle entière :
+`docs/methode.md`.
+
 **En deux temps** — mesuré au premier usage (29/09) : lancé sur le tronc partagé,
 `tenir` y régénérait l'index et le laissait modifié, sans commit.
 
 | Quand | Où | Commande | Ce qui en sort |
 |---|---|---|---|
-| **avant la PR** | le worktree de la fiche | `tenir --sans-forge` | l'index régénéré et les clôtures vérifiées **entrent dans la PR** |
+| **avant la PR** | le worktree de la fiche | `tenir --sans-forge` (ou l'index et la clôture, ci-dessus) | l'index régénéré et les clôtures vérifiées **entrent dans la PR** |
 | **après la fusion** | le tronc | `tenir` | les issues suivent ; l'index est déjà juste, rien ne reste modifié |
 
-**Si la commande est absente** (un fork sans ces outils) : le dire, et ne rien
-faire à la main à sa place — un index recopié à la main redevient une seconde
-source qui dérive.
+**Si les outils sont absents** (ni `kanban.py`, ni `brain-engine/doctor/`) : le
+dire, et ne rien faire à la main à leur place — un index recopié à la main
+redevient une seconde source qui dérive.
 
 ## Clore une fiche
 
@@ -164,3 +177,4 @@ Le palier d'un projet se déclare dans sa fiche `projets/<projet>.md`
 | 2026-03-15 | Création — pipeline kanban, transitions d'état, détection autonomie |
 | 2026-09-29 | **Réécrit** (BRAIN-079) : son support `todo/` avait disparu ; il fait avancer les fiches, clôt sur preuve sans attendre l'humain, et tient le backlog d'une commande (palier a) |
 | 2026-10-04 | Palier c : « à venir » remplacé par « en service » — myeline le déclare depuis le 29/09 et l'orchestrator lui passe la main après fusion |
+| 2026-10-13 | Tenir : l'index et la clôture livrés avec le doctor (`brain-engine/doctor/`), leurs commandes ; la forge revient à la personne et à son outil — `docs/methode.md` |

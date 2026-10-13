@@ -17,8 +17,8 @@ La **convention** part avec le gabarit : une vision par projet
 (`workspace/backlog/<projet>/vision.md`), une fiche par tâche, avec ses
 critères de fin — voir `profil/specs/collaboration.md`, « 4 couches ».
 
-L'**outillage** du backlog, lui, ne part pas : l'index généré, le kanban, la
-clôture sur preuve et les contrôles de `brain doctor` vivent dans un dépôt à
-part, encore en construction et non publié. Les agents `kanban-scribe` et
-`todo-scribe` le supposent. Sans lui, un backlog se tient à la main : des
-fiches en Markdown, que tu ranges toi-même.
+L'**index** et la **clôture sur preuve** partent avec le doctor
+(`brain-engine/doctor/`) : l'index de chaque projet se régénère depuis ses
+fiches, et une fiche close porte son rapport. La **forge** (issues, PR) reste
+à ton outil (`gh`, `tea`, l'interface web). Les commandes, et la boucle
+entière — une fiche, un worker, un juge : `docs/methode.md`.

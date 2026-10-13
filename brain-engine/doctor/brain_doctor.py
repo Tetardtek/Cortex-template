@@ -645,15 +645,31 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
 #: `RACINE`) : le doctor distribué les emporte au même endroit relatif.
 RESSOURCES_GABARIT = ("contrat/capacites.yml",)
 
+#: Des outils que le doctor distribué emporte SANS en faire un contrôle : ceux
+#: avec lesquels une personne tient son backlog — l'index généré des fiches et
+#: la clôture sur preuve. Leurs contrôles (« index du backlog », « rapports de
+#: clôture ») restent d'instance ; les outils, eux, servent à tout brain qui
+#: éclate son backlog en fiches. Leurs imports (`_fiches`, `_config_instance`)
+#: se résolvent par le même parcours que ceux des contrôles. La part de la
+#: forge (`kanban.py`, `backlog_issues.py`) n'est pas ici : elle suppose une
+#: forge et son outil, que chaque personne a à elle.
+OUTILS_LIVRES = ("index_backlog", "cloture_backlog")
+
 
 def fichiers_du_gabarit() -> list[str]:
     """Ce que le doctor distribué emporte, en chemins relatifs à la racine de ce
-    dépôt : lui, les outils de ses contrôles de portée gabarit, ce qu'ils
-    IMPORTENT, et leurs ressources. Pas ce qu'ils citent par leur nom —
+    dépôt : lui, les outils de ses contrôles de portée gabarit, les outils
+    livrés sans contrôle (`OUTILS_LIVRES`), ce qu'ils IMPORTENT, et leurs
+    ressources. Pas ce qu'ils citent par leur nom —
     `test_controles_rougissent` éprouve des outils d'instance, et ses cas
     s'abstiennent quand l'outil n'est pas là."""
     locaux = {p.stem for p in OUTILS.glob("*.py")}
-    a_voir = ["brain_doctor"]
+    # Un outil déclaré qui n'est plus là ne disparaît pas du gabarit en silence.
+    absents = sorted(set(OUTILS_LIVRES) - locaux)
+    if absents:
+        raise SystemExit("OUTILS_LIVRES nomme des outils qui n'existent plus : "
+                         + ", ".join(absents))
+    a_voir = ["brain_doctor", *OUTILS_LIVRES]
     # Un brain qui n'existe pas : `complet=True` y cherche le jeton owner, et une
     # liste de fichiers n'a pas à lire MYSECRETS, même sans l'afficher.
     tous = controles(Path("/nulle-part/brain-du-listage"), complet=True)

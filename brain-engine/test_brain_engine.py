@@ -13188,10 +13188,11 @@ class TestGardeLecture(unittest.TestCase):
         shutil.copy(script_d_instance(self.SCRIPT), b / 'scripts' / 'garde-lecture.py')
         (b / 'NIVEAUX.yml').write_text(
             'version: 1\n# zone_personal: un commentaire n\'ouvre rien\nzone_personal:\n'
-            '  - profil/identity/\n  - profil/capital*\n  - vie/\n  - journal/\n'
+            '  - profil/identity/\n  - profil/capital*\n  - vie/\n  - journal/\n  - carnet/intime/\n'
             'zone_aucune:\n  - brain-secrets/\nentrees:\n  vie/: donnee\n', encoding='utf-8')
         for f in ('vie/papiers.md', 'profil/identity/moi.md', 'profil/capital.md', 'profil/decisions/x.md',
-                  'brain-secrets/MYSECRETS', 'journal/j.md', 'public.md', 'revie/x.md'):
+                  'brain-secrets/MYSECRETS', 'journal/j.md', 'public.md', 'revie/x.md',
+                  'carnet/intime/x', 'carnet/public.md'):
             (b / f).parent.mkdir(parents=True, exist_ok=True)
             (b / f).write_text('x', encoding='utf-8')
         (b / 'raccourci.md').symlink_to(b / 'vie' / 'papiers.md')
@@ -13199,18 +13200,23 @@ class TestGardeLecture(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def hook(self, outil, entree, agent='Explore'):
+    def hook(self, outil, entree, agent='Explore', env=None):
         donnees = {'tool_name': outil, 'tool_input': entree, 'cwd': str(self.brain)}
         if agent:
             donnees['agent_type'] = agent
         r = subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), 'hook'],
-                           input=json.dumps(donnees), capture_output=True, text=True, timeout=30)
+                           input=json.dumps(donnees), capture_output=True, text=True, timeout=30,
+                           env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout) if r.stdout.strip() else {}
 
-    def refuse(self, outil, entree, agent='Explore'):
-        sortie = self.hook(outil, entree, agent)
+    def refuse(self, outil, entree, agent='Explore', env=None):
+        sortie = self.hook(outil, entree, agent, env)
         return (sortie.get('hookSpecificOutput') or {}).get('permissionDecision') == 'deny'
+
+    def raison(self, commande):
+        sortie = self.hook('Bash', {'command': commande})
+        return (sortie.get('hookSpecificOutput') or {}).get('permissionDecisionReason') or ''
 
     def test_un_sous_agent_ne_lit_pas_le_personnel(self):
         for f in ('vie/papiers.md', 'profil/identity/moi.md', 'profil/capital.md', 'brain-secrets/MYSECRETS',
@@ -13299,6 +13305,125 @@ class TestGardeLecture(unittest.TestCase):
         for c in ('grep -rn x vie/ --exclude-dir=brain-secrets', 'cat brain-secrets/MYSECRETS',
                   "git grep x -- vie/ ':!profil/'"):
             self.assertTrue(self.refuse('Bash', {'command': c}), c)
+
+    # `journal/` : un préfixe personnel déclaré par ce brain jetable seulement ; la même
+    # logique que les préfixes par défaut, et le garde de la session qui écrit ces témoins ne le
+    # connaît pas.
+    def test_bash_juge_ou_menent_les_chemins(self):
+        """Le garde refusait du travail qui ne lit rien du brain — un motif de grep, un message de
+        commit, un rendu ailleurs, un heredoc écrit dans /tmp. Il juge où mènent les chemins, pas
+        le texte."""
+        rendu = Path(self._tmp.name) / 'rendu'
+        rendu.mkdir()
+        for c in ("grep -n '/journal/' brain-template/.gitignore",
+                  "grep -n 'journal/' brain-template/.gitignore",       # le motif, relatif
+                  "git grep -n -e journal/ -- '*.md'",
+                  f'cd {rendu} && git status --short journal/',
+                  f"sed -i '/^\\/journal\\//d' {rendu}/.gitignore",
+                  f"cat > {rendu}/t.py <<'EOF'\nassert '/journal/' in texte\nEOF",
+                  "git commit -m 'taire journal/ entier' -- .gitignore",
+                  f'ls {rendu}/journal/'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_les_vraies_lectures_restent_refusees(self):
+        env = dict(os.environ, HOME=self._tmp.name)     # ~/Brain : le brain jetable
+        for c in ('cat journal/j.md', 'grep -r foo journal/', f'less {self.brain}/journal/j.md',
+                  'cp journal/j.md /tmp/', 'python3 x.py < journal/j.md', 'cd journal && cat j.md',
+                  'ls journal/', 'cat raccourci.md journal/x', 'grep -f journal/motifs.txt public.md',
+                  'git commit -F journal/message.txt', 'git show HEAD:journal/j.md',
+                  'cd /nexiste/pas; cat journal/j.md', f'cd {self._tmp.name} | true; cat journal/j.md',
+                  f'(cd {self._tmp.name} && ls) && cat journal/j.md',
+                  "cat > journal/note.md <<'EOF'\nx\nEOF"):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        self.assertTrue(self.refuse('Bash', {'command': 'less ~/Brain/journal/j.md'}, env=env), '~ développé')
+        self.assertIn('journal/j.md', self.raison('cat journal/j.md'), 'la raison dit le chemin')
+
+    def test_bash_ce_qu_il_ne_peut_pas_trancher(self):
+        for c in ('python3 -c "open(\'journal/x\')"', 'cat $HOME/Dev/Brain/journal/x', 'cat ${B}/journal/x',
+                  "python3 - <<'EOF'\nprint(open('journal/x').read())\nEOF",
+                  "cat <<'EOF' | python3\nopen('journal/x')\nEOF",
+                  "python3 - > /tmp/o <<'EOF'\nprint(open('journal/x').read())\nEOF",   # sortie redirigée : toujours du code
+                  'bash -c "cat journal/x"', 'node -e "require(\'fs\').readFileSync(\'journal/x\')"',
+                  'eval cat journal/x', 'echo $(cat journal/x)', 'echo `cat journal/x`',
+                  'cd $X && cat journal/x', "python3 <<< \"open('journal/x')\"", "cat 'journal/x"):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+            self.assertIn('je ne peux pas trancher', self.raison(c), c)
+        # Ce qui ne nomme pas le personnel passe, même indécidable.
+        for c in ('python3 -c "print(1)"', 'cat $HOME/notes.md', 'echo $(date)', "cat 'public.md"):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_un_chemin_qui_ne_nomme_pas_le_personnel(self):
+        """Tout mot-chemin se juge, pas seulement celui qui nomme un préfixe : `cd` puis un
+        relatif, un lien. Les rôles inertes restent inertes ; un cwd inconnu laisse passer ce
+        qui ne nomme rien."""
+        for c in ('cd carnet && cat intime/x', 'cd carnet; cat intime/x', 'cat raccourci.md',
+                  'git -C carnet show HEAD:intime/x', 'cat carnet/intime/x',
+                  'cat < raccourci.md', 'echo x > raccourci.md', 'grep -f raccourci.md x',
+                  'cat --file=raccourci.md'):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        rendu = Path(self._tmp.name) / 'rendu'
+        (rendu / 'intime').mkdir(parents=True)
+        for c in (f'cd {rendu} && cat intime/x', 'ls', 'git status', 'cat README.md', 'cat carnet/public.md',
+                  'python3 scripts/x.py --brain .', 'ls .', 'ls ..', 'cd $X && cat intime/x',
+                  'cd - && cat notes.md', "grep -rn raccourci.md .", "git commit -m raccourci.md"):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def lien_vers_le_personnel(self):
+        """Le banc du juge : `docs/lien.md` → `../journal/j.md`."""
+        (self.brain / 'docs').mkdir()
+        (self.brain / 'docs' / 'lien.md').symlink_to('../journal/j.md')
+
+    def sans_lien(self):
+        """Le même brain, sans aucun lien vers le personnel."""
+        (self.brain / 'raccourci.md').unlink()
+        (self.brain / 'docs').mkdir()
+        (self.brain / 'docs' / 'a.md').write_text('x', encoding='utf-8')
+
+    def test_bash_quote_ansi_c(self):
+        """`$'…'` est une quote : son contenu est littéral, pas une expansion."""
+        for c in ("cat $'journal/j.md'", "cat $'jour\\x6eal/j.md'", "cat $'jour'nal/j.md"):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        self.assertIn('journal/j.md', self.raison("cat $'journal/j.md'"))
+        for c in ("echo $'a\\nb'", "printf $'%s\\n' x"):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_accolades(self):
+        """Les accolades d'un mot non quoté se développent avant d'être jugées."""
+        for c in ('cat {journal,x}/j.md', 'cat jo{u,}rnal/j.md', 'cat {x,journal}/j.md',
+                  'cat {{a,journal},b}/j.md', 'cat {a..k}ournal/j.md', 'cat x{1..3} jo{u,v}rnal/j.md'):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        self.assertIn('je ne peux pas trancher', self.raison('echo {1..5000}'), 'au-delà de la borne')
+        for c in ("git log --format='%H {x,y}'", 'ls {a,b}', "cat '{journal,x}'/j.md", 'ls {}',
+                  'echo {a}', 'echo {1..3}'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_globs(self):
+        """Les globs d'un mot non quoté se développent depuis chaque cwd suivi — des noms,
+        jamais un contenu, comme bash avant d'exécuter."""
+        self.lien_vers_le_personnel()
+        for c in ('ls journa?/', 'cat jou*/j.md', 'cat docs/*.md', 'cat [j]ournal/j.md', 'cat *.md',
+                  'cd docs && cat *.md'):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        for c in ("ls 'jou*'", 'cat zzz*/x', 'ls nexiste?/'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_substitution_de_commande(self):
+        """`$(…)` et les backticks se jugent comme une commande, même s'ils ne nomment rien."""
+        self.lien_vers_le_personnel()
+        for c in ('echo $(cat docs/lien.md)', 'echo `cat docs/lien.md`', 'echo "$(cat docs/lien.md)"',
+                  'git commit -m "$(cat docs/lien.md)"', 'echo $(echo $(cat docs/lien.md))',
+                  'grep "$(cat docs/lien.md)" x', 'echo "x `cat docs/lien.md`"'):
+            self.assertTrue(self.refuse('Bash', {'command': c}), c)
+        self.assertIn('je ne peux pas trancher', self.raison('echo $(cat journal/j.md)'), 'nomme : refus actuel')
+        for c in ('echo $(date)', 'echo "$(git status)"', 'echo `ls docs`'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
+
+    def test_bash_faux_positifs_sans_lien(self):
+        """Dans un brain sans lien vers le personnel, développer ne refuse rien de plus."""
+        self.sans_lien()
+        for c in ('ls *.md', 'cat docs/*.md', 'echo $(date)', "git log --format='%H {x,y}'", 'ls {a,b}',
+                  "echo $'a\\nb'", 'ls docs/*', 'cat {public,docs/a}.md'):
+            self.assertFalse(self.refuse('Bash', {'command': c}), c)
 
     def test_une_erreur_laisse_passer_en_le_disant(self):
         r = subprocess.run([sys.executable, str(self.brain / 'scripts' / 'garde-lecture.py'), 'hook'],

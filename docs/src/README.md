@@ -11,6 +11,7 @@
 | [Architecture](architecture.md) | le noyau, les satellites, l'instance, les zones |
 | [Agents](agents.md) | les agents, groupés par ce qu'ils font |
 | [Recettes](recettes.md) | quelle session, quels agents, pour quoi |
+| [La méthode](methode.md) | une fiche, un worker, un juge — et les outils qui tiennent le backlog |
 | [Brain-engine](moteur.md) | le moteur : commandes, modes, accès, recherche |
 | [Satellites](satellites.md) | ta mémoire, à part du noyau |
 | [Pulse](pulse.md) | où j'en suis, en un bloc |

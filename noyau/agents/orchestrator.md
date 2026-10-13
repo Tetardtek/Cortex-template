@@ -209,6 +209,15 @@ Rendre     : le numéro de PR, et ce qu'il n'a pas pu faire, dit tel quel
 En `manual` (BRAIN-032), l'humain donne le go **avant** le lancement du worker
 et **avant** la fusion dans `dev/autonome`.
 
+**Le backlog et la forge.** L'index des fiches et les clôtures se tiennent avec
+ce que le brain porte : `kanban.py` (si présente), sinon les outils livrés avec
+le doctor — `brain-engine/doctor/index_backlog.py` (l'index, `--ecrire` puis
+`--check`) et `brain-engine/doctor/cloture_backlog.py` (chaque clôture porte sa
+preuve), lancés depuis la racine du brain avec `--brain . --projet <projet>`.
+La forge — ouvrir la PR, la fusionner, les issues — revient à la personne et à
+son outil (`gh`, `tea`, l'interface web) : le gabarit n'en livre pas. La boucle
+entière : `docs/methode.md`.
+
 ---
 
 ## Mode juger — le rendu contre la fiche
@@ -338,3 +347,4 @@ Suite : fusion dans dev/autonome + kanban-scribe | la fiche reste ouverte
 | 2026-10-06 | Le brief dit le personnel jamais lu par le worker (`zone_personal`, `zone_aucune`) |
 | 2026-10-06 | Le brief dit comment chercher dans `agents/`, une vue de liens que `grep -r` ne voit pas |
 | 2026-10-06 | Matrice : le code du brain → `forgeron`, l'agent de son programme |
+| 2026-10-13 | Le backlog et la forge : l'index et la clôture livrés avec le doctor, leurs commandes ; la forge revient à la personne et à son outil — `docs/methode.md` |

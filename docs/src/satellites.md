@@ -20,7 +20,7 @@ Le gabarit les livre **vides**, chacun avec son `README.md` :
 | `projets/` | l'état de tes projets — un fichier par projet, à partir de `_template.md` |
 | `handoffs/` | ce qu'une session laisse à la suivante |
 | `infrastructure/` | la description de tes machines et services |
-| `workspace/` | le travail en cours : le backlog (sa convention — l'outillage ne part pas), les brouillons |
+| `workspace/` | le travail en cours : le backlog (sa convention, son index et sa clôture — voir [La méthode](methode.md)), les brouillons |
 | `todo/` | tes intentions et ce qui reste à faire |
 | `toolkit/` | les patterns que tu as validés en production, réutilisables |
 | `progression/` | ton parcours, tes compétences, ton métabolisme de sessions |
