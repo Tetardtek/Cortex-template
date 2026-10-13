@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.9"
-generated_at: "2026-10-13T12:04"
+kernel_version: "3.6.0"
+generated_at: "2026-10-13T22:09"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: c0bc00f2259fe47bb28ac4e0992a085ed44e867f7e99e97f964d90faa82ba2f3
+  brain-compose.yml: cf319a9e13daf6ec903b4b485dd0123b4b480856488eb6685db35c7a44e589e8
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -31,7 +31,7 @@ files:
   noyau/agents/database-architect.md: 8fa97c61d2f6bc73ab4d89d845a169fa8e25ebb53a86b3fc0b8ca97c6c8ba680
   noyau/agents/debug.md: 85b825b31611f15993357240351e488b5389c2ff6c5c223abc2079b542ba2c26
   noyau/agents/doc.md: 84b80287807869d520f3ed2f23929b561ac522b38ca4a36509af92fc12aae15a
-  noyau/agents/forgeron.md: ef9fd5af59807e9ff2d8542bd57f62aac389adc00789ba5fb714b872f9327cfc
+  noyau/agents/forgeron.md: 682048f38d21a4be55f33d2d850eb803a5f4456d84246705bbf98c70a886100e
   noyau/agents/french-teacher.md: 2a3eb16440f9ad55723f5ba12b7e6c698b240232224e67a88cbcafd5d57a2ace
   noyau/agents/frontend-stack.md: 58b18a63978e1fe02c674395c9b76c600aae9d22085571a756859c03f924b61a
   noyau/agents/game-designer.md: a61ed5c0df341b159c08c6fb3ae42ea73fc084b88f73f2e9b26c68ce6a6cf588
@@ -40,7 +40,7 @@ files:
   noyau/agents/helloWorld.md: 72187fc6772f2702fcadb34f399b3b292b639eb7cebe011461edf4e111a3801d
   noyau/agents/i18n.md: 7e47bc0d938657019359f41242ea0e1e32e4fb85b2b2d0656d0f538e4cfcc536
   noyau/agents/integrator.md: aacf9041bd4ce2ac1529d829bcf26bd36684750cdc159ff11a6ddf80bd24e1be
-  noyau/agents/kanban-scribe.md: 180d7e3c92e1f0a63fc045c12919d5877698dab28c55aff232549f6c1cf6d229
+  noyau/agents/kanban-scribe.md: 2d6c737c03b010b3188bd0316404418655e6dcbfbce2d0a8b6eaf4484358d782
   noyau/agents/learning-journal.md: 4f52bfadbab36c89e1491b57eb95dd10862d66e55682ca32328d62c093a03d33
   noyau/agents/mail.md: bcf0a5c15db2c26fdeabdedbebf480a125dbf138ac63b838751874fc2f61afb1
   noyau/agents/mentor.md: 24a69556056129b212959b512392ce51182f60cfb8e1a83acf1c929dbcb6e1d9
@@ -49,7 +49,7 @@ files:
   noyau/agents/optimizer-backend.md: 86c28aa3cdfec041c6edf36a0cae996eb5aef94d82acdace669d4ed4b6457170
   noyau/agents/optimizer-db.md: 2e05908892bd6685c926b8aabb3e1ee7dbd7d43e1e26377f5792c41b571bc0eb
   noyau/agents/optimizer-frontend.md: 264149b135242fd2f157bed1b49515bbd20e9c09c388b85500de4a24413e2dff
-  noyau/agents/orchestrator.md: d86496bcbabc30d1f6c90b56ded50c630d6b2f5fd18eb94cd49e066caa88219a
+  noyau/agents/orchestrator.md: a6ad667644293bf9fbb63d14050d3f53fc338e91611bc23ee01063e347f9cb6d
   noyau/agents/orchestrator-scribe.md: 426f77e2c44dc31584691006b7b468c54e317551a0b7b6c6e8d1332bbd18c0c1
   noyau/agents/pathfinder.md: 80061adada01a5c306cec16a6894e3e93c86c2314ebf1fa0266d75748f2747ff
   noyau/agents/pm2.md: f920dc7414e3c59d235fe392df7fb01cbff70551453f0bc6203a18a077f4babf
@@ -96,7 +96,7 @@ files:
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
   scripts/install-brain-hooks.sh: 8e0432bb7201783990f5df86a3610d9ff3a6cf70dd9a35b8bd13ed3170722f85
   scripts/kernel-isolation-check.sh: 20b5048eb48063d5c290abd0aa335d5a43ba8685818cba389f8f7b892049a00c
-  scripts/kernel-lock-gen.sh: d60f37c7d129a827b64fa408c0e3a9a88596e2f7b5326ce56172a55ea2e5b002
+  scripts/kernel-lock-gen.sh: 1700187a0ab1d3a155597aeaa5aa148c96ffcebb43c8f171c177e8939cb5de44
   scripts/lib/donnees.sh: 622b5ace1928b7b699925984224b6aa2fe5116ed4053afc4ccc96cdafbb225e6
   scripts/lib/filiation.py: e5f1db9f91ed6b050e5c743948d20237227c622b238efb6adc1b7fb827cd628a
   scripts/lib/instance.py: 8bec5f561d4dd3ab2fe2fce491b25e50fa1fdef7fe204be29949c7bfcdda2620
@@ -111,6 +111,7 @@ files:
   scripts/migrer.py: 6d92515d8eecdf44c27aa4ec52d074ede9ccf2ae47aa46614dd1e2732a1780af
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
   scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
+  scripts/saboter.py: 1bab6652ae9a59753cc35177250616d3302fc1babe651eaa6181017b097a22f2
   scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be

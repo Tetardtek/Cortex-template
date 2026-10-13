@@ -142,7 +142,7 @@ fait rougir sur l'ancien code avant d'écrire le nouveau (`collaboration.md`).
 `if False and …`), on relance, et la garantie doit tomber. Une garantie qui reste verte sous
 mutant ne mesure plus rien. Un sabotage qui n'a pas eu lieu (motif introuvable, remplacement
 déjà en place) ressemble à un contrôle solide : on vérifie qu'il a eu lieu
-(`scripts/saboter.py`, si présent, refuse de conclure dans ce cas).
+(`scripts/saboter.py`, livré avec le gabarit, refuse de conclure dans ce cas).
 
 **Un `.pyc` périmé peut jouer l'ancien code.** `python3 -B` n'empêche que d'en écrire, pas d'en
 lire un : entre deux mutants faits à la main, supprimer les `__pycache__`. `saboter.py` le fait
@@ -192,9 +192,9 @@ python3 scripts/docs-generer.py --ecrire
 python3 scripts/docs-generer.py --check                          # 0 à jour · 1 en retard
 python3 scripts/zone-du-diff.py --agent forgeron --depot brain   # le diff contre sa zone, avant la PR
 brain doctor                                                     # le code de sortie est le verdict
+python3 scripts/saboter.py --motif "<code>" --par "<cassé>" <fichier> -- <commande>   # le mutant
 
 # outils de la forge — si présents (ils ne partent pas au gabarit) :
-python3 scripts/saboter.py --motif "<code>" --par "<cassé>" <fichier> -- <commande>
 bash scripts/sync-template.sh --rendre <dossier-neuf>
 python3 scripts/docs-verite.py --gabarit <dossier-neuf> --brain .   # docs-verite part, le rendu non
 bash scripts/essai-fork.sh <dossier-neuf>
@@ -285,3 +285,4 @@ Ne pas invoquer si :
 | Date | Changement |
 |------|------------|
 | 2026-10-06 | Création : l'agent du programme du brain, `zone_write: [kernel, instance]`. Aucun agent de code ne déclarait l'écriture de `scripts/` ni de `brain-engine/` |
+| 2026-10-13 | `saboter.py` part avec le gabarit : le mutant que le juge exige a son outil chez tout fork, plus « si présent » |

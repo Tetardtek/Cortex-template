@@ -511,7 +511,8 @@ def workflows_list(
 
     Le moteur reste NEUTRE : la commande qui produit ce résumé se déclare dans
     la config locale (`BRAIN_RESUME_AUTONOMIE_CMD`, `.env.local`) et rend du
-    JSON `{"projets": [...], "note": ...}`. Sans déclaration, ou si elle
+    JSON `{"projets": [...], "note": ...}` ; sans elle, le kanban livré avec le
+    moteur (`doctor/kanban.py`). Sans source, ou si elle
     échoue, la route répond quand même — 200, `projets` vide, et la `note` dit
     pourquoi : un vide qui se tait se confond avec « rien n'avance ».
     """
@@ -528,10 +529,18 @@ def workflows_list(
 def _resume_autonomie() -> dict:
     import shlex
     commande = (os.environ.get('BRAIN_RESUME_AUTONOMIE_CMD') or '').strip()
-    if not commande:
-        return {'projets': [], 'note': 'aucune source déclarée (BRAIN_RESUME_AUTONOMIE_CMD)'}
+    # Sans déclaration, le kanban que le doctor livre avec le moteur, sur CE
+    # brain — un brain installé n'a rien à écrire, ni à réécrire.
+    livre = PROGRAMME / 'doctor' / 'kanban.py'
+    if commande:
+        argv = shlex.split(commande)
+    elif livre.is_file():
+        argv = [sys.executable, str(livre), 'resume', '--brain', str(BRAIN_ROOT), '--json']
+    else:
+        return {'projets': [], 'note': 'aucune source déclarée (BRAIN_RESUME_AUTONOMIE_CMD), '
+                                       'ni kanban livré (brain-engine/doctor/)'}
     try:
-        r = subprocess.run(shlex.split(commande), capture_output=True, text=True, timeout=60)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         return {'projets': [], 'note': f'la source ne répond pas ({type(exc).__name__})'}
     if r.returncode != 0:

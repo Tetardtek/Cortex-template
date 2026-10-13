@@ -14,7 +14,10 @@ La seconde moitié coûte plus cher que la première. Un item marqué ✅ sans d
 qu'il a mesuré oblige à rouvrir le dossier pour savoir si c'est vrai — et c'est
 exactement le temps que la clôture devait faire gagner.
 
-    python3 tools/cloture_backlog.py --brain ~/Dev/Brain
+    python3 tools/cloture_backlog.py --brain ~/Dev/Brain --projet <projet>
+    python3 tools/cloture_backlog.py --brain ~/Dev/Brain --tous
+
+Sans `--projet`, la seule liste du brain ; s'il en a plusieurs, il faut la nommer.
 
 ── Le format attendu ───────────────────────────────────────────────────────
 
@@ -144,13 +147,19 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--brain", type=Path, required=True)
-    p.add_argument("--projet", default="myeline")
+    p.add_argument("--projet", default=None,
+                   help="la liste à juger — sans lui, la seule du brain")
     p.add_argument("--tous", action="store_true",
                    help="chaque projet qui déclare un `prefixe:`")
     args = p.parse_args()
     racine = args.brain.expanduser().resolve()
     if not args.tous:
-        return juger(racine, args.projet)
+        try:
+            projet = args.projet or _fiches.projet_par_defaut(racine)
+        except _fiches.Illisible as exc:
+            print(f"\n  ❌ {exc}\n")
+            return 1
+        return juger(racine, projet)
     codes = {}
     for slug in _fiches.projets_a_liste(racine):
         print(f"\n━━ {slug}")

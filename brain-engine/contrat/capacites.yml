@@ -198,7 +198,7 @@ capacites:
     nature: instance      # corrigé le 30/09 — était `core`, brique `persistance`
     brique: ~
     http: ["GET /workflows"]
-    mecanisme_http: [sousproc]
+    mecanisme_http: [disque, sousproc]
     mcp: brain_workflows
     mecanisme: http
     pourquoi: >-
@@ -209,6 +209,8 @@ capacites:
       sprint (`POST /workflows/create`) est retirée avec la machinerie qu'elle
       servait. Ce que la route rend dépend de ce que CETTE installation a
       branché : c'est un service d'instance, il ne part pas au CORE.
+      Sans déclaration, elle lance le kanban que le doctor livre avec le moteur
+      (`doctor/kanban.py resume`), s'il est sur le disque : d'où `disque`.
 
   brain_write:
     nature: core

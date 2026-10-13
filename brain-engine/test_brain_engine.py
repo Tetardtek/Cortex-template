@@ -4018,9 +4018,11 @@ class TestWorkflowsCestLAutonomie(unittest.TestCase):
         f.chmod(0o755)
         return str(f)
 
-    def _get(self, commande):
+    def _get(self, commande, programme=None):
         env = {} if commande is None else {'BRAIN_RESUME_AUTONOMIE_CMD': commande}
-        with patch.dict(os.environ, env, clear=False):
+        # Le programme fabriqué : sans `doctor/kanban.py` sauf si le test le pose.
+        with patch.dict(os.environ, env, clear=False), \
+                patch.object(srv, 'PROGRAMME', programme or self.d / 'programme-nu'):
             if commande is None:
                 os.environ.pop('BRAIN_RESUME_AUTONOMIE_CMD', None)
             r = self.client.get('/workflows')
@@ -4046,6 +4048,27 @@ class TestWorkflowsCestLAutonomie(unittest.TestCase):
     def test_une_source_illisible_se_dit(self):
         d = self._get(self._source('echo pas du json'))
         self.assertIn('JSON', d['note'])
+
+    def _kanban_livre(self, corps):
+        prog = self.d / 'programme'
+        (prog / 'doctor').mkdir(parents=True)
+        (prog / 'doctor' / 'kanban.py').write_text(corps, encoding='utf-8')
+        return prog
+
+    def test_sans_declaration_le_kanban_livre_est_la_source(self):
+        # Un brain installé n'a rien déclaré : le kanban que le doctor livre
+        # avec le moteur sert le résumé, sur CE brain.
+        prog = self._kanban_livre(
+            'import json, sys\n'
+            'print(json.dumps({"projets": [{"projet": "p", "argv": sys.argv[1:]}], "note": None}))\n')
+        d = self._get(None, programme=prog)
+        self.assertEqual(d['projets'][0]['argv'], ['resume', '--brain', str(srv.BRAIN_ROOT), '--json'])
+
+    def test_une_declaration_passe_avant_le_kanban_livre(self):
+        prog = self._kanban_livre('print(\'{"projets": [{"projet": "livre"}], "note": null}\')\n')
+        d = self._get(self._source(
+            "echo '{\"projets\": [{\"projet\": \"declare\"}], \"note\": null}'"), programme=prog)
+        self.assertEqual(d['projets'][0]['projet'], 'declare')
 
 
 class TestPlantesApresReboot(BrainBsiJetable):
@@ -9512,6 +9535,9 @@ class TestRegistresVeille(unittest.TestCase):
         'if cas == "ecart": print("❌ 2 écart(s)"); sys.exit(1)\n'
         'if cas == "skip": print("\\n  SKIP forge injoignable : URLError\\n"); sys.exit(0)\n'
         'if cas == "trace": raise RuntimeError("base injoignable")\n'
+        'if cas == "veut_tous":\n'
+        '    if "--tous" in sys.argv: print("✅ aucun écart"); sys.exit(0)\n'
+        '    print("❌ 16 listes dans ce brain — nomme la tienne"); sys.exit(1)\n'
         'sys.exit(3)\n'
     )
 
@@ -9551,6 +9577,13 @@ class TestRegistresVeille(unittest.TestCase):
         lu = self._run('--lire')
         self.assertEqual(lu.returncode, 1)
         self.assertIn('--emit --apply', lu.stdout)
+
+    def test_les_issues_se_mesurent_sur_toutes_les_listes(self):
+        # Sans `--projet`, `backlog_issues` prend la seule liste du brain et
+        # refuse s'il en a plusieurs : la veille les passe toutes, comme le
+        # doctor (`--tous`).
+        self._run(backlog_issues='veut_tous')
+        self.assertEqual(self._etats()['backlog_issues'], 'à jour')
 
     def test_skip_n_est_pas_a_jour(self):
         # Le message exact de `backlog_issues` quand la forge ne répond pas.

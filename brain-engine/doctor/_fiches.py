@@ -237,6 +237,11 @@ class Projet:
     # pas une table se lit `{}` ici ; c'est `zone_projet.py` qui la refuse, nommée.
     # Hors du hash : une table ne se hache pas.
     discord: dict = field(default_factory=dict, hash=False)
+    # L'ADRESSE complète, celle qui choisit la forge (`forge.pour`) : `<hôte>/o/d`,
+    # ou `o/d` si la fiche ne dit pas l'hôte. Les issues sans hôte prennent celui
+    # du `repo:`.
+    adresse_depot: str | None = None
+    adresse_issues: str | None = None
 
 
 def _depot(valeur) -> str | None:
@@ -245,6 +250,37 @@ def _depot(valeur) -> str | None:
         return None
     morceaux = str(valeur).strip().rstrip("/").removesuffix(".git").split("/")
     return "/".join(morceaux[-2:]) if len(morceaux) >= 2 else None
+
+
+def adresse(valeur) -> tuple[str | None, str] | None:
+    """`(hôte, "owner/nom")` — l'hôte None si l'adresse n'en porte pas.
+
+    `git.x/o/n`, `https://git.x/o/n(.git)`, `git@git.x:o/n`,
+    `ssh://git@git.x:2222/o/n`, `o/n`. None si ce n'est pas un dépôt."""
+    if not valeur:
+        return None
+    v = str(valeur).strip().rstrip("/").removesuffix(".git")
+    v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", v)
+    v = re.sub(r"^[^@/]+@", "", v)
+    # `hôte:o/n` (la forme scp de git) comme `hôte:port/o/n` : le `:` sépare, et
+    # seuls l'hôte (en tête) et les deux derniers morceaux comptent.
+    tete, sep, reste = v.partition("/")
+    v = tete.replace(":", "/", 1) + sep + reste
+    morceaux = [m for m in v.split("/") if m]
+    if len(morceaux) == 2:
+        return None, "/".join(morceaux)
+    if len(morceaux) >= 3:
+        return morceaux[0].lower(), "/".join(morceaux[-2:])
+    return None
+
+
+def _adresse(valeur, hote_par_defaut: str | None = None) -> str | None:
+    """`<hôte>/o/d` (ou `o/d` sans hôte connu) — l'adresse qui choisit la forge."""
+    a = adresse(valeur)
+    if a is None:
+        return None
+    hote = a[0] or hote_par_defaut
+    return f"{hote}/{a[1]}" if hote else a[1]
 
 
 def alias_forge(brain: Path) -> dict[str, str]:
@@ -286,13 +322,17 @@ def projet(brain: Path, slug: str) -> Projet:
                 except yaml.YAMLError:
                     meta = {}
     prefixe = meta.get("prefixe")
+    adresse_depot = _adresse(meta.get("repo"))
+    hote_depot = adresse_depot.split("/")[0] if adresse_depot and adresse_depot.count("/") == 2 else None
     return Projet(slug=slug,
                   prefixe=str(prefixe) if prefixe else None,
                   issues=_depot(meta.get("issues") or meta.get("repo")),
                   palier=str(meta.get("palier") or "a"),
                   depot=_depot(meta.get("repo")),
                   statut=str(meta["status"]) if meta.get("status") else None,
-                  discord=dict(meta["discord"]) if isinstance(meta.get("discord"), dict) else {})
+                  discord=dict(meta["discord"]) if isinstance(meta.get("discord"), dict) else {},
+                  adresse_depot=adresse_depot,
+                  adresse_issues=_adresse(meta.get("issues"), hote_depot) or adresse_depot)
 
 
 def projets_a_liste(brain: Path) -> list[str]:
@@ -304,6 +344,19 @@ def projets_a_liste(brain: Path) -> list[str]:
     slugs = [f.stem for f in sorted((brain / "projets").glob("*.md"))
              if not f.name.startswith("_") and projet(brain, f.stem).prefixe]
     return slugs or ["myeline"]
+
+
+def projet_par_defaut(brain: Path) -> str:
+    """La liste qu'un outil tient quand on ne la nomme pas : la SEULE du brain.
+
+    Plusieurs listes : `Illisible`, qui les nomme — en choisir une serait tenir
+    la liste d'un autre. Le défaut était le nom du projet d'origine, écrit en
+    dur : faux chez tout autre brain."""
+    listes = projets_a_liste(brain)
+    if len(listes) == 1:
+        return listes[0]
+    raise Illisible(f"{len(listes)} listes dans ce brain ({', '.join(listes)}) — "
+                    f"nomme la tienne : --projet <projet> (ou --tous)")
 
 
 def prefixe_de(brain: Path, slug: str) -> str:
@@ -322,7 +375,7 @@ def prefixe_de(brain: Path, slug: str) -> str:
                     f"projets/{slug}.md — ses fiches ne se lisent pas sans lui")
 
 
-def lire(brain: Path, projet: str = "myeline", prefixe: str | None = None) -> dict[str, Fiche]:
+def lire(brain: Path, projet: str, prefixe: str | None = None) -> dict[str, Fiche]:
     """Toutes les fiches d'un projet, monolithe et fiches éclatées. `Illisible`
     si aucune source n'existe, ou si une fiche vit dans deux sources. Le préfixe
     vient de la fiche projet quand il n'est pas donné."""

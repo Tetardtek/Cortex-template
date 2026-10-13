@@ -57,6 +57,10 @@ la fiche ──▶ composer ──▶ ton go ──▶ le worker ──▶ le ju
    - **le mutant** : pour chaque garantie que la PR touche, on casse le code
      qu'elle protège, on relance, et la garantie doit tomber. Une garantie qui
      reste verte sous mutant ne mesure plus rien.
+     `scripts/saboter.py` casse, joue la commande, rend toujours le fichier, et
+     refuse de conclure si le motif est introuvable ou le remplacement inerte —
+     les options avant le fichier :
+     `python3 scripts/saboter.py --motif "<code>" --par "<cassé>" <fichier> -- <commande>`.
 
    Un seul critère sans preuve, et la PR n'est pas fusionnée : la fiche reste
    ouverte et dit ce qui manque.
@@ -128,12 +132,43 @@ l'index régénéré et la clôture vérifiée entrent dans la PR.
 
 ---
 
-## La forge — avec ton outil
+## La forge — GitHub par `gh`, ou ta forge déclarée
 
-Les PR, leur fusion, les issues si tu en tiens : c'est ta forge, avec ton outil
-(`gh`, `tea`, l'interface web). Le brain ne livre pas d'outil de forge. Le
-worker ouvre sa PR vers `dev/autonome` avec ton outil ; tu la relis et tu
-fusionnes de la même façon.
+Les PR et leur fusion se font avec ton outil (`gh`, `tea`, l'interface web) : le
+worker ouvre sa PR vers `dev/autonome`, tu la relis et tu fusionnes.
+
+Le reste de la boucle est livré avec le doctor (`brain-engine/doctor/`) :
+
+```bash
+python3 brain-engine/doctor/kanban.py tenir --brain . --projet <projet>   # index, clôtures, puis issues
+python3 brain-engine/doctor/kanban.py resume --brain .                    # ce que dev/autonome porte
+python3 brain-engine/doctor/kanban.py repartir --brain . --projet <projet>  # dev/autonome repart du tronc
+```
+
+La forge d'un projet se lit dans l'adresse de son dépôt (`repo:` de sa fiche,
+`<hôte>/<owner>/<nom>`) :
+
+- **GitHub** (`github.com/…`) passe par `gh` et son authentification
+  (`gh auth login`) : le brain ne lit aucun jeton.
+- **Une forge Gitea à toi** se déclare dans `satellites.yml` — sans elle, rien
+  ne t'est demandé :
+
+  ```yaml
+  forges:
+    git.exemple.org:
+      type: gitea
+      url: https://git.exemple.org
+      jeton: GITEA_TOKEN                     # le NOM de la clé dans MYSECRETS
+      jeton_autonome: GITEA_TOKEN_AUTONOME   # facultatif : le compte des agents
+  ```
+
+**Le mode autonome** (`BRAIN_FORGE_AUTONOME=1`) : sur GitHub, il ouvre les PR et
+refuse toute fusion — c'est toi qui fusionnes. Sur une Gitea déclarée, il prend
+le jeton de `jeton_autonome:`, et sans lui il refuse : il ne se rabat jamais sur
+le tien.
+
+Le résumé de `dev/autonome` est aussi ce que le moteur sert sur `/workflows`
+(et `brain_workflows`) : rien à déclarer, il lance ce kanban.
 
 ---
 

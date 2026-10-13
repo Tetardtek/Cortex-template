@@ -9,8 +9,11 @@ Le 27/09, l'index prend la place de `<projet>/backlog.md` (et non
 `backlog-<projet>.md`, comme la consigne l'écrivait) : seize fichiers y
 renvoient, et un renvoi qui aboutit vaut mieux qu'un renvoi réécrit.
 
-    python3 tools/index_backlog.py --brain ~/Dev/Brain --projet myeline --check
-    python3 tools/index_backlog.py --brain ~/Dev/Brain --projet myeline --ecrire
+    python3 tools/index_backlog.py --brain ~/Dev/Brain --projet <projet> --check
+    python3 tools/index_backlog.py --brain ~/Dev/Brain --projet <projet> --ecrire
+    python3 tools/index_backlog.py --brain ~/Dev/Brain --tous --check
+
+Sans `--projet`, la seule liste du brain ; s'il en a plusieurs, il faut la nommer.
 
 Il lit les fiches par `_fiches` — la seule définition — et leur `origine:`
 dans leur frontmatter. Il n'écrit rien sans `--ecrire`.
@@ -88,6 +91,7 @@ def commande_ecrire(brain: Path, projet: str) -> str:
 
 
 ANNONCE = "> Cet index se RÉGÉNÈRE, il ne s'écrit pas :"
+GENERE_PAR = "genere_par:"
 
 
 def sans_commande(texte: str) -> list[str]:
@@ -100,7 +104,10 @@ def sans_commande(texte: str) -> list[str]:
     if ANNONCE in lignes:
         i = lignes.index(ANNONCE) + 1
         del lignes[i:i + 1]
-    return lignes
+    # `genere_par:` nomme l'outil, pas les fiches : il disait le dépôt d'origine
+    # (`<dépôt>/tools/…`), faux chez un fork. Le neutraliser ne doit pas rougir
+    # un index écrit avant — il se compare donc comme la commande.
+    return [l for l in lignes if not l.startswith(GENERE_PAR)]
 
 
 def generer(brain: Path, projet: str) -> str:
@@ -113,7 +120,7 @@ def generer(brain: Path, projet: str) -> str:
         # `chronique.md` porte tel quel — deux fichiers, un nom.
         f"name: {projet}-backlog-index",
         "type: index",
-        "genere_par: myeline/tools/index_backlog.py — ne pas éditer à la main",
+        f"{GENERE_PAR} index_backlog.py — ne pas éditer à la main",
         "---",
         "",
         # Le nom du projet tel qu'il est écrit dans son dossier : `capitalize()`
@@ -155,7 +162,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--brain", type=Path, required=True)
-    p.add_argument("--projet", default="myeline")
+    p.add_argument("--projet", default=None,
+                   help="la liste à tenir — sans lui, la seule du brain")
     p.add_argument("--check", action="store_true")
     p.add_argument("--ecrire", action="store_true")
     p.add_argument("--tous", action="store_true",
@@ -163,7 +171,12 @@ def main() -> int:
     a = p.parse_args()
     brain = a.brain.expanduser().resolve()
     if not a.tous:
-        rc = tenir(brain, a.projet, a.ecrire)
+        try:
+            projet = a.projet or _fiches.projet_par_defaut(brain)
+        except _fiches.Illisible as exc:
+            print(f"\n  ❌ {exc}\n")
+            return 1
+        rc = tenir(brain, projet, a.ecrire)
         return 0 if rc == MONOLITHE else rc
     codes = {}
     for slug in _fiches.projets_a_liste(brain):

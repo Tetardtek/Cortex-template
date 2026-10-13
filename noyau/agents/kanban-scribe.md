@@ -60,13 +60,17 @@ Forge     : aucune issue ne se ferme sur une clôture non prouvée.
 
 ## Tenir — le palier a
 
-Trois gestes mécaniques, dans l'ordre qui compte, d'une seule commande — **si
-présente** (`tools/kanban.py`, dans les outils du CORE) :
+Trois gestes mécaniques, dans l'ordre qui compte, d'une seule commande —
+`kanban.py`, livré avec le doctor (`brain-engine/doctor/`) :
 
 ```bash
-python3 <outils>/kanban.py tenir --brain <BRAIN_ROOT> [--projet <projet>]
-python3 <outils>/kanban.py tenir --brain <BRAIN_ROOT> --a-blanc     # n'écrit rien
+python3 brain-engine/doctor/kanban.py tenir --brain . --projet <projet>
+python3 brain-engine/doctor/kanban.py tenir --brain . --projet <projet> --a-blanc   # n'écrit rien
+python3 brain-engine/doctor/kanban.py tenir --brain . --projet <projet> --sans-forge # s'arrête après 2
 ```
+
+`--projet` peut se taire si le brain n'a qu'une liste ; s'il en a plusieurs, il
+faut la nommer.
 
 1. **l'index suit les fiches** — régénéré, puis vérifié ;
 2. **chaque clôture porte sa preuve** — sinon **arrêt, avant la forge** ;
@@ -75,8 +79,7 @@ python3 <outils>/kanban.py tenir --brain <BRAIN_ROOT> --a-blanc     # n'écrit r
 Sortie 0 : le backlog est tenu. Sortie 1 : l'étape qui a manqué est nommée — la
 rapporter telle quelle, ne pas la contourner.
 
-**Ce que le gabarit livre** — sans `kanban.py`, les deux premiers gestes se font
-avec les outils du doctor (`brain-engine/doctor/`), lancés depuis la racine du brain :
+**Geste par geste** — les mêmes outils du doctor, lancés depuis la racine du brain :
 
 ```bash
 python3 brain-engine/doctor/index_backlog.py --brain . --projet <projet> --ecrire   # 1. l'index, régénéré
@@ -84,9 +87,10 @@ python3 brain-engine/doctor/index_backlog.py --brain . --projet <projet> --check
 python3 brain-engine/doctor/cloture_backlog.py --brain . --projet <projet>          # 2. chaque clôture porte sa preuve
 ```
 
-Le troisième — la forge (issues, PR) — revient à la personne et à son outil
-(`gh`, `tea`, l'interface web) : le gabarit n'en livre pas. La boucle entière :
-`docs/methode.md`.
+Le troisième — les issues — parle à la forge du projet : GitHub par `gh`, une
+Gitea déclarée dans `satellites.yml` (`forges:`) ; une forge non déclarée est un
+rouge qui dit quoi déclarer. Les PR restent à l'outil de la personne. La boucle
+entière : `docs/methode.md`.
 
 **En deux temps** — mesuré au premier usage (29/09) : lancé sur le tronc partagé,
 `tenir` y régénérait l'index et le laissait modifié, sans commit.

@@ -650,10 +650,12 @@ RESSOURCES_GABARIT = ("contrat/capacites.yml",)
 #: la clôture sur preuve. Leurs contrôles (« index du backlog », « rapports de
 #: clôture ») restent d'instance ; les outils, eux, servent à tout brain qui
 #: éclate son backlog en fiches. Leurs imports (`_fiches`, `_config_instance`)
-#: se résolvent par le même parcours que ceux des contrôles. La part de la
-#: forge (`kanban.py`, `backlog_issues.py`) n'est pas ici : elle suppose une
-#: forge et son outil, que chaque personne a à elle.
-OUTILS_LIVRES = ("index_backlog", "cloture_backlog")
+#: se résolvent par le même parcours que ceux des contrôles.
+#: La part de la forge les rejoint : `kanban.py` (tenir, le résumé du palier b,
+#: `repartir`) et `backlog_issues.py` parlent à la forge par `forge.py`, qui la
+#: choisit par l'adresse du dépôt — GitHub par `gh`, une autre forge déclarée
+#: dans `satellites.yml` (`forges:`).
+OUTILS_LIVRES = ("index_backlog", "cloture_backlog", "kanban", "backlog_issues", "forge")
 
 
 def fichiers_du_gabarit() -> list[str]:

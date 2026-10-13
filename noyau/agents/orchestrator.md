@@ -210,12 +210,12 @@ En `manual` (BRAIN-032), l'humain donne le go **avant** le lancement du worker
 et **avant** la fusion dans `dev/autonome`.
 
 **Le backlog et la forge.** L'index des fiches et les clôtures se tiennent avec
-ce que le brain porte : `kanban.py` (si présente), sinon les outils livrés avec
-le doctor — `brain-engine/doctor/index_backlog.py` (l'index, `--ecrire` puis
-`--check`) et `brain-engine/doctor/cloture_backlog.py` (chaque clôture porte sa
-preuve), lancés depuis la racine du brain avec `--brain . --projet <projet>`.
-La forge — ouvrir la PR, la fusionner, les issues — revient à la personne et à
-son outil (`gh`, `tea`, l'interface web) : le gabarit n'en livre pas. La boucle
+ce que le doctor livre (`brain-engine/doctor/`) : `kanban.py tenir` (l'index,
+les clôtures, puis les issues sur la forge du projet), lancé depuis la racine du
+brain avec `--brain . --projet <projet>`. La forge se lit dans le `repo:` du
+projet — GitHub par `gh`, une Gitea déclarée dans `satellites.yml` (`forges:`).
+Ouvrir la PR et la fusionner restent à la personne et à son outil (`gh`, `tea`,
+l'interface web) ; en mode autonome sur GitHub, aucune fusion. La boucle
 entière : `docs/methode.md`.
 
 ---
