@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.5.6"
-generated_at: "2026-10-13T00:30"
+kernel_version: "3.5.7"
+generated_at: "2026-10-13T02:54"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 1bd482badcf4cb6a7aa36abdcfeb19fb0f6126bbc1730e9a0f91267dc61579e6
+  brain-compose.yml: 611206df8cdefcdb7ec070165331323721fd036b92810885e5706c0e59c5e548
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -37,7 +37,7 @@ files:
   noyau/agents/game-designer.md: a61ed5c0df341b159c08c6fb3ae42ea73fc084b88f73f2e9b26c68ce6a6cf588
   noyau/agents/git-analyst.md: adacb7a83b42a4534560b4082e55d97d053f03888f6e2715bcab9f2cacc766f2
   noyau/agents/guide.md: 531590b51d2673319fb501600f07fd2869a8291f504e0df06ca8742e1cfd0e32
-  noyau/agents/helloWorld.md: 3459538afab4d8126bf910f29a1bb5df01853fee35344ee82966738b50d92817
+  noyau/agents/helloWorld.md: 72187fc6772f2702fcadb34f399b3b292b639eb7cebe011461edf4e111a3801d
   noyau/agents/i18n.md: 7e47bc0d938657019359f41242ea0e1e32e4fb85b2b2d0656d0f538e4cfcc536
   noyau/agents/integrator.md: aacf9041bd4ce2ac1529d829bcf26bd36684750cdc159ff11a6ddf80bd24e1be
   noyau/agents/kanban-scribe.md: db5c898f329601b171e206db24b89a11c40ebc7e0b5475d1d6d081fa5a7fc7ff
@@ -74,13 +74,13 @@ files:
   scripts/brain: 6ae6dc2f10824d0875377580731c478394f8357b3af6e044cf169c14d2a30ffc
   scripts/brain-db-sync.sh: 63a1693df32efd1663a97aac5cabe615e8602a88ef798c5d44cb1fd021b5977e
   scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
-  scripts/brain-init.sh: 4550e6b49ffcc6f68b9962dad711a3e640cb32b8f5f75e059b3aab5286981b7b
-  scripts/brain-satellites.py: fc9b4949d28d19c794f85602f20fffa5532d42752fcd179b1f3f364857358b74
+  scripts/brain-init.sh: 52b19602bcf88f232fe0e3718ddb3758f1a8247a465c2536e22c78810fdaa70f
+  scripts/brain-satellites.py: e45c4f4b6c1cd7373a48aae9c193b76391760ab348120d6065ef027c983c4f19
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
   scripts/brain-status.sh: 785c0bbb2bfa737e285a0db9ea818bb8fc61defd2aba9506a789fd3172f5838d
   scripts/briefing.py: 6ddaff3afec141240fb5e154787463595d069e188f4fbd2256d8329201549c69
   scripts/bsi-claim.sh: dd456565452377a5ed6f8e8dfc62e4f9bbca5ead49ecb1a0e66d53bb5b413974
-  scripts/bsi-query.sh: 1ec6312dfcd2af3b4633951d1ec5c9ce5f5074be9f7bc999c8211a70f18109e1
+  scripts/bsi-query.sh: ee69710d04027a1ef57755ab5ca62820ff91dbd271e59ed6acf13187709e1c67
   scripts/bsi-signal.sh: a9126500543535fdd19194ad80e6e336b9095caf1cacd3b936a20b132f2b30bc
   scripts/claude-programme.py: 3dbe6777e2e3f3e571925e109400f8aa892c8a1ed4afc41a17441d693d5d06b2
   scripts/docs-generer.py: f92731cca2dc48342a26f1db4a6119510bbb85b9e68a374e78ceba87ee36cbe1
@@ -96,12 +96,13 @@ files:
   scripts/install-brain-hooks.sh: 8e0432bb7201783990f5df86a3610d9ff3a6cf70dd9a35b8bd13ed3170722f85
   scripts/kernel-isolation-check.sh: 20b5048eb48063d5c290abd0aa335d5a43ba8685818cba389f8f7b892049a00c
   scripts/kernel-lock-gen.sh: d60f37c7d129a827b64fa408c0e3a9a88596e2f7b5326ce56172a55ea2e5b002
-  scripts/lib/donnees.sh: 7fa45397a49ee2aaa0c865c886992844ba2b4cdc23f0a289cd6ae0ce0502376b
+  scripts/lib/donnees.sh: 622b5ace1928b7b699925984224b6aa2fe5116ed4053afc4ccc96cdafbb225e6
   scripts/lib/filiation.py: e5f1db9f91ed6b050e5c743948d20237227c622b238efb6adc1b7fb827cd628a
   scripts/lib/instance.py: 8bec5f561d4dd3ab2fe2fce491b25e50fa1fdef7fe204be29949c7bfcdda2620
   scripts/lib/pair.py: 1592d5b1046c7a10bc833281b9fc85283e1fbfb597ae1f138247129e0af1279e
   scripts/lib/premieres.sh: 91bd6f53ca50bb2f448fcf699cf6c59ae7323860401531f0492e23d0cda4ae32
   scripts/lib/python.sh: 643ea746b6f30388227dcaf13ff445a9f39b99528f1cf491bad7d923010eca9f
+  scripts/lib/reglages-doctor.sh: 5596f14627ae045fb1a1d9cd5a45472e1178cee4e9f24eb251a7fba8fedf8419
   scripts/maj-disponible.py: 97f6537cb2ee7c2ae36931ffe9b17f043eef2bb1bc1eb942f94200c1d9d78c16
   scripts/maj.py: 6ba2685d43488941112215a780090591936bed620aae999a03783a7a5e0bd0ef
   scripts/migrer.py: 6d92515d8eecdf44c27aa4ec52d074ede9ccf2ae47aa46614dd1e2732a1780af
@@ -110,5 +111,6 @@ files:
   scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be
+  scripts/semis-remplir.py: ac7f617428277c41878ae2e7c3feba2ec4f0939cd6da88915c2caa4cf77b6fe1
   scripts/vue.py: 2dbee7f7ed2ef4573b618f12df818fd2f6b65875f96fd286450f039c5736a2c8
   scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

@@ -28,6 +28,30 @@ le sens : le setup le vérifie (étape 10) et le dit, et
 
 ---
 
+## Par le paquet — sans fork
+
+Le programme s'installe aussi en paquet, `brain-cortex` : il pose la commande
+`brain`, et ton brain est un dossier à toi qui ne garde que tes données (des liens
+vers le programme). Il faut **pipx**, avec Python ≥ 3.12 et git ; pas de Node, le
+dashboard est déjà construit dans le paquet.
+
+```bash
+pipx install --index-url <INDEX> --pip-args="--extra-index-url https://pypi.org/simple" "brain-cortex==<VERSION>"
+brain init --verifier
+brain init <nom-de-ton-brain> <dossier>       # --sans-service sans systemd utilisateur
+cd <dossier> && brain doctor
+```
+
+La version s'écrit **exacte** (`==`), et aucun jeton n'est demandé pour installer.
+Puis `claude` dans ton dossier : la première fois, **approuve le dossier** — le
+programme vit hors de lui, et Claude Code n'en lit ni le noyau ni les agents
+avant. La procédure pas à pas, à donner telle quelle à un Claude : la page
+**Installer avec Claude**.
+
+La suite de cette page décrit l'autre voie : un fork, cloné par git.
+
+---
+
 ## 1. Forker et cloner
 
 Forke le gabarit sur ta forge, puis :
@@ -56,11 +80,11 @@ Ses {{ETAPES_INIT}} étapes :
 |---|---|
 | 1. Satellites | crée les dossiers de tes données s'ils manquent — `profil/`, `projets/`, `handoffs/`, `workspace/`, `todo/`… et `instance/agents/` pour tes surcharges ; ton dépôt les ignore. Rien n'est cloné, sauf si ton brain déclare ses dépôts dans `satellites.yml` : ils se clonent alors à l'étape 3 |
 | 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
-| 3. Configuration | crée `brain-compose.local.yml` (ta machine) — ton instance y déclare `noyau: lecture` : ton `noyau/` se lit, tes retouches vont dans `instance/` —, remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` |
+| 3. Configuration | crée `brain-compose.local.yml` (ta machine) — ton instance y déclare `noyau: lecture` : ton `noyau/` se lit, tes retouches vont dans `instance/` —, remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` —, et `focus.md` : le dossier, la date, le nom de ton instance ; ses projets d'exemple s'en vont (« aucun projet »). Ce que tu y as écrit reste |
 | 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
 | 5. Outils | vérifie Claude Code, Node et Python |
 | 6. brain-engine | crée `brain-engine/.venv` et y installe les dépendances |
-| 7. Dolt | installe Dolt si besoin (sans root), crée la base `brain-dolt/` et le service utilisateur `dolt-server.service` |
+| 7. Dolt | installe Dolt si besoin (sans root), crée la base `brain-dolt/` et le service utilisateur `dolt-server.service`, et déclare la base au moteur : `brain-engine/.env.local` (`BRAIN_DB_BACKEND=dolt`), jamais réécrit s'il existe |
 | 8. brain-ui | installe et **construit** le dashboard |
 | 9. Le moteur | installe le moteur et le serveur MCP en **services utilisateur** (`brain-engine`, `brain-mcp`) : ils survivent au reboot |
 | 10. La recherche | **vérifie** Ollama et son modèle, et dit ce qui manque — rien n'est installé ; `scripts/ollama-setup.sh` tire le modèle et indexe |

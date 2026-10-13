@@ -45,7 +45,18 @@ Puis **tes règles de travail**, s'il y en a : `instance/specs/collaboration.com
 s'ajoute à `profil/specs/collaboration.md` (que `~/.claude/CLAUDE.md` charge déjà) —
 il ne le remplace pas.
 
-### 2. Charger ce que le type de session déclare
+### 2. Savoir quel type de session
+
+`brain boot <type>[/<scope>]` nomme le type — six types, décrits dans
+`docs/sessions.md`. **Sans type, ou avec un type que `contexts/` ne connaît pas**
+(une faute de frappe) : demander à la personne. Présenter les six types, une
+ligne chacun (la table de `docs/sessions.md`), et attendre son choix — ne pas en
+choisir un à sa place : c'est elle qui sait ce qu'elle vient faire.
+
+Personne pour répondre — une session lancée par `claude -p`, un agent : prendre
+`explore` (le lobby), et le dire dans le briefing.
+
+### 3. Charger ce que le type de session déclare
 
 `contexts/session-<type>.yml` porte trois niveaux :
 
@@ -68,7 +79,7 @@ dans le manifeste, qui est du programme reçu à chaque version.
 > d'instructions global est lu à chaque session quel que soit le type, et il
 > charge déjà sa propre liste. Les deux **s'additionnent**.
 
-### 3. Ouvrir un claim de session
+### 4. Ouvrir un claim de session
 
 Un claim dit qu'une session existe, sur quel périmètre, depuis quand. Sans lui,
 deux sessions parallèles travaillent sur le même fichier sans le savoir.
@@ -85,7 +96,7 @@ L'identifiant a une forme — `sess-<AAAAMMJJ>-<HHMM>-<slug>` — et le script
 **refuse** ce qui n'y ressemble pas. Un claim ouvert sous le nom d'une option
 de ligne de commande n'appartient à personne.
 
-### 4. Dire où on en est
+### 5. Dire où on en est
 
 Un briefing court. Ce qui compte :
 

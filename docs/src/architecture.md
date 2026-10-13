@@ -50,13 +50,14 @@ fois. La commande retrouve ton brain par `BRAIN_ROOT`, sinon depuis son dossier
 a déclaré (`~/.config/brain-cortex/brain`). Sans la marque — ton fork, cloné par
 git —, rien de tout cela ne joue.
 
-**Le paquet `brain-cortex` — construit, pas encore publié.** Le programme s'emballe
+**Le paquet `brain-cortex`.** Le programme s'emballe
 en une roue Python, construite depuis le gabarit rendu : `pipx install` la pose à part
 (la commande `brain`, le moteur, le noyau, le dashboard déjà construit), puis
 `brain init <nom> <dossier>` crée ton brain. Le programme installé ne s'écrit jamais :
 l'interpréteur est celui de pipx, la config locale du moteur va dans ton brain
-(`.env.local` à sa racine) et ses caches dans `.cache/`. Aucun registre ne la diffuse
-encore : elle se construit localement.
+(`.env.local` à sa racine) et ses caches dans `.cache/`. La roue se publie sur un
+registre de paquets (l'index PyPI d'une forge) : l'installation
+est dans **Démarrer**, « Par le paquet — sans fork ».
 
 ---
 

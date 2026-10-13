@@ -46,7 +46,8 @@ bash scripts/bsi-claim.sh close-stale      # ferme les claims échus
   résultat que personne n'a dit — **le fermer soi-même** ;
 - fermer le claim d'une autre session est refusé, sauf `--pas-le-mien`.
 
-Lire : `bash scripts/bsi-query.sh open` (les sessions ouvertes),
+Lire : `bash scripts/bsi-query.sh open` (les sessions ouvertes ; sans session, stdout reste
+vide et « aucune session ouverte » s'écrit sur stderr),
 `bash scripts/bsi-query.sh peers` (celles des machines déclarées sous `peers:`
 dans `brain-compose.local.yml`, par SSH).
 

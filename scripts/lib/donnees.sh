@@ -63,3 +63,19 @@ brain_env_local() {  # <racine de la data> → le chemin de la config locale du 
     printf '%s\n' "$d/brain-engine/.env.local"
   fi
 }
+
+brain_env_local_declarer() {  # <racine de la data> → écrit la config locale si elle manque
+  # `brain init` la déclare : `BRAIN_DB_BACKEND=dolt`, le défaut — sans elle, `db.py`
+  # avertit à chaque appel (« BRAIN_DB_BACKEND non declare »). `dolt-setup.sh` l'écrit
+  # déjà ; ceci la garantit quand il s'est arrêté avant (Dolt injoignable, pas de
+  # systemd). Un fichier présent n'est JAMAIS touché. Sort 0 et dit le chemin s'il l'a
+  # écrit, 1 s'il était là.
+  local f
+  f="$(brain_env_local "$1")"
+  [[ -e "$f" || -L "$f" ]] && return 1
+  mkdir -p "$(dirname "$f")"
+  printf '%s\n' "# La config locale du moteur — écrite par brain init, jamais versionnée." \
+    "# Le modèle commenté : brain-engine/.env.local.example" \
+    "BRAIN_DB_BACKEND=dolt" > "$f"
+  printf '%s\n' "$f"
+}

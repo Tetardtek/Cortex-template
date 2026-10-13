@@ -14,6 +14,25 @@ clé ni palier.
 
 ## Démarrer
 
+Deux façons d'installer : le paquet `brain-cortex`, ou un fork cloné par git.
+
+### Par le paquet
+
+Il faut : pipx, Python ≥ 3.12, git, et Claude Code.
+
+```bash
+pipx install --index-url <INDEX> --pip-args="--extra-index-url https://pypi.org/simple" "brain-cortex==<VERSION>"
+brain init <nom-de-ton-brain> <dossier>
+cd <dossier> && brain doctor
+```
+
+L'adresse de l'index et la version : la **dernière release** de ce dépôt, qui donne la
+commande toute prête. Aucun jeton n'est demandé pour installer. Puis `claude` dans le
+dossier du brain : la première fois, approuve le dossier. Avec Claude pour t'accompagner
+pas à pas : [docs/installer-avec-claude.md](docs/installer-avec-claude.md).
+
+### Par un fork
+
 Il faut : git, Python ≥ 3.12 (avec `venv`), Node.js ^20.19 ou ≥ 22.12, et Claude Code —
 `bash scripts/brain init --verifier` le vérifie sans rien écrire.
 

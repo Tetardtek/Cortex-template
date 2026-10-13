@@ -180,6 +180,11 @@ if cmd == "open":
     rows = _ouverts()
     for r in rows:
         print(_ligne(r))
+    # Muet sans session, on ne distinguait pas « aucune » d'une lecture qui n'a rien
+    # ramené (issue #22). Le dire sur STDERR : stdout vide reste la réponse que
+    # `peers`, `bsi-peer-poll.sh` et `scratch-nettoyable.py` lisent.
+    if not rows:
+        print("aucune session ouverte", file=sys.stderr)
 
 elif cmd == "stale":
     # Le seuil de 4 h code en dur a disparu : il ignorait `ttl_hours` ET

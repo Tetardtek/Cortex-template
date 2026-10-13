@@ -95,11 +95,15 @@ def machine_courante(brain: Path) -> str | None:
     return lire_yaml(f).get("machine") if f.is_file() else None
 
 
-def base_de_la_forge(brain: Path) -> str | None:
-    """L'URL du brain sans son nom : chaque machine garde son transport."""
+def base_de_la_forge(brain: Path, declaree: str | None = None) -> str | None:
+    """L'URL du brain sans son nom : chaque machine garde son transport. Sans remote
+    `origin` (un brain servi par le paquet : son dossier est un dépôt à lui, souvent sans
+    amont), la forge déclarée en tête de `satellites.yml` (`forge:`)."""
     r = git(brain, "remote", "get-url", "origin")
     url = r.stdout.strip()
-    return url.rsplit("/", 1)[0] if r.returncode == 0 and "/" in url else None
+    if r.returncode == 0 and "/" in url:
+        return url.rsplit("/", 1)[0]
+    return str(declaree).rstrip("/") if declaree else None
 
 
 def etat(depot: Path) -> tuple[str, str]:
@@ -209,7 +213,8 @@ def main() -> int:
         print("SKIP `machine:` absent de brain-compose.local.yml — impossible de "
               "savoir quels satellites concernent cette machine.")
         return 0
-    declares = lire_yaml(liste).get("satellites") or {}
+    registre = lire_yaml(liste)
+    declares = registre.get("satellites") or {}
     miens = {c: d for c, d in declares.items() if ici in (d or {}).get("machines", [])}
     if not miens:
         # Presque toujours une faute de nom : une machine s'est déclarée sous un
@@ -220,11 +225,25 @@ def main() -> int:
         return 1
 
     if a.cloner:
-        base = base_de_la_forge(brain)
-        if not base:
-            print("❌ l'URL du brain est illisible — impossible de dériver celle des satellites")
-            return 1
+        # Les manquants d'abord : l'URL ne sert qu'à cloner. Elle était exigée avant,
+        # et un brain sans remote `origin` dont chaque satellite est là lisait « l'URL du
+        # brain est illisible » puis « satellites incomplets » (laptop, 8/10).
         manquants = [c for c in miens if vide_ou_absent(emplacement(brain, c, miens[c]))]
+        if not manquants:
+            # Rien à cloner : succès sans un mot. Un dossier rempli sans dépôt git n'est
+            # jamais écrasé — il se dit, c'est à l'humain.
+            sans_depot = [c for c in miens if not (emplacement(brain, c, miens[c]) / ".git").exists()]
+            for c in sans_depot:
+                print(f"  ❌ {c:<16} un dossier avec du contenu, sans dépôt git — ni cloné ni écrasé")
+            return 1 if sans_depot else 0
+        base = base_de_la_forge(brain, registre.get("forge"))
+        if not base:
+            print(f"❌ {len(manquants)} satellite(s) à cloner — {', '.join(manquants)} — "
+                  "et aucune forge d'où les cloner : le brain n'a pas de remote `origin`, et "
+                  "`satellites.yml` ne déclare pas `forge:`.")
+            print("   → git remote add origin <URL du brain>   (les satellites sont ses voisins sur la forge)")
+            print("   → ou, en tête de satellites.yml : forge: <URL de la forge sans le nom du dépôt>")
+            return 1
         for c in manquants:
             url = f"{base}/{miens[c]['depot']}.git"
             r = subprocess.run(["git", "clone", "-q", url, str(emplacement(brain, c, miens[c]))],
@@ -232,8 +251,6 @@ def main() -> int:
                                env={**os.environ, **SANS_QUESTION})
             print(f"  {'✅' if r.returncode == 0 else '❌'} {c:<16} {url}"
                   + ("" if r.returncode == 0 else f" — {r.stderr.strip()[-120:]}"))
-        if not manquants:
-            print(f"✅ rien à cloner — les {len(miens)} satellites de `{ici}` sont là")
         return 0 if all((emplacement(brain, c, miens[c]) / ".git").exists() for c in miens) else 1
 
     lignes: list[tuple[str, str, str]] = []

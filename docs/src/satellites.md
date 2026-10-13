@@ -73,6 +73,20 @@ l'ont. `scripts/brain-satellites.py` s'en sert :
 Un dépôt dont le brain dépend sans le contenir se déclare avec un `chemin:`
 absolu ou en `~/…` : il est suivi et cloné là, et sa clé n'est plus qu'un nom.
 
+`--cloner` dérive l'URL d'un satellite de celle du brain (son remote `origin`, sans
+le nom du dépôt). Un brain sans `origin` — celui que sert le paquet est un dépôt à
+lui, souvent sans amont — déclare sa forge en tête de la liste :
+
+```yaml
+forge: git@ma-forge.example:moi      # l'URL de la forge, sans le nom du dépôt
+satellites:
+  profil: {depot: brain-profil, machines: [fixe, portable]}
+```
+
+Rien ne manque : `--cloner` réussit sans rien dire, `origin` ou pas. Il en manque et
+aucune forge n'est connue : il nomme les manquants et les deux moyens (`git remote
+add origin <URL du brain>`, ou `forge:`).
+
 Sans `satellites.yml`, il ne fait rien : les satellites restent des dossiers.
 Avec lui, l'installation (`brain init`) clone ceux de la machine.
 

@@ -3249,6 +3249,57 @@ class TestBrainSatellites(unittest.TestCase):
             self.assertIn('myeline', r.stdout)
             self.assertIn('derrière', r.stdout, "un CORE en retard se voit")
 
+    # ── --cloner sans remote `origin` : un brain servi par le paquet ──
+    # Son dossier est un dépôt à lui, souvent sans amont. `--cloner` exigeait l'URL du
+    # brain AVANT de regarder s'il manquait un satellite : le laptop lisait « l'URL du
+    # brain est illisible » puis « satellites incomplets » alors que les 12 se lisaient.
+
+    def test_cloner_sans_origin_et_rien_ne_manque_reussit_sans_un_mot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, _ = self._brain(tmp)
+            self.assertEqual(self._lancer(brain, '--cloner').returncode, 0)
+            self._git('remote', 'remove', 'origin', cwd=brain)
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(r.stdout.strip(), '', 'rien à cloner : rien à dire')
+
+    def test_cloner_sans_origin_nomme_les_manquants_et_le_moyen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, _ = self._brain(tmp)
+            self._git('remote', 'remove', 'origin', cwd=brain)
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn('profil', r.stdout)
+            self.assertIn('todo', r.stdout)
+            self.assertNotIn('fixe', r.stdout, "un satellite d'une autre machine ne manque pas")
+            self.assertIn('git remote add origin', r.stdout, 'le moyen : un remote origin')
+            self.assertIn('forge:', r.stdout, 'ou la forge dans satellites.yml')
+
+    def test_cloner_prend_la_forge_declaree_dans_satellites_yml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._git('remote', 'remove', 'origin', cwd=brain)
+            texte = (brain / 'satellites.yml').read_text()
+            (brain / 'satellites.yml').write_text(f'forge: {forge}\n' + texte)
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue((brain / 'profil' / 'LISEZ-MOI').exists(), 'cloné depuis la forge déclarée')
+
+    def test_cloner_ne_prend_pas_un_dossier_rempli_pour_un_satellite(self):
+        """Rien à cloner, mais un dossier rempli sans dépôt git : jamais écrasé, et dit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, _ = self._brain(tmp)
+            self._lancer(brain, '--cloner')
+            shutil.rmtree(brain / 'todo' / '.git')
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn('todo', r.stdout)
+            self.assertTrue((brain / 'todo' / 'LISEZ-MOI').exists())
+
     def test_un_chemin_relatif_est_refuse(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -14192,6 +14243,334 @@ class TestBrainMigrer(unittest.TestCase):
         code, sortie = self._annuler()
         self.assertEqual(code, 1, sortie)
         self.assertEqual(self.m.empreinte(self.D)[0], avant)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Le premier boot d'un brain neuf — ce que l'issue #22 a relevé
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestConfigLocaleParLeLienDuMoteur(unittest.TestCase):
+    """Installé à part, `brain-engine/` du dossier de données est un LIEN vers le moteur du
+    programme. Un script qui importe `db.py` par la data (`sys.path` sur
+    `<data>/brain-engine` : `bsi-query.sh`, `bsi-claim.sh`) voit `__file__` côté lien :
+    `racines` prenait la data pour le programme, ne trouvait pas la marque, et cherchait
+    `.env.local` DANS le programme — `brain init` l'avait écrit à la racine de la data.
+    Chaque appel disait « BRAIN_DB_BACKEND non declare » (mesuré sur la roue 3.5.6 :
+    « cherche dans <data>/brain-engine/.env.local »)."""
+
+    def setUp(self):
+        import donnees
+        self.donnees = donnees
+        self.tmp = dossier_de_test(self, 'env-lien-')
+        self.prog = self.tmp / 'venv' / 'site' / 'brain_cortex' / 'programme'
+        (self.prog / 'brain-engine').mkdir(parents=True)
+        (self.prog / 'scripts' / 'lib').mkdir(parents=True)
+        for f in ('racines.py', 'donnees.py'):
+            shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / f, self.prog / 'brain-engine' / f)
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'donnees.sh', self.prog / 'scripts' / 'lib' / 'donnees.sh')
+        self.data = self.tmp / 'MonBrain'
+        self.data.mkdir()
+        (self.data / 'brain-engine').symlink_to(self.prog / 'brain-engine')
+        (self.data / 'brain-compose.local.yml').write_text('machine: essai\n')
+
+    def _marquer(self):
+        (self.prog / '.cortex-programme').touch()
+
+    def test_vu_par_la_data_le_moteur_d_un_programme_marque_lit_la_config_de_la_data(self):
+        self._marquer()
+        self.assertEqual(self.donnees.env_local(self.data, self.data), self.data / '.env.local')
+        self.assertEqual(self.donnees.cache(self.data, self.data), self.data / '.cache',
+                         'le cache non plus ne s\'écrit pas dans le programme à travers le lien')
+
+    def test_sans_marque_rien_ne_change(self):
+        self.assertEqual(self.donnees.env_local(self.data, self.data),
+                         self.data / 'brain-engine' / '.env.local')
+        self.assertEqual(self.donnees.cache(self.data, self.data), self.data / 'brain-engine')
+
+    def test_racines_importe_par_la_data_designe_la_config_de_la_data(self):
+        """La chaîne entière, comme `bsi-query.sh` l'importe : `sys.path` sur le lien."""
+        self._marquer()
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env['HOME'] = str(self.tmp)
+        env['XDG_CONFIG_HOME'] = str(self.tmp / 'config')
+        code = (f'import sys; sys.path.insert(0, {str(self.data / "brain-engine")!r}); '
+                'import racines; print(racines.ENV_LOCAL)')
+        r = subprocess.run([sys.executable, '-c', code], cwd=self.data, env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), str(self.data / '.env.local'))
+
+    def _declarer(self) -> subprocess.CompletedProcess:
+        return subprocess.run(['bash', '-c', f'source "{self.prog}/scripts/lib/donnees.sh"; '
+                               f'brain_env_local_declarer "{self.data}"'],
+                              capture_output=True, text=True, timeout=30)
+
+    def test_init_declare_la_config_absente_la_ou_le_moteur_la_lit(self):
+        self._marquer()
+        r = self._declarer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), str(self.data / '.env.local'))
+        self.assertIn('BRAIN_DB_BACKEND=dolt', (self.data / '.env.local').read_text().splitlines())
+        self.assertFalse((self.prog / 'brain-engine' / '.env.local').exists(), 'rien dans le programme')
+
+    def test_init_ne_touche_jamais_une_config_presente(self):
+        self._marquer()
+        (self.data / '.env.local').write_text('BRAIN_DB_BACKEND=sqlite\nBRAIN_EXTRA=a-moi\n')
+        r = self._declarer()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(r.stdout, '')
+        self.assertEqual((self.data / '.env.local').read_text(), 'BRAIN_DB_BACKEND=sqlite\nBRAIN_EXTRA=a-moi\n')
+
+    def test_un_fork_la_declare_a_cote_du_moteur(self):
+        fork = self.tmp / 'fork'
+        (fork / 'brain-engine').mkdir(parents=True)
+        r = subprocess.run(['bash', '-c', f'source "{BRAIN_ROOT_PATH}/scripts/lib/donnees.sh"; '
+                            f'brain_env_local_declarer "{fork}"'], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((fork / 'brain-engine' / '.env.local').is_file())
+
+    def test_brain_init_la_declare_apres_dolt(self):
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
+        dolt = texte.index('scripts/dolt-setup.sh" ${DOLT_OPTS')
+        self.assertIn('brain_env_local_declarer "$BRAIN_ROOT"', texte[dolt:texte.index('Étape 8')])
+
+
+FOCUS_SEMIS = """---
+name: focus
+type: reference
+context_tier: always
+---
+
+# Focus actuel
+
+> Instance : **prod** — `<BRAIN_ROOT>`
+> Derniere mise a jour : <DATE>
+
+---
+
+## Direction
+
+Brain fraichement installe. Prochaine etape : configurer vos premiers projets.
+
+| Categorie | Projet | Role |
+|-----------|--------|------|
+| **Exemple** | my-saas-app | SaaS multi-tenant (exemple a remplacer) |
+| **Exemple** | my-game | Jeu indie (exemple a remplacer) |
+| **Exemple** | my-website | Portfolio / vitrine (exemple a remplacer) |
+
+---
+
+## Projets actifs
+
+| Projet | Etat | Prochaine action |
+|--------|------|-----------------|
+| my-saas-app | scaffold | Creer projets/my-saas-app.md + todo/my-saas-app.md |
+| my-game | scaffold | Creer projets/my-game.md + workspace/backlog/my-game/vision.md |
+| my-website | scaffold | Creer projets/my-website.md |
+
+---
+
+## Prochaine frontiere
+
+- Remplacer les exemples par vos vrais projets
+- Configurer les secrets (MYSECRETS)
+"""
+
+
+class TestSemisRemplir(unittest.TestCase):
+    """`focus.md`, semé du gabarit (la copie ci-dessus, celle de la v3.5.6), gardait ses
+    marqueurs, une instance « prod » en dur et trois projets d'exemple présentés comme
+    actifs : le premier briefing les lisait tels quels (issue #22). `brain init` le
+    remplit — tant que c'est encore le semis."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'semis-remplir.py'
+
+    def setUp(self):
+        self.b = dossier_de_test(self, 'semis-')
+        (self.b / 'focus.md').write_text(FOCUS_SEMIS, encoding='utf-8')
+
+    def _lancer(self, nom='essai') -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(self.SCRIPT), '--brain', str(self.b), '--nom', nom,
+                               '--date', '2026-10-13'], capture_output=True, text=True, timeout=30)
+
+    def _focus(self) -> str:
+        return (self.b / 'focus.md').read_text(encoding='utf-8')
+
+    def test_le_semis_du_gabarit_est_rempli(self):
+        r = self._lancer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        f = self._focus()
+        self.assertEqual(re.findall(r'<[A-Z_]+>', f), [], 'aucun marqueur ne reste')
+        self.assertIn(f'> Instance : **essai** — `{self.b}`', f)
+        self.assertIn('> Derniere mise a jour : 2026-10-13', f)
+        self.assertNotIn('**prod**', f)
+        for exemple in ('my-saas-app', 'my-game', 'my-website'):
+            self.assertNotIn(exemple, f)
+        self.assertEqual(f.count('aucun projet'), 2, 'les deux tableaux disent « aucun projet »')
+        self.assertNotIn('Remplacer les exemples', f)
+
+    def test_relance_il_ne_change_rien(self):
+        self._lancer()
+        apres = self._focus()
+        r = self._lancer()
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, '', 'relancé : rien à dire')
+        self.assertEqual(self._focus(), apres)
+
+    def test_ce_que_la_personne_a_ecrit_reste(self):
+        """Un brain déjà en vie (celui de l'issue) : le nom posé à la main, un vrai projet."""
+        f = (FOCUS_SEMIS.replace('**prod** — `<BRAIN_ROOT>`', '**perso** — `/ailleurs`')
+             .replace('| my-game | scaffold |', '| mon-jeu | en cours |'))
+        (self.b / 'focus.md').write_text(f, encoding='utf-8')
+        self._lancer()
+        f = self._focus()
+        self.assertIn('> Instance : **perso** — `/ailleurs`', f, 'un nom posé à la main reste')
+        self.assertIn('| mon-jeu | en cours |', f, 'un vrai projet reste, son tableau aussi')
+        self.assertIn('| Projet | Etat | Prochaine action |', f)
+        self.assertNotIn('my-saas-app', f)
+        self.assertNotIn('<DATE>', f)
+
+    def test_un_lien_n_est_pas_touche(self):
+        cible = self.b / 'ailleurs.md'
+        cible.write_text(FOCUS_SEMIS, encoding='utf-8')
+        (self.b / 'focus.md').unlink()
+        (self.b / 'focus.md').symlink_to(cible)
+        self.assertEqual(self._lancer().returncode, 0)
+        self.assertEqual(cible.read_text(encoding='utf-8'), FOCUS_SEMIS)
+
+    def test_brain_init_le_remplit(self):
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
+        self.assertRegex(texte, r'semis-remplir\.py" --brain "\$BRAIN_ROOT" --nom "\$BRAIN_NAME"')
+
+
+class TestReglagesDuDoctorCommitesParInit(unittest.TestCase):
+    """Après `brain init` puis `brain doctor`, le dépôt de données est propre. Le doctor
+    posait ses réglages (`instance/doctor/`) à sa première passe, après le premier commit :
+    `?? instance/` sur chaque brain neuf (issue #22). init les pose et les commite à part.
+    Un dépôt jetable ; les outils du doctor, des doubles qui écrivent ce que les vrais
+    écrivent (un sha, un nombre) — le vrai couple est joué par `essai-paquet.sh`."""
+
+    SH = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'reglages-doctor.sh'
+
+    def setUp(self):
+        self.tmp = dossier_de_test(self, 'reglages-')
+        self.b = self.tmp / 'MonBrain'
+        self.prog = self.tmp / 'programme'
+        doc = self.prog / 'brain-engine' / 'doctor'
+        doc.mkdir(parents=True)
+        self.appels = self.tmp / 'appels.log'
+        for outil, nom, valeur in (('convention_commits', 'convention-commits-depuis', None),
+                                   ('liens_morts', 'liens-morts-seuil', '3')):
+            (doc / f'{outil}.py').write_text(
+                'import subprocess, sys, pathlib\n'
+                f'open({str(self.appels)!r}, "a").write("{outil} " + " ".join(sys.argv[1:]) + "\\n")\n'
+                'b = pathlib.Path(sys.argv[sys.argv.index("--brain") + 1])\n'
+                f'f = b / "instance" / "doctor" / "{nom}"\n'
+                'f.parent.mkdir(parents=True, exist_ok=True)\n'
+                + ('v = subprocess.run(["git", "-C", str(b), "rev-parse", "HEAD"], '
+                   'capture_output=True, text=True).stdout.strip()\n'
+                   if valeur is None else f'v = "{valeur}"\n')
+                + 'f.write_text(v + "\\n")\n', encoding='utf-8')
+        self.env = {**{k: v for k, v in os.environ.items() if not k.startswith(('BRAIN_', 'GIT_'))},
+                    'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_AUTHOR_NAME': 'essai', 'GIT_AUTHOR_EMAIL': 'e@e',
+                    'GIT_COMMITTER_NAME': 'essai', 'GIT_COMMITTER_EMAIL': 'e@e', 'HOME': str(self.tmp)}
+        self.b.mkdir()
+        self._git('init', '-q', '-b', 'main')
+        (self.b / 'focus.md').write_text('# focus\n')
+        self._git('add', 'focus.md')
+        self._git('commit', '-q', '-m', 'scribe: le brain naît — ses données (brain init)')
+
+    def _git(self, *a) -> str:
+        return subprocess.run(['git', '-C', str(self.b), *a], capture_output=True, text=True,
+                              env=self.env, check=True).stdout
+
+    def _poser(self) -> subprocess.CompletedProcess:
+        return subprocess.run(['bash', '-c', f'source "{self.SH}"; brain_reglages_doctor "{self.b}" "{self.prog}"'],
+                              capture_output=True, text=True, env=self.env, timeout=60)
+
+    def test_les_reglages_sont_poses_et_commites_le_depot_reste_propre(self):
+        r = self._poser()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._git('status', '--porcelain'), '', 'le dépôt est propre')
+        self.assertEqual(self._git('log', '-1', '--format=%s').strip(),
+                         'config: les réglages du doctor (brain init)')
+        suivis = self._git('ls-files', 'instance/doctor').split()
+        self.assertEqual(sorted(suivis), ['instance/doctor/convention-commits-depuis',
+                                          'instance/doctor/liens-morts-seuil'])
+        premier = self._git('rev-list', '--max-parents=0', 'HEAD').strip()
+        self.assertEqual((self.b / 'instance' / 'doctor' / 'convention-commits-depuis').read_text().strip(),
+                         premier, 'la convention se juge depuis le premier commit')
+
+    def test_un_reglage_present_n_est_jamais_repose(self):
+        """Le brain de l'issue : le doctor a déjà écrit ses réglages, non commités."""
+        (self.b / 'instance' / 'doctor').mkdir(parents=True)
+        (self.b / 'instance' / 'doctor' / 'liens-morts-seuil').write_text('7\n')
+        (self.b / 'instance' / 'doctor' / 'convention-commits-depuis').write_text('abc\n')
+        r = self._poser()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.appels.exists(), 'aucun outil appelé : rien à poser')
+        self.assertEqual((self.b / 'instance' / 'doctor' / 'liens-morts-seuil').read_text(), '7\n')
+        self.assertEqual(self._git('status', '--porcelain'), '', 'commités tels quels')
+
+    def test_relance_rien_a_poser_rien_a_commiter(self):
+        self._poser()
+        avant = self._git('rev-parse', 'HEAD')
+        r = self._poser()
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, '')
+        self.assertEqual(self._git('rev-parse', 'HEAD'), avant)
+
+    def test_brain_init_les_pose_apres_le_premier_commit(self):
+        texte = (BRAIN_ROOT_PATH / 'scripts' / 'brain-init.sh').read_text(encoding='utf-8')
+        premier = texte.index('scribe: le brain naît')
+        self.assertIn('brain_reglages_doctor "$BRAIN_ROOT" "$PROGRAMME"',
+                      texte[premier:texte.index('# ── Résumé')])
+
+
+class TestBsiQueryOpenDitAucuneSession(unittest.TestCase):
+    """`bsi-query.sh open` sans session ne disait rien : on ne distinguait pas « aucune »
+    d'une lecture qui n'a rien ramené (issue #22). Il le dit — sur stderr : stdout vide
+    est la réponse que `peers` lit (`local_out=$("$0" open 2>/dev/null)`), et que
+    `bsi-peer-poll.sh` et `scratch-nettoyable.py` lisent. Un brain jetable, un `db.py`
+    double qui rend les claims qu'on lui donne."""
+
+    def setUp(self):
+        self.b = dossier_de_test(self, 'bsi-open-')
+        (self.b / 'scripts' / 'lib').mkdir(parents=True)
+        (self.b / 'brain-engine').mkdir()
+        for f in ('bsi-query.sh', 'lib/python.sh', 'lib/donnees.sh', 'lib/pair.py'):
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / f, self.b / 'scripts' / f)
+        (self.b / 'brain-engine' / 'db.py').write_text(
+            'import json, os\n'
+            'def claims_du_reseau(filtre, colonnes=None):\n'
+            '    return json.loads(os.environ.get("CLAIMS_ESSAI", "[]"))\n', encoding='utf-8')
+        (self.b / 'brain-compose.local.yml').write_text('machine: essai\n')
+
+    def _lancer(self, *args, claims='[]') -> subprocess.CompletedProcess:
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        env.update(CLAIMS_ESSAI=claims, HOME=str(self.b))
+        return subprocess.run(['bash', str(self.b / 'scripts' / 'bsi-query.sh'), *args], cwd=self.b,
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def test_sans_session_stdout_vide_et_le_dit_sur_stderr(self):
+        r = self._lancer('open')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, '', 'stdout reste vide : peers le lit')
+        self.assertIn('aucune session ouverte', r.stderr)
+
+    def test_avec_une_session_rien_sur_stderr(self):
+        r = self._lancer('open', claims=json.dumps([{'sess_id': 'sess-x', 'scope': 'work/a',
+                                                     'opened_at': '2026-10-13 10:00:00',
+                                                     'expires_at': None, 'ttl_hours': 4}]))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('sess-x | work/a', r.stdout)
+        self.assertNotIn('aucune session ouverte', r.stderr)
+
+    def test_peers_inchange(self):
+        r = self._lancer('peers')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('  (aucun claim ouvert)', r.stdout.splitlines())
+        self.assertNotIn('aucune session ouverte', r.stdout + r.stderr)
 
 
 if __name__ == '__main__':

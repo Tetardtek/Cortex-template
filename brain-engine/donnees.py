@@ -36,12 +36,28 @@ def est_a_part(racine: Path) -> bool:
     return (Path(racine) / MARQUE).exists()
 
 
+def moteur_a_part(racine: Path) -> bool:
+    """Le moteur vu depuis `racine` est-il celui d'un programme installé à part ? Oui si
+    `racine` porte la marque — ou si son `brain-engine/` est un LIEN vers le moteur d'un
+    programme marqué : un script du brain qui importe `db.py` par le dossier de données
+    (`sys.path` sur `<data>/brain-engine`, `bsi-query.sh`, `bsi-claim.sh`) voit `__file__`
+    côté lien, et `racine` est alors la data, qui ne porte pas la marque. Sans ce second
+    cas, il cherchait `.env.local` dans le programme — absent — et chaque appel disait
+    « BRAIN_DB_BACKEND non declare » (issue #22). L'équivalent de `brain_env_local`
+    (scripts/lib/donnees.sh), qui suivait déjà le lien."""
+    racine = Path(racine)
+    if est_a_part(racine):
+        return True
+    moteur = racine / 'brain-engine'
+    return moteur.is_symlink() and est_a_part(moteur.resolve().parent)
+
+
 def env_local(racine_programme: Path, donnees: Path) -> Path:
     """La config locale du moteur (`.env.local` : backend, ports de Dolt). D'ordinaire à
     côté du moteur, dans `brain-engine/`. Installé à part, le programme ne s'écrit pas —
     une roue vit dans un site-packages : la config est à la data, à sa racine
     (`.env.local`, que le `.gitignore` semé tait)."""
-    if est_a_part(racine_programme):
+    if moteur_a_part(racine_programme):
         return Path(donnees) / '.env.local'
     return Path(racine_programme) / 'brain-engine' / '.env.local'
 
@@ -50,7 +66,7 @@ def cache(racine_programme: Path, donnees: Path) -> Path:
     """Où le moteur range ses caches (`viz_cache_*.json`). D'ordinaire `brain-engine/` de
     la data ; installé à part, `brain-engine/` de la data est un lien vers le programme :
     `.cache/` à la racine de la data, que la vue tait au dépôt."""
-    if est_a_part(racine_programme):
+    if moteur_a_part(racine_programme):
         return Path(donnees) / '.cache'
     return Path(donnees) / 'brain-engine'
 

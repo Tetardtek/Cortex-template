@@ -318,7 +318,7 @@ fi
 # ── Étape 3 (suite) — les satellites déclarés pour cette machine ────────────────────
 if [[ -f "$BRAIN_ROOT/satellites.yml" ]]; then
   python3 "$BRAIN_ROOT/scripts/brain-satellites.py" --brain "$BRAIN_ROOT" --cloner \
-    || warn "satellites incomplets — relancer : python3 scripts/brain-satellites.py --cloner"
+    || warn "satellites incomplets (ce qui manque, et d'où les cloner : ci-dessus) — puis relancer : python3 scripts/brain-satellites.py --cloner"
 fi
 
 # ── Étape 3.1 — PATHS.md (remplacer les placeholders) ─────────────────────────
@@ -346,6 +346,20 @@ if [[ ${#_remplaces[@]} -gt 0 ]]; then
     info "  tes projets vivent ailleurs ? corrige la ligne projects/ de PATHS.md"
 else
   info "PATHS.md déjà configuré — skip"
+fi
+
+# ── Étape 3.2 — focus.md (le semis du gabarit) ────────────────────────────────
+#
+# Le gabarit le sème à marqueurs (`<BRAIN_ROOT>`, `<DATE>`, une instance « prod » en dur)
+# avec trois projets d'exemple présentés comme actifs : le premier briefing les lisait
+# tels quels (issue #22). Rempli tant que c'est encore le semis — ce que la personne y a
+# écrit reste ; relancé, rien ne change.
+if [[ -f "$BRAIN_ROOT/focus.md" && -f "$PROGRAMME/scripts/semis-remplir.py" ]]; then
+  if _focus=$(python3 "$PROGRAMME/scripts/semis-remplir.py" --brain "$BRAIN_ROOT" --nom "$BRAIN_NAME"); then
+    [[ -n "$_focus" ]] && ok "focus.md rempli — $_focus"
+  else
+    warn "focus.md n'a pas pu être rempli — relancer : python3 scripts/semis-remplir.py --brain $BRAIN_ROOT --nom $BRAIN_NAME"
+  fi
 fi
 
 # ── Lock kernel push (nouvelle machine d'une instance = readonly) ────────────
@@ -477,6 +491,15 @@ if [[ -f "$BRAIN_ROOT/scripts/dolt-setup.sh" ]]; then
     || warn "Dolt : l'installation a échoué — relancer : bash scripts/dolt-setup.sh"
 else
   warn "scripts/dolt-setup.sh absent — la base reste à installer"
+fi
+# La config locale du moteur, déclarée quoi qu'il arrive à Dolt : `dolt-setup.sh` l'écrit
+# en dernier, et s'arrêtait avant elle si une étape échouait — chaque script disait alors
+# « BRAIN_DB_BACKEND non declare » (issue #22). Là où le moteur la lit : la racine du
+# brain chez un programme installé à part, `brain-engine/` sinon. Un fichier présent
+# n'est jamais touché.
+if source "$PROGRAMME/scripts/lib/donnees.sh" 2>/dev/null \
+   && _env_ecrit="$(brain_env_local_declarer "$BRAIN_ROOT")"; then
+  ok "${_env_ecrit#"$BRAIN_ROOT"/} — BRAIN_DB_BACKEND=dolt (la config locale du moteur)"
 fi
 
 # ── Étape 8 — brain-ui, construit ───────────────────────────────────────────
@@ -668,6 +691,15 @@ if $A_PART && git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     else
       warn "pas de premier commit (identité git absente ? git config user.name / user.email) — à faire : git -C $BRAIN_ROOT commit"
     fi
+  fi
+  # Les réglages du doctor (`instance/doctor/`) : le point de référence de la convention
+  # de commit et le seuil des liens morts. Le doctor les posait à sa première passe, APRÈS
+  # le premier commit — dont le premier porte l'empreinte : `git status` montrait
+  # `?? instance/` à chaque brain neuf (issue #22). init les pose ici, jamais par-dessus
+  # un réglage existant, et les commite à part. Relancé sur un brain dont le doctor les a
+  # déjà écrits, il commite ceux qui ne le sont pas.
+  if source "$PROGRAMME/scripts/lib/reglages-doctor.sh" 2>/dev/null; then
+    brain_reglages_doctor "$BRAIN_ROOT" "$PROGRAMME" || true   # un échec se dit, il n'arrête pas init
   fi
 fi
 

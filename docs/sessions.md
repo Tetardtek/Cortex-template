@@ -33,6 +33,10 @@ La syntaxe est toujours la même : `brain boot <type>[/<scope>]`. Le scope est u
 projet (`brain boot work/mon-site`), un thème (`brain boot explore/brainstorm`)
 ou une piste d'apprentissage (`brain boot learning/rust`).
 
+Sans type (`brain boot` seul), ou avec un type inconnu, le Claude te présente les six
+types, une ligne chacun, et te demande lequel ouvrir. Si personne n'est là pour
+répondre (`claude -p`), il ouvre `explore` et le dit.
+
 ---
 
 ## Ce qui se charge — quatre couches
