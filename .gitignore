@@ -109,3 +109,6 @@ __pycache__/
 
 # le lien des pages d'instance de la skill vers instance/skill/, posé par `brain vue`
 /skills/brain/instance
+
+# tes secrets et leur inventaire (brain-secrets/) — jamais dans ce dépôt
+/brain-secrets/

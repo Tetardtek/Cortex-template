@@ -272,11 +272,18 @@ def perimees(registre: dict[str, dict]) -> list[str]:
 
 
 def bootstrap(mysecrets: dict[str, int], registre: dict[str, dict],
-              chemin_registre: Path) -> int:
+              chemin_registre: Path, machine: str | None = None) -> int:
     """Declare les cles manquantes, avec ce qui se DERIVE du nom — rien d'invente.
 
     `description` reste vide : elle appartient a l'humain, et le controle ne
     l'exige pas. Le but est que le registre devienne exhaustif, pas bavard.
+
+    `machines` : la machine qui DECLARE, celle de `brain-compose.local.yml`
+    (`machine_courante`). `desktop` etait ecrit en dur — juste sur le poste de
+    l'owner, faux partout ailleurs : chez un fork dont la machine s'appelle
+    autrement, chaque cle declaree l'etait « pour une autre machine » (issue #24).
+    Sans `machine:`, la liste reste VIDE — « concerne toutes les machines »
+    (`concerne()`), et la sortie le dit.
     """
     manquantes = sorted(set(mysecrets) - set(registre))
     if not manquantes:
@@ -296,6 +303,10 @@ def bootstrap(mysecrets: dict[str, int], registre: dict[str, dict],
             "  # `scope` derive du prefixe du nom. `description` appartient a",
             "  # l'humain : le controle ne l'exige pas, et ne rougira pas dessus."]
     aujourdhui = f"{date.today():%Y-%m-%d}"
+    machines = f"[{machine}]" if machine else "[]"
+    if not machine:
+        print("ℹ️  `machine:` absent de brain-compose.local.yml — cles declarees sans "
+              "machine (`machines: []` : toutes les machines)")
     for nom in manquantes:
         bloc += [f"  {nom}:",
                  f"    scope: {nom.split('_')[0].lower()}",
@@ -308,7 +319,7 @@ def bootstrap(mysecrets: dict[str, int], registre: dict[str, dict],
                  f"    declared_modified_at: {aujourdhui}",
                  "    expires_at: null",
                  "    rotated_at: null",
-                 "    machines: [desktop]",
+                 f"    machines: {machines}",
                  "    required: false",
                  "    description: ''"]
     chemin_registre.write_text("\n".join(bloc) + "\n", encoding="utf-8")
@@ -466,7 +477,7 @@ def main() -> int:
     registre = lire_registre(f_registre)
 
     if a.bootstrap:
-        return bootstrap(mysecrets, registre, f_registre)
+        return bootstrap(mysecrets, registre, f_registre, machine_courante(a.brain))
 
     ici = machine_courante(a.brain)
     if ici is None:

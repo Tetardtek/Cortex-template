@@ -156,6 +156,10 @@ brain init <NOM> <DOSSIER> --sans-service   # sans
 la vue du programme, et écrit `~/.claude/CLAUDE.md` **s'il n'existe pas**. S'il
 existe, il n'y touche pas et le dit : **demande** à la personne avant de
 relancer avec `--reecrire-claude-md` (l'ancien est sauvegardé à côté).
+Il branche aussi la statusline du brain dans `~/.claude/settings.json`, **seulement
+si aucune n'y est** : une statusline existante n'est jamais remplacée — init donne
+la ligne à poser, et c'est à la personne de décider ; ne la remplace pas sans son
+accord.
 
 **On vérifie** :
 

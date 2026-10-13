@@ -54,7 +54,24 @@ git remote add origin <URL_DE_TON_DEPOT>
 git push -u origin main
 ```
 
-Même geste pour les autres.
+Même geste pour les autres. Puis, depuis le dossier du brain :
+
+```bash
+bash scripts/install-brain-hooks.sh   # les hooks du satellite devenu dépôt
+```
+
+Trois satellites ont leurs propres hooks quand ils sont un dépôt — `handoffs/`
+(la base suit les handoffs), `instance/agents/` et `progression/` (la vue suit
+ta couche) : sans eux, le doctor rougit « hooks git installés ». L'installateur
+les pose, et ne touche à rien d'autre.
+
+Un brain **servi par le paquet** fait les deux en une commande :
+`brain vue --satellites`. Elle tait le satellite en entier dans le `.gitignore`
+du dossier, pose ses hooks, et **désuit** ce que le dossier suivait encore de lui
+— les modèles de son premier commit (`README.md`, `_template.md`, `.gitkeep`) :
+`git rm --cached`, jamais un fichier retiré du disque. Le dossier le dit ; la
+suppression est à commiter (`git commit`). Sans ça, deux dépôts suivaient les
+mêmes fichiers, et une retouche du `README.md` se voyait dans les deux.
 
 ---
 
@@ -84,9 +101,20 @@ satellites:
   profil: {depot: brain-profil, machines: [fixe, portable]}
 ```
 
+Un satellite qui vit sur une **autre forge** que le brain (le brain sur une
+forge publique, ses satellites sur la tienne) déclare son adresse entière,
+`url:`. Elle passe avant tout le reste, `depot:` et `forge:` compris :
+
+```yaml
+satellites:
+  profil: {url: git@ma-forge.example:moi/brain-profil.git, machines: [fixe, portable]}
+  todo:   {depot: brain-todo, machines: [fixe]}   # la forge du brain, comme avant
+```
+
 Rien ne manque : `--cloner` réussit sans rien dire, `origin` ou pas. Il en manque et
-aucune forge n'est connue : il nomme les manquants et les deux moyens (`git remote
-add origin <URL du brain>`, ou `forge:`).
+aucune forge n'est connue : il nomme les manquants qui n'ont pas d'`url:`, et les
+trois moyens (`git remote add origin <URL du brain>`, `forge:`, ou une `url:` par
+satellite).
 
 Sans `satellites.yml`, il ne fait rien : les satellites restent des dossiers.
 Avec lui, l'installation (`brain init`) clone ceux de la machine.

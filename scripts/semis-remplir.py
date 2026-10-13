@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 # brain-distribuable: oui
-"""Remplir `focus.md`, semé du gabarit, pour l'instance qui naît.
+"""Remplir les fichiers que le gabarit sème à marqueurs : `focus.md`, `PATHS.md`.
 
     python3 scripts/semis-remplir.py --brain <dossier> --nom <brain_name> [--date AAAA-MM-JJ]
+    python3 scripts/semis-remplir.py --brain <dossier> --fichier PATHS.md [--projets <dossier>]
+
+`brain init` les remplit (étapes 3.1 et 3.2) ; `brain maj` aussi, quand la version reçue
+change leur semis (`scripts/maj.py`) : les mêmes fonctions, ici.
+
+── focus.md ──
 
 Le gabarit sème un `focus.md` à marqueurs : `<BRAIN_ROOT>`, `<DATE>`, une instance
 nommée en dur (« **prod** ») et trois projets d'exemple présentés comme actifs
@@ -21,15 +27,23 @@ Ce qu'il fait, et seulement tant que c'est encore le semis :
   devient « *(aucun projet …)* », que le briefing lit comme tel ; la puce « Remplacer les
   exemples par vos vrais projets » devient « Déclarer vos premiers projets ».
 
+── PATHS.md ──
+
+`<BRAIN_ROOT>`, `<HOME>` et `<PROJECTS_ROOT>` (par défaut : le dossier qui contient le brain ;
+`--projets` en choisit un autre) se remplacent chacun pour lui-même, partout où ils
+restent. Sur stdout, les marqueurs remplacés, séparés d'une espace.
+
 Idempotent : relancé, il ne change rien ; sur un brain déjà rempli, il ne touche que les
-marqueurs qui y restent. Un `focus.md` absent, ou qui est un lien, n'est pas touché.
-Sortie 0 ; la liste de ce qui a changé sur stdout (rien si rien).
+marqueurs qui y restent. Un fichier absent, ou qui est un lien, n'est pas touché.
+Sortie 0 ; ce qui a changé sur stdout (rien si rien).
 """
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,6 +52,9 @@ SE_DIT_EXEMPLE = re.compile(r"exemple|scaffold", re.I)
 LIGNE_INSTANCE = re.compile(r"^(> Instance : \*\*)[^*]*(\*\* — `?)<BRAIN_ROOT>(`?)\s*$")
 PROCHAINE_SEMIS = "- Remplacer les exemples par vos vrais projets"
 PROCHAINE_NEUVE = "- Déclarer vos premiers projets dans `projets/`\n"
+MARQUEURS_PATHS = ("<BRAIN_ROOT>", "<HOME>", "<PROJECTS_ROOT>")
+MARQUEUR = re.compile(r"<[A-Z_]+>")
+LIGNE_NOMMEE = re.compile(r"^> Instance : \*\*([^*]*)\*\* — `?([^`]*?)`?\s*$")
 AUCUN = "*(aucun projet pour l'instant — le premier se déclare dans `projets/`, depuis `projets/_template.md`)*"
 
 
@@ -110,20 +127,100 @@ def remplir(texte: str, racine: str, nom: str, date: str) -> tuple[str, list[str
     return "".join(lignes), faits
 
 
+def remplir_paths(texte: str, valeurs: dict) -> tuple[str, list[str]]:
+    """Chaque marqueur de `PATHS.md` remplacé pour lui-même, partout où il reste."""
+    faits = []
+    for m in MARQUEURS_PATHS:
+        if m in texte and m in valeurs:
+            texte = texte.replace(m, valeurs[m])
+            faits.append(m)
+    return texte, faits
+
+
+def defauts(racine: str, nom: str, home: str | None = None, projets: str | None = None,
+            date: str | None = None) -> dict:
+    """Les valeurs que `brain init` donne aux marqueurs."""
+    return {"<BRAIN_ROOT>": racine,
+            "<HOME>": home or os.environ.get("HOME", ""),
+            "<PROJECTS_ROOT>": projets or os.environ.get("PROJECTS_ROOT") or os.path.dirname(racine),
+            "<DATE>": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "nom": nom}
+
+
+def remplir_fichier(fichier: str, texte: str, valeurs: dict) -> tuple[str, list[str]]:
+    """Remplir `PATHS.md` ou `focus.md` (par son nom) avec ces valeurs."""
+    if fichier == "PATHS.md":
+        return remplir_paths(texte, valeurs)
+    if fichier == "focus.md":
+        return remplir(texte, valeurs["<BRAIN_ROOT>"], valeurs["nom"], valeurs["<DATE>"])
+    raise ValueError(f"{fichier} : pas un fichier semé à remplir")
+
+
+def deduire(semis: str, rempli: str) -> dict:
+    """Les valeurs qu'un fichier rempli a données aux marqueurs de son semis.
+
+    Chaque ligne du semis qui porte des marqueurs devient un motif (un marqueur, une
+    capture) ; les lignes du fichier rempli qui s'y ajustent en entier votent. Une ligne
+    corrigée à la main sur sa seule valeur (la ligne `projects/` de PATHS.md) donne donc
+    cette valeur ; un marqueur jamais rempli se donne lui-même."""
+    votes: dict[str, Counter] = {}
+    lignes = set(rempli.splitlines())
+    for l in semis.splitlines():
+        if not MARQUEUR.search(l):
+            continue
+        motif, groupes, pos = "", {}, 0
+        for m in MARQUEUR.finditer(l):
+            motif += re.escape(l[pos:m.start()])
+            g = m.group()
+            if g in groupes:
+                motif += f"(?P={groupes[g]})"
+            else:
+                groupes[g] = f"g{len(groupes)}"
+                motif += f"(?P<{groupes[g]}>.+?)"
+            pos = m.end()
+        rx = re.compile(motif + re.escape(l[pos:]))
+        for r in lignes:
+            ajuste = rx.fullmatch(r)
+            if ajuste:
+                for g, nom in groupes.items():
+                    votes.setdefault(g, Counter())[ajuste.group(nom)] += 1
+    return {g: c.most_common(1)[0][0] for g, c in votes.items()}
+
+
+def valeurs_du_rempli(fichier: str, semis: str, rempli: str, valeurs_init: dict) -> dict | None:
+    """Les valeurs avec lesquelles CE fichier a été rempli, lues dans le fichier lui-même ;
+    celles d'init pour ce qui ne s'y lit pas. None : le fichier n'a jamais été rempli
+    (un `focus.md` dont la ligne d'instance porte encore son marqueur)."""
+    v = {**valeurs_init, **deduire(semis, rempli)}
+    if fichier == "focus.md":
+        for l in rempli.splitlines():
+            if LIGNE_INSTANCE.match(l):
+                return None
+            m = LIGNE_NOMMEE.match(l)
+            if m:
+                v["nom"], v["<BRAIN_ROOT>"] = m.group(1), m.group(2)
+                break
+    return v
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description="Remplit focus.md, semé du gabarit")
-    p.add_argument("--brain", type=Path, required=True)
-    p.add_argument("--nom", required=True)
-    p.add_argument("--date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    p = argparse.ArgumentParser(description="Remplit focus.md ou PATHS.md, semés du gabarit")
+    p.add_argument("--brain", required=True)
+    p.add_argument("--fichier", choices=("focus.md", "PATHS.md"), default="focus.md")
+    p.add_argument("--nom", help="le nom de l'instance (focus.md)")
+    p.add_argument("--date", default=None)
+    p.add_argument("--projets", default=None, help="<PROJECTS_ROOT> (PATHS.md) ; défaut : le dossier du brain")
     a = p.parse_args()
-    focus = a.brain / "focus.md"
-    if not focus.is_file() or focus.is_symlink():
+    if a.fichier == "focus.md" and not a.nom:
+        p.error("--nom est requis pour focus.md")
+    cible = Path(a.brain) / a.fichier
+    if not cible.is_file() or cible.is_symlink():
         return 0
-    avant = focus.read_text(encoding="utf-8")
-    apres, faits = remplir(avant, str(a.brain), a.nom, a.date)
+    avant = cible.read_text(encoding="utf-8")
+    apres, faits = remplir_fichier(a.fichier, avant, defauts(a.brain, a.nom or "", projets=a.projets, date=a.date))
     if apres != avant:
-        focus.write_text(apres, encoding="utf-8")
-        print(", ".join(faits))
+        cible.write_text(apres, encoding="utf-8")
+        print((" " if a.fichier == "PATHS.md" else ", ").join(faits))
     return 0
 
 

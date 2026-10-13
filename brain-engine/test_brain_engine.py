@@ -2507,10 +2507,15 @@ class TestSetupResoutPaths(unittest.TestCase):
             racine = Path(tmp) / 'dev' / 'mon-brain'
             racine.mkdir(parents=True)
             (racine / 'PATHS.md').write_text(paths, encoding='utf-8')
+            # Le remplissage vit dans `semis-remplir.py` du programme.
             r = subprocess.run(['bash', '-c', 'ok(){ echo "ok $*"; }; info(){ echo "info $*"; }\n'
-                                + self._etape()],
-                               env={'PATH': os.environ['PATH'], 'HOME': '/home/temoin',
-                                    'BRAIN_ROOT': str(racine), **env},
+                                'warn(){ echo "warn $*"; }\n' + self._etape()],
+                               # Le python qui joue la suite passe devant : sous un HOME factice, un
+                               # shim (mise, pyenv) peut refuser de résoudre `python3` (mesuré le 13/10 :
+                               # « config not trusted » depuis un dossier sous le vrai HOME).
+                               env={'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
+                                    'HOME': '/home/temoin',
+                                    'BRAIN_ROOT': str(racine), 'PROGRAMME': str(BRAIN_ROOT_PATH), **env},
                                capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)
             return (racine / 'PATHS.md').read_text(encoding='utf-8'), str(racine), r.stdout
@@ -3287,6 +3292,54 @@ class TestBrainSatellites(unittest.TestCase):
             r = self._lancer(brain, '--cloner')
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertTrue((brain / 'profil' / 'LISEZ-MOI').exists(), 'cloné depuis la forge déclarée')
+
+    # ── `url:` par satellite : le brain sur une forge, ses satellites sur une autre ──
+    # `forge:` couvre un brain sans `origin` ; pas un brain sur GitHub et ses satellites sur
+    # Gitea (issue #24). Une `url:` dit l'adresse entière du dépôt, et passe avant tout.
+
+    def test_cloner_prend_l_url_du_satellite_avant_la_forge_du_brain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            ailleurs = self._forge(tmp / 'autre', 'mon-todo')        # une AUTRE forge
+            (brain / 'satellites.yml').write_text(
+                'satellites:\n'
+                '  profil: {depot: profil-depot, machines: [laptop]}\n'
+                f'  todo:   {{depot: todo-depot, url: {ailleurs / "mon-todo.git"}, machines: [laptop]}}\n')
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual((brain / 'todo' / 'LISEZ-MOI').read_text(), 'mon-todo',
+                             "cloné depuis son url:, pas depuis la forge du brain (todo-depot)")
+            self.assertEqual((brain / 'profil' / 'LISEZ-MOI').read_text(), 'profil-depot',
+                             'sans url:, la forge du brain comme avant')
+
+    def test_cloner_sans_origin_ni_forge_suffit_des_urls(self):
+        """Chaque manquant a son `url:` : ni `origin` ni `forge:` ne sont exigés."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._git('remote', 'remove', 'origin', cwd=brain)
+            (brain / 'satellites.yml').write_text(
+                'satellites:\n'
+                f'  profil: {{url: {forge / "profil-depot.git"}, machines: [laptop]}}\n')
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue((brain / 'profil' / 'LISEZ-MOI').exists())
+
+    def test_cloner_sans_forge_ne_nomme_que_les_manquants_sans_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._git('remote', 'remove', 'origin', cwd=brain)
+            (brain / 'satellites.yml').write_text(
+                'satellites:\n'
+                f'  profil: {{url: {forge / "profil-depot.git"}, machines: [laptop]}}\n'
+                '  todo:   {depot: todo-depot, machines: [laptop]}\n')
+            r = self._lancer(brain, '--cloner')
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn('todo', r.stdout)
+            self.assertNotIn('profil', r.stdout.split('\n')[0], "profil a son url: — il ne manque pas d'adresse")
+            self.assertIn('url:', r.stdout, 'le troisième moyen : une url: par satellite')
 
     def test_cloner_ne_prend_pas_un_dossier_rempli_pour_un_satellite(self):
         """Rien à cloner, mais un dossier rempli sans dépôt git : jamais écrasé, et dit."""
@@ -5904,6 +5957,86 @@ class TestVueDuProgramme(unittest.TestCase):
         ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', 'perso'])
         self.assertEqual(ign.returncode, 0, 'le satellite n est pas ignoré par le dépôt')
 
+    # ── Un satellite devenu dépôt APRÈS le premier commit (issue #24, I3 et I5) ──
+
+    def _git_data(self, *a, cwd=None):
+        return subprocess.run(['git', '-C', str(cwd or self.data), '-c', 'user.name=t', '-c', 'user.email=t@t',
+                               *a], capture_output=True, text=True)
+
+    def _premier_commit_puis_depot(self):
+        """Le dossier tel que `brain init` le laisse (les semis de `handoffs/` dans son premier
+        commit), puis la recette de la doc : `git init` dans le satellite."""
+        (self.data / 'handoffs').mkdir()
+        for f in ('README.md', '_template.md'):
+            (self.data / 'handoffs' / f).write_text(f'{f} semé\n')
+        (self.data / 'projets').mkdir(exist_ok=True)
+        (self.data / 'projets' / 'README.md').write_text('reste au dossier\n')
+        self._git_data('add', '-A')
+        self._git_data('commit', '-q', '--no-verify', '-m', 'le brain naît')
+        subprocess.run(['git', 'init', '-q', str(self.data / 'handoffs')], check=True)
+        self._git_data('add', '-A', cwd=self.data / 'handoffs')
+        self._git_data('commit', '-q', '--no-verify', '-m', 'handoffs', cwd=self.data / 'handoffs')
+
+    def test_un_satellite_devenu_depot_n_est_plus_suivi_par_le_dossier(self):
+        self._premier_commit_puis_depot()
+        # `projets` déclaré, pas encore un dépôt (pas cloné) : il garde ses fichiers.
+        (self.data / 'satellites.yml').write_text('satellites:\n  projets: {depot: p, machines: [fixe]}\n')
+        r = self._satellites()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        suivis = self._git_data('ls-files', 'handoffs').stdout.split()
+        self.assertEqual(suivis, [], 'les semis du satellite restent suivis par le dossier')
+        for f in ('README.md', '_template.md'):
+            self.assertEqual((self.data / 'handoffs' / f).read_text(), f'{f} semé\n', 'retiré du disque')
+        self.assertEqual(self._git_data('ls-files', 'projets').stdout.split(), ['projets/README.md'],
+                         "un dossier qui n'est pas un dépôt garde ses fichiers suivis")
+        self.assertIn('handoffs/README.md', r.stdout, 'ce qui est désuivi se dit')
+        self.assertEqual(self._git_data('status', '--porcelain', cwd=self.data / 'handoffs').stdout, '',
+                         'le dépôt du satellite ne bouge pas')
+        r = self._satellites()
+        self.assertNotIn('ne sont plus suivis', r.stdout, 'relancé : rien à désuivre')
+
+    def test_init_annonce_ce_qu_il_a_desuivi_sans_le_commiter(self):
+        """Dans brain init, la sortie de `vue --satellites` partait dans /dev/null : relancé,
+        init laissait des suppressions indexées que personne n'annonçait. Le passage d'init
+        (`lib/satellites-taire.sh`) les dit, avec la commande — et ne commite rien."""
+        lib = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'satellites-taire.sh'
+        (self.prog / 'scripts' / 'lib').mkdir(parents=True, exist_ok=True)
+        if lib.is_file():
+            shutil.copy(lib, self.prog / 'scripts' / 'lib' / lib.name)
+        self._premier_commit_puis_depot()
+        tete = self._git_data('rev-parse', 'HEAD').stdout
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        appel = ['bash', '-c', 'source "$1/scripts/lib/satellites-taire.sh" && brain_satellites_taire "$2" "$1"',
+                 '_', str(self.prog), str(self.data)]
+        r = subprocess.run(appel, capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('handoffs/README.md', r.stdout)
+        self.assertIn('handoffs/_template.md', r.stdout)
+        self.assertIn(f'git -C {self.data} commit', r.stdout, 'la commande pour commiter')
+        self.assertEqual(self._git_data('rev-parse', 'HEAD').stdout, tete, 'un commit silencieux')
+        r = subprocess.run(appel, capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(r.stdout, '', 'relancé : les suppressions déjà indexées ne se redisent pas')
+
+    def test_un_satellite_devenu_depot_recoit_ses_hooks(self):
+        """`git init` dans `handoffs/` : « hooks git installés » rougissait, la doc ne disait
+        pas de relancer l'installateur. `brain vue --satellites` le relance."""
+        for rel in ('scripts/install-brain-hooks.sh', 'scripts/lib/donnees.sh'):
+            (self.prog / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(BRAIN_ROOT_PATH / rel, self.prog / rel)
+        shutil.copytree(BRAIN_ROOT_PATH / 'scripts' / 'hooks', self.prog / 'scripts' / 'hooks')
+        self.assertEqual(self._relier().returncode, 0)
+        self._premier_commit_puis_depot()
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        env['BRAIN_ROOT'] = str(self.data)
+        check = lambda: subprocess.run(['bash', str(self.prog / 'scripts' / 'install-brain-hooks.sh'), '--check'],
+                                       cwd=self.data, env=env, capture_output=True, text=True)
+        self.assertEqual(check().returncode, 1, 'témoin : le satellite devenu dépôt est sans hooks')
+        r = self._satellites()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        c = check()
+        self.assertEqual(c.returncode, 0, c.stdout + r.stdout)
+        self.assertTrue((self.data / 'handoffs' / '.git' / 'hooks' / 'post-commit').is_file())
+
     # ── La skill d'un brain servi par le paquet voit `instance/skill/` ──
 
     def _vue(self, *args):
@@ -6379,6 +6512,302 @@ class TestUnitesDuProgrammeAPart(unittest.TestCase):
                 self.assertIn(f'Environment=BRAIN_ROOT={self.data}', texte)
         lien = self.tmp / 'home' / '.local' / 'bin' / 'brain'
         self.assertEqual(os.readlink(lien), str(self.prog / 'scripts' / 'brain'))
+
+
+class TestStatuslineLivree(unittest.TestCase):
+    """La statusline Claude Code livrée : `scripts/brain-statusline.sh` (issue #27).
+
+    Aucune n'était livrée : celle de l'instance d'origine dépendait de son venv, de
+    `~/Dev/Brain`, du port 7700 et de ses pairs. Jouée ici sur une base SQLite JETABLE
+    (`BRAIN_DB_BACKEND=sqlite`, le schéma du moteur), un dépôt git jetable et un HOME
+    jetable : jamais la base ni le `~/.claude/` de la machine."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain-statusline.sh'
+
+    def setUp(self):
+        if not self.SCRIPT.is_file():
+            self.fail('scripts/brain-statusline.sh absent — aucune statusline livrée')
+        self.tmp = Path(tempfile.mkdtemp(prefix='statusline-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.brain = self.tmp / 'brain'
+        self.brain.mkdir()
+        self.db = self.tmp / 'brain.db'
+        import sqlite3
+        c = sqlite3.connect(self.db)
+        c.executescript((BRAIN_ROOT_PATH / 'brain-engine' / 'schema.sql').read_text(encoding='utf-8'))
+        cols = [r[1] for r in c.execute('PRAGMA table_info(claims)')]
+        if 'agent_session' not in cols:
+            c.execute('ALTER TABLE claims ADD COLUMN agent_session TEXT')
+        c.commit()
+        c.close()
+        self.depot = self.tmp / 'projet'
+        self.depot.mkdir()
+        for a in (['init', '-q', '-b', 'ma-branche'], ['-c', 'user.name=t', '-c', 'user.email=t@t',
+                  'commit', '-q', '--allow-empty', '-m', 'x']):
+            subprocess.run(['git', '-C', str(self.depot), *a], check=True, capture_output=True)
+        self.home = self.tmp / 'home'
+        self.home.mkdir()
+
+    def _claim(self, sess, scope, agent, il_y_a_h=2.1, status='open'):
+        import sqlite3
+        from datetime import datetime, timedelta, timezone
+        ouvert = (datetime.now(timezone.utc) - timedelta(hours=il_y_a_h)).strftime('%Y-%m-%d %H:%M:%S')
+        c = sqlite3.connect(self.db)
+        c.execute('INSERT INTO claims (sess_id, type, scope, status, opened_at, agent_session) '
+                  'VALUES (?, ?, ?, ?, ?, ?)', (sess, 'work', scope, status, ouvert, agent))
+        c.commit()
+        c.close()
+
+    def _env(self, **en_plus):
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith(('BRAIN_', 'CLAUDE')) and k != 'MYELINE_ROOT'}
+        env.update(HOME=str(self.home), BRAIN_ROOT=str(self.brain), BRAIN_DB_BACKEND='sqlite',
+                   BRAIN_DB_PATH=str(self.db), NO_COLOR='1')
+        env.update(en_plus)
+        return env
+
+    def _rendre(self, entree, **env):
+        texte = entree if isinstance(entree, str) else json.dumps(entree)
+        debut = time.monotonic()
+        r = subprocess.run(['bash', str(self.SCRIPT)], input=texte, capture_output=True, text=True,
+                           env=self._env(**env), timeout=30)
+        return r, time.monotonic() - debut
+
+    def _entree(self, sid='sess-claude-1', **autre):
+        e = {'session_id': sid, 'model': {'display_name': 'Opus'},
+             'workspace': {'current_dir': str(self.depot)}, 'cwd': str(self.depot),
+             'context_window': {'used_percentage': 42}}
+        e.update(autre)
+        return e
+
+    def test_le_claim_de_la_session_son_scope_et_son_age(self):
+        self._claim('sess-20261013-1000-a', 'work/mon-projet', 'sess-claude-1')
+        self._claim('sess-20261013-1001-b', 'work/autre', 'une-autre-session')
+        r, duree = self._rendre(self._entree())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('work/mon-projet', r.stdout)
+        self.assertRegex(r.stdout, r'2h0[0-9]', "l'âge du claim")
+        self.assertNotIn('work/autre', r.stdout, "le claim d'une autre session n'est pas le sien")
+        self.assertNotIn('(+', r.stdout)
+        for attendu in ('ma-branche', 'projet', 'Opus', '42%'):
+            self.assertIn(attendu, r.stdout)
+        self.assertNotIn('\033[', r.stdout, 'NO_COLOR : sans couleur')
+        self.assertLess(duree, 3.0, f'trop lente : {duree:.2f} s')
+
+    def test_plusieurs_claims_se_comptent(self):
+        self._claim('sess-20261013-1000-a', 'work/un', 'sess-claude-1', il_y_a_h=3)
+        self._claim('sess-20261013-1001-b', 'work/deux', 'sess-claude-1', il_y_a_h=1)
+        r, _ = self._rendre(self._entree())
+        self.assertIn('work/un', r.stdout, 'le plus ancien')
+        self.assertIn('(+1)', r.stdout)
+
+    def test_sans_claim_il_le_dit(self):
+        self._claim('sess-20261013-1000-a', 'work/ferme', 'sess-claude-1', status='closed')
+        r, _ = self._rendre(self._entree())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('pas de claim', r.stdout)
+        self.assertNotIn('work/ferme', r.stdout)
+
+    def test_un_depot_modifie_porte_un_signe(self):
+        (self.depot / 'f.txt').write_text('x')
+        subprocess.run(['git', '-C', str(self.depot), 'add', 'f.txt'], check=True)
+        r, _ = self._rendre(self._entree())
+        self.assertIn('ma-branche*', r.stdout)
+
+    def test_une_base_absente_n_est_pas_creee_et_rien_ne_casse(self):
+        absente = self.tmp / 'nulle-part.db'
+        r, _ = self._rendre(self._entree(), BRAIN_DB_PATH=str(absente))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(absente.exists(), 'la statusline a créé une base en la lisant')
+        self.assertIn('Opus', r.stdout)
+        self.assertEqual(r.stderr, '', 'un champ vide, pas une erreur')
+
+    def test_une_base_trop_lente_ne_retient_pas_la_ligne(self):
+        """La base a son délai : au-delà, « claim ? » — jamais « pas de claim », qui
+        dirait une chose qu'on n'a pas pu regarder."""
+        self._claim('sess-20261013-1000-a', 'work/mon-projet', 'sess-claude-1')
+        r, _ = self._rendre(self._entree(), BRAIN_STATUSLINE_DELAI='0')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('claim ?', r.stdout)
+        self.assertNotIn('pas de claim', r.stdout)
+
+    def test_une_entree_illisible_rend_quand_meme_une_ligne(self):
+        for entree in ('', 'pas du json', '{}'):
+            with self.subTest(entree):
+                r, _ = self._rendre(entree)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertTrue(r.stdout.strip(), 'sortie vide')
+                self.assertEqual(r.stderr, '')
+
+    # ── `brain init` la branche : seulement s'il n'y a pas de statusLine ──
+
+    def _brancher(self):
+        return subprocess.run(['bash', str(self.SCRIPT), 'brancher', '--brain', str(self.brain)],
+                              capture_output=True, text=True, env=self._env(), timeout=30)
+
+    def _reglages(self):
+        return self.home / '.claude' / 'settings.json'
+
+    def test_brancher_pose_la_statusline_sans_reglages(self):
+        r = self._brancher()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d = json.loads(self._reglages().read_text())
+        self.assertEqual(d['statusLine']['type'], 'command')
+        self.assertIn(str(self.brain / 'scripts' / 'brain-statusline.sh'), d['statusLine']['command'])
+        r = self._brancher()
+        self.assertEqual(r.returncode, 1, 'relancé : déjà la nôtre\n' + r.stdout)
+
+    def test_brancher_garde_tout_le_reste(self):
+        self._reglages().parent.mkdir(parents=True)
+        self._reglages().write_text(json.dumps({'model': 'opus', 'hooks': {'Stop': []}, 'env': {'A': '1'}}))
+        r = self._brancher()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d = json.loads(self._reglages().read_text())
+        self.assertEqual((d['model'], d['hooks'], d['env']), ('opus', {'Stop': []}, {'A': '1'}))
+        self.assertIn('statusLine', d)
+
+    def test_brancher_ne_remplace_jamais_une_statusline_existante(self):
+        self._reglages().parent.mkdir(parents=True)
+        avant = json.dumps({'statusLine': {'type': 'command', 'command': '~/la-mienne.sh'}}, indent=4)
+        self._reglages().write_text(avant)
+        r = self._brancher()
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertEqual(self._reglages().read_text(), avant, 'une statusLine existante a été touchée')
+        self.assertIn('brain-statusline.sh', r.stdout, 'il donne la ligne à poser')
+
+    def test_brancher_ne_touche_ni_un_json_illisible_ni_un_lien(self):
+        self._reglages().parent.mkdir(parents=True)
+        self._reglages().write_text('{ pas du json')
+        self.assertEqual(self._brancher().returncode, 2)
+        self.assertEqual(self._reglages().read_text(), '{ pas du json')
+        self._reglages().unlink()
+        cible = self.tmp / 'dotfiles-settings.json'
+        cible.write_text('{}')
+        self._reglages().symlink_to(cible)
+        self.assertEqual(self._brancher().returncode, 2)
+        self.assertEqual(cible.read_text(), '{}', 'écrit à travers un lien')
+        self.assertTrue(self._reglages().is_symlink())
+
+
+class TestSecretsSemis(unittest.TestCase):
+    """Le dossier des secrets d'un brain : tu par git, et son inventaire posé.
+
+    Issue #24 : le `.gitignore` livré ne taisait que le nom du fichier de secrets —
+    `brain-secrets/secrets.yml` était vu par git, et un `git add` large l'envoyait sur la
+    forge ; et le doctor rougissait « registre absent » au premier passage. Joué dans un
+    dépôt jetable : aucun fichier de secrets réel n'est lu, les valeurs sont factices."""
+
+    LIB = BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'secrets-semis.sh'
+    # Le `.gitignore` d'un brain semé avant la correction : le nom seul.
+    ANCIEN = '# Instance-specific (never committed)\nbrain-compose.local.yml\nMYSECRETS\n*.pid\n'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='secrets-semis-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.b = self.tmp / 'brain'
+        self.b.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.b)], check=True)
+        (self.b / '.gitignore').write_text(self.ANCIEN)
+
+    def _f(self, fonction):
+        return subprocess.run(['bash', '-c', f'source "{self.LIB}" && {fonction} "$1"', '_', str(self.b)],
+                              capture_output=True, text=True, timeout=30)
+
+    def _vu_par_git(self, rel='brain-secrets/secrets.yml') -> bool:
+        return subprocess.run(['git', '-C', str(self.b), 'check-ignore', '-q', '--no-index', rel]).returncode != 0
+
+    def _outil_du_doctor(self) -> Path:
+        for p in (BRAIN_ROOT_PATH / 'brain-engine' / 'doctor' / 'registre_des_secrets.py',
+                  Path(os.environ.get('MYELINE_ROOT') or '/nonexistent') / 'tools' / 'registre_des_secrets.py'):
+            if p.is_file():
+                return p
+        self.skipTest("l'outil du doctor (registre_des_secrets.py) est absent — ni livré, ni MYELINE_ROOT")
+
+    def _doctor(self, *args):
+        return subprocess.run([sys.executable, str(self._outil_du_doctor()), '--brain', str(self.b), *args],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_un_brain_deja_seme_tait_le_dossier_sans_rien_reecrire(self):
+        self.assertTrue(self._vu_par_git(), 'témoin : l\'ancien .gitignore laisse voir l\'inventaire')
+        r = self._f('brain_secrets_taire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self._vu_par_git(), 'le dossier des secrets est tu')
+        self.assertFalse(self._vu_par_git('brain-secrets/autre.txt'))
+        texte = (self.b / '.gitignore').read_text()
+        self.assertTrue(texte.startswith(self.ANCIEN), 'rien de ce qui était là n\'est réécrit')
+        self.assertIn('\n/brain-secrets/\n', texte)
+        r = self._f('brain_secrets_taire')
+        self.assertEqual(r.returncode, 1, 'relancé : rien à faire')
+        self.assertEqual((self.b / '.gitignore').read_text(), texte, 'relancé : rien ne change')
+
+    def test_une_regle_a_soi_qui_tait_deja_le_dossier_est_respectee(self):
+        (self.b / '.gitignore').write_text('brain-secrets/\n')
+        self.assertEqual(self._f('brain_secrets_taire').returncode, 1)
+        self.assertEqual((self.b / '.gitignore').read_text(), 'brain-secrets/\n')
+
+    def test_l_inventaire_se_pose_une_fois_et_jamais_par_dessus(self):
+        self._f('brain_secrets_taire')
+        r = self._f('brain_secrets_inventaire')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        f = self.b / 'brain-secrets' / 'secrets.yml'
+        import yaml
+        self.assertEqual(yaml.safe_load(f.read_text()), {'secrets': None}, 'un inventaire vide, valide')
+        self.assertIn('machines:', f.read_text(), "l'en-tête dit le schéma")
+        self.assertEqual(subprocess.run(['git', '-C', str(self.b), 'status', '--porcelain'],
+                                        capture_output=True, text=True).stdout.strip(),
+                         '?? .gitignore',
+                         'git ne voit que le .gitignore — jamais le dossier des secrets')
+        f.write_text('secrets:\n  A_MOI: {scope: a}\n')
+        self.assertEqual(self._f('brain_secrets_inventaire').returncode, 1)
+        self.assertEqual(f.read_text(), 'secrets:\n  A_MOI: {scope: a}\n', 'un inventaire présent n\'est pas touché')
+
+    def test_un_coffre_declare_satellite_porte_son_inventaire(self):
+        """Le coffre déclaré dans `satellites.yml` — pour une AUTRE machine aussi : rien
+        n'est posé, le dossier n'est pas créé. Sinon un clone raté laissait un dossier non
+        vide que `--cloner` relancé refusait, et le portable de l'owner recevait un coffre
+        qu'il ne doit pas avoir."""
+        self._f('brain_secrets_taire')
+        (self.b / 'satellites.yml').write_text(
+            'satellites:\n  brain-secrets: {depot: coffre, machines: [desktop]}\n'
+            '  todo: {depot: todo, machines: [laptop]}\n')
+        (self.b / 'brain-compose.local.yml').write_text('machine: laptop\n')
+        r = self._f('brain_secrets_inventaire')
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertFalse((self.b / 'brain-secrets').exists(), 'le dossier du coffre a été créé')
+        # Une clé qui n'est pas le coffre ne retient rien ; un commentaire qui le nomme non plus.
+        (self.b / 'satellites.yml').write_text(
+            '# brain-secrets: viendra plus tard\nsatellites:\n  todo: {depot: todo, machines: [laptop]}\n')
+        self.assertEqual(self._f('brain_secrets_inventaire').returncode, 0)
+
+    def test_l_inventaire_refuse_de_naitre_la_ou_git_le_verrait(self):
+        r = self._f('brain_secrets_inventaire')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertFalse((self.b / 'brain-secrets').exists())
+
+    def test_le_doctor_ne_rougit_plus_au_premier_passage(self):
+        (self.b / 'brain-compose.local.yml').write_text('machine: poste\n')
+        (self.b / 'brain-secrets').mkdir()
+        (self.b / 'brain-secrets' / 'MYSECRETS').write_text('# modèle\nCLE_VIDE=\n')
+        r = self._doctor()
+        self.assertEqual(r.returncode, 1, 'témoin : sans inventaire, « registre absent »\n' + r.stdout + r.stderr)
+        self.assertIn('registre absent', r.stderr)
+        self._f('brain_secrets_taire')
+        self.assertEqual(self._f('brain_secrets_inventaire').returncode, 0)
+        r = self._doctor()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_le_bootstrap_du_doctor_remplit_l_inventaire_pose(self):
+        """L'inventaire posé reçoit les clés de `--bootstrap` : il ajoute ses entrées SOUS
+        `secrets:` — un `secrets: {}` les aurait rendues illisibles (YAML cassé)."""
+        (self.b / 'brain-compose.local.yml').write_text('machine: poste\n')
+        self._f('brain_secrets_taire')
+        self._f('brain_secrets_inventaire')
+        (self.b / 'brain-secrets' / 'MYSECRETS').write_text('CLE_FACTICE=valeur-factice\n')
+        r = self._doctor('--bootstrap')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        import yaml
+        reg = yaml.safe_load((self.b / 'brain-secrets' / 'secrets.yml').read_text())['secrets']
+        self.assertIn('CLE_FACTICE', reg)
 
 
 class TestBrainInit(unittest.TestCase):
@@ -11419,6 +11848,176 @@ class TestBrainMaj(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("celles d'un autre brain", r.stdout)
 
+    # ── Les fichiers que `brain init` remplit : PATHS.md, focus.md ──
+    #
+    # Mesuré le 13/10 : un gabarit qui réécrivait les lignes à marqueurs de PATHS.md
+    # arrêtait `brain maj` chez CHAQUE fork (« modifié des deux côtés ») — `brain init`
+    # les avait remplies. Les semis ci-dessous ont la forme des vrais.
+
+    PATHS_V1 = ("# PATHS.md\n\n"
+                "> Les placeholders (`<BRAIN_ROOT>`) sont remplaces par le setup.\n\n"
+                "| Nom | Chemin | Remote |\n|---|---|---|\n"
+                "| `brain/` | `<BRAIN_ROOT>` | `YOUR-ORG/Cortex-Template` |\n"
+                "| `toolkit/` | `<BRAIN_ROOT>/toolkit/` | `YOUR-ORG/Cortex-Template-Toolkit` |\n"
+                "| `projects/` | `<PROJECTS_ROOT>` | GitHub / Gitea |\n"
+                "| `home/` | `<HOME>` | — |\n\n"
+                "## Procédure\n\n```bash\ngit clone <URL> <BRAIN_ROOT>\ncd <BRAIN_ROOT>\n```\n\n"
+                "## Historique machines\n\n| Machine |\n|---|\n")
+    PATHS_V2 = ("# PATHS.md\n\n"
+                "> Les placeholders (`<BRAIN_ROOT>`, `<HOME>`, `<PROJECTS_ROOT>`) sont remplacés par `brain init`.\n\n"
+                "| Nom | Chemin | Remote |\n|---|---|---|\n"
+                "| `brain/` | `<BRAIN_ROOT>` | ton fork, ou aucun |\n"
+                "| `toolkit/` | `<BRAIN_ROOT>/toolkit/` | ton dépôt, si tu veux |\n"
+                "| `projects/` | `<PROJECTS_ROOT>` | ta forge |\n"
+                "| `home/` | `<HOME>` | — |\n\n"
+                "## Procédure\n\nLe brain s'installe par `brain init` :\n"
+                "`git clone <URL> <BRAIN_ROOT>`, puis `bash scripts/brain init <nom>`.\n\n"
+                "## Historique machines\n\n| Machine |\n|---|\n")
+    REMPLIR = BRAIN_ROOT_PATH / 'scripts' / 'semis-remplir.py'
+
+    def _semis(self, fichiers):
+        """L'amont sème ces fichiers (et l'outil qui les remplit) ; le fork les reçoit."""
+        self._ecrire(self.amont, {'scripts/semis-remplir.py': self.REMPLIR.read_text(encoding='utf-8'),
+                                  **fichiers})
+        self._commit(self.amont, 'le semis')
+        self._g(self.fork, 'pull', '-q', 'upstream', 'main')
+
+    def _paths_rempli(self, texte, projets):
+        return (texte.replace('<BRAIN_ROOT>', str(self.fork)).replace('<HOME>', '/home/moi')
+                .replace('<PROJECTS_ROOT>', projets))
+
+    def _focus_rempli(self, nom='moi'):
+        """Le fork remplit son focus.md comme `brain init` (étape 3.2), le 13/10."""
+        subprocess.run([sys.executable, str(self.REMPLIR), '--brain', str(self.fork), '--nom', nom,
+                        '--date', '2026-10-13'], check=True, capture_output=True, text=True)
+
+    def _focus(self):
+        return (self.fork / 'focus.md').read_text(encoding='utf-8')
+
+    def test_paths_rempli_recoit_l_amont_et_garde_ses_lignes(self):
+        """Le cas du 13/10 : PATHS.md rempli par init, la ligne projects/ corrigée à la main
+        (init l'y invite), une machine ajoutée ; l'amont réécrit les lignes à marqueurs."""
+        self._semis({'PATHS.md': self.PATHS_V1})
+        f = self.fork / 'PATHS.md'
+        avant = (self._paths_rempli(self.PATHS_V1, str(self.fork.parent))
+                 .replace(f'| `{self.fork.parent}` |', '| `/data/code` |') + '| mon-pc |\n')
+        self.assertIn('| `projects/` | `/data/code` |', avant)
+        f.write_text(avant, encoding='utf-8')
+        self._commit(self.fork, 'mon PATHS.md')
+        self._version_amont({'PATHS.md': self.PATHS_V2})
+        r = self._maj()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r'remplis.*PATHS\.md', 'le plan le nomme')
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        attendu = self._paths_rempli(self.PATHS_V2, '/data/code') + '| mon-pc |\n'
+        self.assertEqual(f.read_text(encoding='utf-8'), attendu,
+                         "l'amont reçu et rempli ; sa ligne projects/ (sa valeur) et sa machine gardées")
+        garde = self.fork / 'workspace' / 'scratch' / 'brain-maj-v1.1.0' / 'PATHS.md.avant'
+        self.assertEqual(garde.read_text(encoding='utf-8'), avant, "l'avant gardé")
+        self.assertIn('PATHS.md', (garde.parent / 'remplis.md').read_text(encoding='utf-8'))
+
+    def test_paths_jamais_rempli_recoit_l_amont_et_se_remplit(self):
+        """Un fork qui n'a jamais lancé init : ses marqueurs sont encore là."""
+        self._semis({'PATHS.md': self.PATHS_V1})
+        f = self.fork / 'PATHS.md'
+        f.write_text(self.PATHS_V1 + '| mon-pc |\n', encoding='utf-8')
+        self._commit(self.fork, 'ma machine')
+        self._version_amont({'PATHS.md': self.PATHS_V2})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        attendu = (self.PATHS_V2.replace('<BRAIN_ROOT>', str(self.fork)).replace('<HOME>', os.environ['HOME'])
+                   .replace('<PROJECTS_ROOT>', str(self.fork.parent))) + '| mon-pc |\n'
+        self.assertEqual(f.read_text(encoding='utf-8'), attendu, 'rempli comme brain init le ferait')
+
+    def test_focus_ses_projets_et_sa_direction_survivent(self):
+        """focus.md porte le travail de la personne : l'amont change le semis (ses exemples,
+        une puce) ; ses projets, sa direction, son nom et sa date restent."""
+        self._semis({'focus.md': FOCUS_SEMIS})
+        self._focus_rempli()
+        aucun = self._focus().split('\n')
+        k = max(i for i, l in enumerate(aucun) if l.startswith('*(aucun projet'))
+        aucun[k] = '| Projet | Etat | Prochaine action |\n|---|---|---|\n| mon-jeu | en cours | sortir la démo |'
+        mien = ('\n'.join(aucun).replace('Brain fraichement installe. Prochaine etape : configurer vos premiers projets.',
+                                         'Ma direction : sortir mon-jeu cet hiver.'))
+        (self.fork / 'focus.md').write_text(mien, encoding='utf-8')
+        self._commit(self.fork, 'mon focus')
+        semis2 = (FOCUS_SEMIS.replace('exemple a remplacer', 'exemple à remplacer')
+                  .replace('| my-game | scaffold | Creer projets/my-game.md', '| my-game | scaffold | Creer projets/le-jeu.md')
+                  .replace('- Configurer les secrets (MYSECRETS)', '- Configurer les secrets (le coffre du brain)')
+                  .replace('> Derniere mise a jour : <DATE>', '> Dernière mise à jour : <DATE>'))
+        self.assertNotEqual(semis2, FOCUS_SEMIS)
+        self._version_amont({'focus.md': semis2})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        f = self._focus()
+        self.assertIn('| mon-jeu | en cours | sortir la démo |', f, 'son projet')
+        self.assertIn('Ma direction : sortir mon-jeu cet hiver.', f, 'sa direction')
+        self.assertIn('> Instance : **moi** — `%s`' % self.fork, f)
+        self.assertIn('> Dernière mise à jour : 2026-10-13', f, "l'amont reçu, sous sa ligne d'instance, avec sa date")
+        self.assertIn('- Configurer les secrets (le coffre du brain)', f, "l'amont reçu")
+        self.assertNotIn('(MYSECRETS)', f)
+        for x in ('my-game', 'my-saas-app', '<BRAIN_ROOT>', '<DATE>', '<<<<<<<', '>>>>>>>'):
+            self.assertNotIn(x, f)
+        self.assertEqual(f.replace('- Configurer les secrets (le coffre du brain)', '- Configurer les secrets (MYSECRETS)')
+                         .replace('> Dernière mise à jour', '> Derniere mise a jour'), mien, "rien d'autre n'a bougé")
+
+    def test_focus_que_l_amont_ne_change_pas_n_est_pas_touche(self):
+        self._semis({'focus.md': FOCUS_SEMIS})
+        self._focus_rempli()
+        (self.fork / 'focus.md').write_text(self._focus() + '\nMa note.\n', encoding='utf-8')
+        self._commit(self.fork, 'mon focus')
+        mien = self._focus()
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._focus(), mien)
+        self.assertFalse((self.fork / 'workspace' / 'scratch' / 'brain-maj-v1.1.0' / 'focus.md.avant').exists())
+
+    def test_un_semis_que_l_amont_ne_change_pas_n_est_pas_rempli_par_maj(self):
+        """Remplir, c'est le travail de `brain init` : `brain maj` ne touche ce fichier que
+        si la version change son semis."""
+        self._semis({'PATHS.md': self.PATHS_V1})
+        self._version_amont({'agents/c.md': 'name: c\ndescription: c, revue\n'})
+        self.assertEqual(self._maj('--appliquer').returncode, 0)
+        self.assertEqual((self.fork / 'PATHS.md').read_text(encoding='utf-8'), self.PATHS_V1)
+
+    def test_focus_jamais_rempli_recoit_l_amont_rempli_et_garde_ses_lignes(self):
+        """Un fork d'avant `semis-remplir` (v3.3.1) : son focus.md est le semis brut, plus sa ligne."""
+        self._semis({'focus.md': FOCUS_SEMIS})
+        mien = FOCUS_SEMIS.replace('## Direction\n', '## Direction\nMa direction : sortir mon-jeu.\n')
+        (self.fork / 'focus.md').write_text(mien, encoding='utf-8')
+        self._commit(self.fork, 'ma direction')
+        (self.fork / 'brain-compose.local.yml').write_text(
+            'kernel_version: "1.0.0"\ninstances:\n  moi:\n    brain_name: moi\n    active: true\n')
+        self._version_amont({'focus.md': FOCUS_SEMIS.replace('- Configurer les secrets (MYSECRETS)',
+                                                             '- Configurer les secrets (le coffre du brain)')})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        f = self._focus()
+        self.assertIn('Ma direction : sortir mon-jeu.', f)
+        self.assertIn('- Configurer les secrets (le coffre du brain)', f)
+        self.assertIn('> Instance : **moi** — `%s`' % self.fork, f, 'rempli comme init : son nom, sa racine')
+        for x in ('my-game', '<BRAIN_ROOT>', '<DATE>', '**prod**', '<<<<<<<'):
+            self.assertNotIn(x, f)
+
+    def test_une_ligne_changee_des_deux_cotes_garde_la_sienne_et_le_dit(self):
+        self._semis({'focus.md': FOCUS_SEMIS})
+        self._focus_rempli()
+        mien = self._focus().replace('- Configurer les secrets (MYSECRETS)', '- Secrets : faits, dans mon coffre')
+        (self.fork / 'focus.md').write_text(mien, encoding='utf-8')
+        self._commit(self.fork, 'mon focus')
+        self._version_amont({'focus.md': FOCUS_SEMIS.replace('- Configurer les secrets (MYSECRETS)',
+                                                             '- Configurer les secrets (le coffre du brain)')})
+        r = self._maj('--appliquer')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._focus(), mien, 'sa ligne gardée, rien de perdu')
+        d = self.fork / 'workspace' / 'scratch' / 'brain-maj-v1.1.0'
+        self.assertIn('(le coffre du brain)', (d / 'focus.md.amont').read_text(encoding='utf-8'),
+                      "celle de l'amont posée à côté")
+        self.assertIn('focus.md', (d / 'remplis.md').read_text(encoding='utf-8'))
+        self.assertIn('à relire', r.stdout)
+
 
 class TestMajDisponible(unittest.TestCase):
     """Le boot dit qu'une version plus récente existe — et laisse chacun libre.
@@ -11783,6 +12382,19 @@ class TestCouchesDuGabarit(unittest.TestCase):
         livres = [str(f.relative_to(rendu)) for d in sats for f in (rendu / d).rglob('*') if f.is_file()]
         self.assertTrue(livres)
         self.assertEqual([f for f in livres if ignore(f)], [], 'un fichier livré serait ignoré')
+
+    def test_le_dossier_des_secrets_reste_hors_du_depot_d_un_fork(self):
+        """Le `.gitignore` livré ne taisait que le NOM du fichier de secrets : l'inventaire
+        posé à côté (`secrets.yml`) entrait dans le dépôt d'un fork au premier `git add`
+        large, et partait sur sa forge (issue #24). Le dossier entier est tu."""
+        if not (self.BASE / '.git').exists():
+            self.skipTest('brain-template/ absent — le gabarit publié est la base du rendu')
+        rendu, r = self._rendre(self.BASE.resolve())
+        self.assertIn('✅ Sync terminé', r.stdout, 'rendu interrompu — rien à juger\n' + r.stdout[-800:])
+        secrets = 'brain-secrets'
+        vus = [rel for rel in (f'{secrets}/secrets.yml', f'{secrets}/MYSECRETS', f'{secrets}/autre.txt')
+               if subprocess.run(['git', 'check-ignore', '-q', '--no-index', rel], cwd=rendu).returncode != 0]
+        self.assertEqual(vus, [], 'un fichier du dossier des secrets serait vu par git chez un fork')
 
     def test_la_doc_dit_ce_que_dit_la_table(self):
         """`docs/src/satellites.md` montre ce qu'un fork reçoit vide : la même liste

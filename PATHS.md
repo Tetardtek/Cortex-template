@@ -1,7 +1,7 @@
 # PATHS.md — Résolution des chemins machine
 
 > **Fichier de reference** — les agents utilisent les noms semantiques ci-dessous pour resoudre les chemins.
-> Les placeholders (`<BRAIN_ROOT>`) sont remplaces automatiquement par `scripts/brain-setup.sh`.
+> Les marqueurs de chemin (la racine du brain, le home, le dossier des projets) sont remplis par `brain init`.
 > Ce fichier reste avec des placeholders dans le template — c'est normal.
 > Ne jamais hardcoder un chemin absolu dans les agents — toujours utiliser les noms semantiques.
 
@@ -11,12 +11,12 @@
 
 | Nom sémantique | Chemin réel | Remote | Gitignored dans brain |
 |----------------|-------------|--------|----------------------|
-| `brain/` | `<BRAIN_ROOT>` | `YOUR-ORG/Cortex-Template` | — (repo racine) |
-| `toolkit/` | `<BRAIN_ROOT>/toolkit/` | `YOUR-ORG/Cortex-Template-Toolkit` | ✅ |
-| `progression/` | `<BRAIN_ROOT>/progression/` | `YOUR-ORG/Cortex-Template-Progression` | ✅ |
-| `reviews/` | `<BRAIN_ROOT>/reviews/` | `YOUR-ORG/Cortex-Template-Reviews` | ✅ |
-| `profil/` | `<BRAIN_ROOT>/profil/` | `YOUR-ORG/Cortex-Template-Profil` | ✅ |
-| `todo/` | `<BRAIN_ROOT>/todo/` | `YOUR-ORG/Cortex-Template-Todo` | ✅ |
+| `brain/` | `<BRAIN_ROOT>` | ton fork, ou aucun (brain servi par le paquet) | — (repo racine) |
+| `toolkit/` | `<BRAIN_ROOT>/toolkit/` | ton dépôt, si tu veux (`docs/satellites.md`) | ✅ |
+| `progression/` | `<BRAIN_ROOT>/progression/` | ton dépôt, si tu veux (`docs/satellites.md`) | ✅ |
+| `reviews/` | `<BRAIN_ROOT>/reviews/` | ton dépôt, si tu veux (`docs/satellites.md`) | ✅ |
+| `profil/` | `<BRAIN_ROOT>/profil/` | ton dépôt, si tu veux (`docs/satellites.md`) | ✅ |
+| `todo/` | `<BRAIN_ROOT>/todo/` | ton dépôt, si tu veux (`docs/satellites.md`) | ✅ |
 | `learning/` | `<BRAIN_ROOT>/learning/` | ton dépôt, quand tu veux (`docs/satellites.md`) | ✅ |
 | `projects/` | `<PROJECTS_ROOT>` | GitHub / Gitea | — |
 | `home/` | `<HOME>` | — | — |
@@ -24,17 +24,8 @@
 ## Architecture satellite repos
 
 Les repos gitignores dans `brain/` sont des **satellites autonomes** — chacun a son propre remote.
-Chaque dossier satellite contient un README guide dans le template. Le setup les remplace par vos clones.
-
-```bash
-# Exemple avec GitHub (remplacer YOUR-ORG par votre organisation/user)
-git clone https://github.com/YOUR-ORG/Cortex-Template.git <BRAIN_ROOT>
-git clone https://github.com/YOUR-ORG/Cortex-Template-Toolkit.git <BRAIN_ROOT>/toolkit
-git clone https://github.com/YOUR-ORG/Cortex-Template-Progression.git <BRAIN_ROOT>/progression
-git clone https://github.com/YOUR-ORG/Cortex-Template-Reviews.git <BRAIN_ROOT>/reviews
-git clone https://github.com/YOUR-ORG/Cortex-Template-Profil.git <BRAIN_ROOT>/profil
-git clone https://github.com/YOUR-ORG/Cortex-Template-Todo.git <BRAIN_ROOT>/todo
-```
+Chaque dossier satellite contient un README guide dans le template. Pour qu'un satellite ait son dépôt,
+et pour les recloner sur une autre machine : déclare-les dans `satellites.yml` — `docs/satellites.md`.
 
 ---
 
@@ -45,29 +36,16 @@ git clone https://github.com/YOUR-ORG/Cortex-Template-Todo.git <BRAIN_ROOT>/todo
 
 ---
 
-## Procedure — nouvelle machine
+## Procédure — nouvelle machine
 
-```bash
-# 1. Forker Cortex-Template + les 5 satellites, puis cloner
-git clone https://github.com/YOUR-ORG/Cortex-Template.git <BRAIN_ROOT>
-cd <BRAIN_ROOT>
+Le brain s'installe par `brain init`, qui remplit ce fichier. Deux façons :
 
-# 2. Lancer le setup — clone les satellites, configure CLAUDE.md, init brain-engine
-bash scripts/brain-setup.sh
+- **le paquet** : `pipx install brain-cortex` (l'index et la version que donne celui qui le publie), puis
+  `brain init <nom> <dossier>` — la procédure guidée : `docs/installer-avec-claude.md` ;
+- **un fork cloné** : `git clone <URL_DE_TON_FORK> <BRAIN_ROOT>`, puis `bash scripts/brain init <nom>` —
+  `docs/demarrer.md`.
 
-# 3. Configurer Claude Code
-cp profil/CLAUDE.md.example ~/.claude/CLAUDE.md
-# Editer brain_root et brain_name dans ~/.claude/CLAUDE.md
-
-# 4. (Optionnel) Deployer le global memory Claude
-ln -s <BRAIN_ROOT>/memory-global ~/.claude/memory
-
-# 5. Lancer brain-engine + brain boot
-bash scripts/brain-engine.sh start
-# Dans un autre terminal : claude → brain boot
-```
-
-> Guide detaille : [docs/getting-started.md](docs/getting-started.md)
+Puis `brain doctor`, et `claude` dans le dossier du brain.
 
 ---
 

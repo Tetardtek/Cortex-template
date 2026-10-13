@@ -255,6 +255,21 @@ if [[ -d "$BRAIN_ROOT/skills/brain" ]]; then
   fi
 fi
 
+# La statusline du brain : le claim de la session, la branche, le modèle, le contexte
+# (issue #27). Posée dans ~/.claude/settings.json SEULEMENT s'il n'y a pas de statusLine :
+# celle qui existe n'est jamais remplacée — init dit la ligne à poser. Ni à travers un
+# lien, ni dans un JSON illisible.
+if [[ -f "$BRAIN_ROOT/scripts/brain-statusline.sh" ]]; then
+  _sl_rc=0
+  _sl="$(bash "$BRAIN_ROOT/scripts/brain-statusline.sh" brancher --brain "$BRAIN_ROOT")" || _sl_rc=$?
+  case $_sl_rc in
+    0) ok "statusline du brain branchée (~/.claude/settings.json : statusLine)" ;;
+    1) ok "statusline du brain déjà branchée" ;;
+    *) warn "statusline du brain non branchée — ~/.claude/settings.json laissé tel quel :"
+       printf '%s\n' "$_sl" | sed 's/^/   /' ;;
+  esac
+fi
+
 # ── Étape 3 — brain-compose.local.yml ────────────────────────────────────────
 echo ""
 echo "[ 3/$ETAPES ] brain-compose.local.yml..."
@@ -331,18 +346,21 @@ fi
 #
 # Les projets : par défaut le dossier où le brain a été cloné (il existe
 # forcément) ; `PROJECTS_ROOT=<dossier>` en choisit un autre.
+#
+# Le remplissage vit dans `semis-remplir.py` : `brain maj` le refait avec les mêmes
+# fonctions quand une version change le semis de ce fichier.
 PROJECTS_ROOT="${PROJECTS_ROOT:-$(dirname "$BRAIN_ROOT")}"
-_remplaces=()
-for _paire in "<BRAIN_ROOT>|$BRAIN_ROOT" "<HOME>|$HOME" "<PROJECTS_ROOT>|$PROJECTS_ROOT"; do
-  _m="${_paire%%|*}"; _v="${_paire#*|}"
-  if grep -qF "$_m" "$BRAIN_ROOT/PATHS.md" 2>/dev/null; then
-    sed -i "s|$_m|$_v|g" "$BRAIN_ROOT/PATHS.md"
-    _remplaces+=("$_m")
-  fi
-done
-if [[ ${#_remplaces[@]} -gt 0 ]]; then
-  ok "PATHS.md configuré — ${_remplaces[*]} (projets : $PROJECTS_ROOT)"
-  [[ " ${_remplaces[*]} " == *" <PROJECTS_ROOT> "* ]] && \
+_remplaces=""; _rate=false
+if [[ -f "$BRAIN_ROOT/PATHS.md" && -f "$PROGRAMME/scripts/semis-remplir.py" ]]; then
+  _remplaces=$(python3 "$PROGRAMME/scripts/semis-remplir.py" --brain "$BRAIN_ROOT" --fichier PATHS.md \
+    --projets "$PROJECTS_ROOT") \
+    || { _rate=true; warn "PATHS.md n'a pas pu être rempli — relancer : python3 scripts/semis-remplir.py --brain $BRAIN_ROOT --fichier PATHS.md"; }
+fi
+if $_rate; then
+  :
+elif [[ -n "$_remplaces" ]]; then
+  ok "PATHS.md configuré — $_remplaces (projets : $PROJECTS_ROOT)"
+  [[ " $_remplaces " == *" <PROJECTS_ROOT> "* ]] && \
     info "  tes projets vivent ailleurs ? corrige la ligne projects/ de PATHS.md"
 else
   info "PATHS.md déjà configuré — skip"
@@ -421,6 +439,25 @@ else
   info "  → Remplir les valeurs (DB_PASSWORD, JWT_SECRET, etc.)"
   info ""
   warn "Le brain fonctionne sans MYSECRETS mais les sessions secrets seront bloquées."
+fi
+# Le dossier des secrets ENTIER hors du dépôt, puis son inventaire (`secrets.yml`). Le
+# `.gitignore` livré ne taisait que le nom du fichier de secrets : l'inventaire était vu
+# par git, et le doctor rougissait « registre absent » au premier passage (issue #24).
+# Un brain déjà semé reçoit la ligne — rien d'autre n'est réécrit ; un inventaire présent
+# n'est jamais touché. Avant le premier commit du dépôt de données, plus bas.
+if source "$PROGRAMME/scripts/lib/secrets-semis.sh" 2>/dev/null; then
+  if _gi="$(brain_secrets_taire "$BRAIN_ROOT")"; then
+    ok ".gitignore : brain-secrets/ tu en entier — tes secrets et leur inventaire restent hors du dépôt"
+    git -C "$BRAIN_ROOT" ls-files --error-unmatch .gitignore >/dev/null 2>&1 \
+      && info "  la ligne ajoutée au .gitignore est à commiter : git -C $BRAIN_ROOT commit -m 'config: brain-secrets/ hors du dépôt' -- .gitignore"
+  fi
+  _rc=0; _inv="$(brain_secrets_inventaire "$BRAIN_ROOT")" || _rc=$?
+  case $_rc in
+    0) ok "inventaire des secrets posé (${_inv#"$BRAIN_ROOT"/}) — vide : des noms de clés, jamais une valeur" ;;
+    2) warn "inventaire des secrets NON posé : git verrait brain-secrets/ — ajoute /brain-secrets/ au .gitignore, puis relance brain init" ;;
+    3) info "inventaire des secrets : porté par le satellite déclaré dans satellites.yml — rien n'est posé ici" ;;
+    4) warn "inventaire des secrets NON posé : satellites.yml illisible — impossible de savoir si un satellite le porte" ;;
+  esac
 fi
 
 # ── Étape 5 — Les outils ─────────────────────────────────────────────────────
@@ -681,9 +718,15 @@ fi
 # `.gitignore` tait maintenant chaque satellite (les dépôts présents, ceux de
 # `satellites.yml`), et le premier commit garde les données d'origine.
 if $A_PART && git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  BRAIN_ROOT="$BRAIN_ROOT" python3 "$PROGRAMME/scripts/vue.py" --satellites >/dev/null \
-    && ok "les satellites, des dépôts à part : le .gitignore du dossier les tait" \
-    || warn "le .gitignore n'a pas tu les satellites — relancer : brain vue --satellites"
+  # Ce que `vue --satellites` a désuivi (les semis d'un satellite devenu dépôt) se dit,
+  # avec la commande pour le commiter — jamais un commit silencieux.
+  if source "$PROGRAMME/scripts/lib/satellites-taire.sh" 2>/dev/null \
+     && _sat="$(brain_satellites_taire "$BRAIN_ROOT" "$PROGRAMME")"; then
+    ok "les satellites, des dépôts à part : le .gitignore du dossier les tait"
+    [[ -n "$_sat" ]] && printf '%s\n' "$_sat"
+  else
+    warn "le .gitignore n'a pas tu les satellites — relancer : brain vue --satellites"
+  fi
   if ! git -C "$BRAIN_ROOT" rev-parse -q --verify HEAD >/dev/null 2>&1; then
     if git -C "$BRAIN_ROOT" add -A >/dev/null 2>&1 \
        && git -C "$BRAIN_ROOT" commit -q -m "scribe: le brain naît — ses données (brain init)" >/dev/null 2>&1; then

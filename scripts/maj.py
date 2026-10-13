@@ -33,6 +33,21 @@ Ce qu'il remplace, il le garde : la version d'avant de chaque fichier généré
 qui a changé est posée dans `workspace/scratch/brain-maj-<version>/` (git
 l'ignore), avec les commandes pour comparer — à relire avec ton brain.
 
+── Les fichiers que `brain init` remplit se reçoivent remplis ──────────────
+
+`PATHS.md` et `focus.md` : le gabarit les sème à marqueurs (`<BRAIN_ROOT>`…),
+`brain init` les remplit chez chaque fork. Une version qui change une ligne à
+marqueurs entrait donc en conflit chez TOUS (mesuré le 13/10 : « PATHS.md —
+modifié des deux côtés », rien fusionné). Quand la version change leur semis,
+la fusion se fait à trois sur des fichiers REMPLIS : le semis que tu avais reçu
+et celui de la version, remplis tous deux avec tes valeurs (lues dans ton
+fichier : ta ligne `projects/` corrigée garde son chemin), et le tien. Ce qui
+n'est que du semis prend l'amont ; tes lignes restent — tes projets, ta
+direction. Une ligne que vous avez changée tous les deux : la tienne reste, celle
+de l'amont est posée à côté (`<fichier>.amont`) et dite, à relire. Puis ce qui
+reste de marqueurs se remplit comme `brain init` (`scripts/semis-remplir.py`,
+les mêmes fonctions). L'amont ne change pas leur semis : ils ne bougent pas.
+
 ── Le noyau et la vue ──────────────────────────────────────────────────────
 
 Un brain dont `agents/` est une VUE (`noyau/agents/`, le noyau livré ;
@@ -121,7 +136,13 @@ GENERES = (
 )
 
 
+#: Les fichiers que `brain init` REMPLIT : semés à marqueurs, remplis chez chaque fork.
+REMPLIS = ("PATHS.md", "focus.md")
+
+
 def nature(chemin: str) -> str | None:
+    if chemin in REMPLIS:
+        return "rempli"
     for motif, n in GENERES:
         if fnmatch(chemin, motif) and "/src/" not in chemin:
             return n
@@ -168,6 +189,106 @@ def fusion_par_bloc(brain: Path, base: str, cible: str, chemin: str) -> str | No
         r = subprocess.run(["git", "merge-file", "-p", str(f["nous"]), str(f["base"]), str(f["eux"])],
                            capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else None
+
+
+def module_de_remplissage(brain: Path, cible: str):
+    """`semis-remplir.py` de la version reçue — ce que son `brain init` fait de ses semis.
+    None : la version ne le porte pas (ou pas encore de quoi remplir PATHS.md)."""
+    r = git(brain, "show", f"{cible}:scripts/semis-remplir.py", ok=(0, 128))
+    if r.returncode != 0 or "def remplir_fichier" not in r.stdout:
+        return None
+    import types
+    mod = types.ModuleType("_semis_remplir")
+    exec(compile(r.stdout, f"{cible}:scripts/semis-remplir.py", "exec"), mod.__dict__)
+    return mod
+
+
+def nom_du_brain(brain: Path) -> str:
+    """Le `brain_name` de la config locale, comme `brain init` l'a posé ; le dossier sinon."""
+    local = brain / "brain-compose.local.yml"
+    if local.is_file():
+        m = re.search(r'^\s*brain_name:\s*"?([^"\s#]+)', local.read_text(encoding="utf-8"), re.M)
+        if m:
+            return m.group(1)
+    return brain.name
+
+
+def recevoir_un_rempli(brain: Path, base: str, cible: str, chemin: str, mod) -> dict | None:
+    """Un fichier que `brain init` remplit, et dont la version change le semis.
+
+    La fusion à trois se fait sur des fichiers remplis : le semis reçu et celui de la
+    version, remplis avec les valeurs lues dans le tien, et le tien. Une ligne changée
+    des deux côtés : la tienne reste (`--ours`), le nombre est rendu. Puis les marqueurs
+    qui restent se remplissent comme `brain init`. None : rien à faire ici (l'amont ne
+    change pas le semis, le fichier manque d'un côté, ou c'est un lien)."""
+    import difflib
+    import tempfile
+
+    def contenu(rev):
+        r = git(brain, "show", f"{rev}:{chemin}", ok=(0, 128))
+        return r.stdout if r.returncode == 0 else None
+
+    avant, amont, nous = contenu(base), contenu(cible), contenu("HEAD")
+    if None in (avant, amont, nous) or avant == amont:
+        return None
+    if git(brain, "ls-tree", "HEAD", "--", chemin).stdout.startswith("120000"):
+        return None
+    init = mod.defauts(str(brain), nom_du_brain(brain))
+    v = mod.valeurs_du_rempli(chemin, avant, nous, init)
+    if v is None:                                   # jamais rempli : le semis brut, rempli après
+        base_r, amont_r, finales = avant, amont, init
+    else:
+        base_r, _ = mod.remplir_fichier(chemin, avant, v)
+        amont_r, _ = mod.remplir_fichier(chemin, amont, v)
+        finales = {k: (init.get(k, x) if x == k else x) for k, x in v.items()}
+    with tempfile.TemporaryDirectory(prefix="brain-maj-") as tmp:
+        f = {}
+        for nom, texte in (("nous", nous), ("base", base_r), ("eux", amont_r)):
+            f[nom] = Path(tmp) / nom
+            f[nom].write_text(texte, encoding="utf-8")
+        args = ["git", "merge-file", "-p", str(f["nous"]), str(f["base"]), str(f["eux"])]
+        r = subprocess.run(args, capture_output=True, text=True)
+        if r.returncode > 127:
+            raise RuntimeError(f"{chemin} : git merge-file a échoué ({r.stderr.strip()[:200]})")
+        conflits = r.returncode
+        if conflits:
+            r = subprocess.run([*args[:3], "--ours", *args[3:]], capture_output=True, text=True)
+    texte, faits = mod.remplir_fichier(chemin, r.stdout, finales)
+    amont_rempli, faits_amont = mod.remplir_fichier(chemin, amont_r, finales)
+    if v is not None:
+        faits_amont = mod.remplir_fichier(chemin, amont, v)[1]
+    recues = sum(1 for l in difflib.unified_diff(base_r.splitlines(), amont_rempli.splitlines(), lineterm="", n=0)
+                 if l.startswith("+") and not l.startswith("+++"))
+    return {"chemin": chemin, "texte": texte, "conflits": conflits, "amont": amont_rempli,
+            "recues": recues, "faits": list(dict.fromkeys([*faits_amont, *faits]))}
+
+
+def ecrire_les_remplis(brain: Path, cible: str, remplis: list[dict], dire) -> None:
+    """Ce qui a été fait des fichiers remplis, posé avec l'avant des générés ; et, pour
+    une ligne changée des deux côtés, celle de l'amont à côté de la tienne."""
+    if not remplis:
+        return
+    dossier = brain / "workspace" / "scratch" / f"brain-maj-{cible}"
+    dossier.mkdir(parents=True, exist_ok=True)
+    lignes = [f"# brain maj {cible} — les fichiers que brain init remplit", "",
+              "La version changeait leur semis : elle a été reçue, remplie avec tes valeurs, et",
+              "fusionnée avec ton fichier. Ce qui n'était que du semis a pris l'amont ; tes lignes",
+              "sont restées. L'avant de chacun : `<fichier>.avant`, à côté.", ""]
+    for r in remplis:
+        lignes.append(f"- `{r['chemin']}` : {r['recues']} ligne(s) de l'amont reçue(s), remplie(s)"
+                      + (f" ({', '.join(r['faits'])})" if r["faits"] else ""))
+        if r["conflits"]:
+            f = dossier / f"{r['chemin']}.amont"
+            f.write_text(r["amont"], encoding="utf-8")
+            lignes.append(f"  - **à relire** : {r['conflits']} endroit(s) que vous avez changé(s) tous les deux — "
+                          "le tien est resté. Celui de l'amont, rempli :")
+            lignes.append(f"    `diff -u {r['chemin']} workspace/scratch/brain-maj-{cible}/{r['chemin']}.amont`")
+            dire(f"  ⓘ {r['chemin']} : {r['conflits']} endroit(s) changé(s) des deux côtés — le tien gardé ; "
+                 f"celui de l'amont, à relire : workspace/scratch/brain-maj-{cible}/{r['chemin']}.amont")
+    lignes += ["", "Ce dossier est ignoré par git : efface-le quand tu as relu.", ""]
+    (dossier / "remplis.md").write_text("\n".join(lignes), encoding="utf-8")
+    dire(f"  📄 {', '.join(r['chemin'] for r in remplis)} : l'amont reçu et rempli, tes lignes gardées — "
+         f"workspace/scratch/brain-maj-{cible}/remplis.md")
 
 
 def vue(brain: Path, *args: str) -> bool:
@@ -346,9 +467,15 @@ def plan(brain: Path, remote: str, demande: str | None, reseau: bool) -> dict:
         # déménagement du dossier, rangerait d'office un agent que tu as ajouté.
         conflits = [c for c in conflits if not c.startswith(("agents/", "noyau/agents/"))]
         p["retires"] = [r for r in p["retires"] if not r.startswith("agents/")]
-    for c in (c for c in conflits if c):
+    mod = module_de_remplissage(brain, cible)
+    p["remplis"] = [r for r in (recevoir_un_rempli(brain, base, cible, c, mod) for c in REMPLIS)
+                    if r] if mod is not None else []
+    recus = {r["chemin"] for r in p["remplis"]}
+    for c in (c for c in conflits if c and c not in recus):
         n = nature(c)
-        if n == "bloc" and fusion_par_bloc(brain, base, cible, c) is None:
+        if n == "rempli":
+            p["obstacles"].append(f"{c} — modifié des deux côtés (ou retiré par l'amont, modifié chez toi)")
+        elif n == "bloc" and fusion_par_bloc(brain, base, cible, c) is None:
             p["obstacles"].append(f"{c} — un conflit hors de la table générée")
         elif n:
             p["generes"].append(c)
@@ -423,7 +550,8 @@ def garder_l_avant(brain: Path, avant: str, cible: str, dire) -> None:
     if not gardes:
         return
     lignes = [f"# brain maj {cible} — les fichiers générés, tels qu'ils étaient avant", "",
-              "Ils ont été recalculés plutôt que fusionnés. Pour voir ce qui a changé :", "", "```bash"]
+              "Ils ont été recalculés plutôt que fusionnés — ceux que brain init remplit (PATHS.md,",
+              "focus.md) : reçus remplis, voir remplis.md. Pour voir ce qui a changé :", "", "```bash"]
     lignes += [f"diff -u workspace/scratch/brain-maj-{cible}/{c}.avant {c}" for c in gardes]
     lignes += [f"git diff {avant[:12]} HEAD -- {' '.join(gardes)}   # le même, par git", "```", "",
                "Ce dossier est ignoré par git : efface-le quand tu as relu.", ""]
@@ -455,6 +583,9 @@ def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
                     git(brain, "rm", "--quiet", "--", c)
                     continue
             git(brain, "add", "--", c)
+        for r in p.get("remplis") or []:
+            (brain / r["chemin"]).write_text(r["texte"], encoding="utf-8")
+            git(brain, "add", "--", r["chemin"])
         for t in regenerer(brain, dire):
             git(brain, "add", "--", t)
         reste = git(brain, "diff", "--name-only", "--diff-filter=U").stdout.split()
@@ -478,6 +609,7 @@ def appliquer(brain: Path, p: dict, sans_unites: bool, dire) -> int:
     dire(f"  ✅ {cible} reçue" + (f" — {len(p['generes'])} conflit(s) sur des fichiers générés, résolus en "
                                "recalculant" if p["generes"] else ""))
     garder_l_avant(brain, avant, cible, dire)
+    ecrire_les_remplis(brain, cible, p.get("remplis") or [], dire)
     ecrire_les_surcharges(brain, cible, p.get("surcharges") or [], dire)
     return la_suite(brain, cible, sans_unites, dire)
 
@@ -646,6 +778,12 @@ def main() -> int:
                   + (" …" if len(p["retires"]) > 6 else ""))
         if p["generes"]:
             print(f"  générés, à recalculer      {', '.join(p['generes'])}")
+        for r in p.get("remplis") or []:
+            print(f"  remplis par brain init     {r['chemin']} — {r['recues']} ligne(s) de l'amont, remplie(s) "
+                  f"comme brain init{' (' + ', '.join(r['faits']) + ')' if r['faits'] else ''} ; tes lignes gardées")
+            if r["conflits"]:
+                print(f"  ⓘ à relire                 {r['chemin']} : {r['conflits']} endroit(s) changé(s) des deux "
+                      f"côtés — le tien gardé, celui de l'amont posé dans workspace/scratch/brain-maj-{p['cible']}/")
         if p.get("migration") is not None:
             m = p["migration"]
             print(f"  agents/ devient une vue    {len(m['modifies'])} modifié(s) et {len(m['ajoutes'])} à toi"

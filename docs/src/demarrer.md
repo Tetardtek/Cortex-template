@@ -79,9 +79,9 @@ Ses {{ETAPES_INIT}} étapes :
 | Étape | Ce qu'elle fait |
 |---|---|
 | 1. Satellites | crée les dossiers de tes données s'ils manquent — `profil/`, `projets/`, `handoffs/`, `workspace/`, `todo/`… et `instance/agents/` pour tes surcharges ; ton dépôt les ignore. Rien n'est cloné, sauf si ton brain déclare ses dépôts dans `satellites.yml` : ils se clonent alors à l'étape 3 |
-| 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain). |
+| 2. CLAUDE.md | **écrit `~/.claude/CLAUDE.md`** depuis `profil/CLAUDE.md.example`, s'il n'existe pas. S'il existe et diffère, il n'y touche pas : le modèle est posé à côté, en `CLAUDE.md.modele`. Relie aussi la skill `brain` dans `~/.claude/skills/brain` (jamais par-dessus un dossier existant, ni vers un autre brain), et branche la **statusline du brain** dans `~/.claude/settings.json` — le claim de la session, son scope et son âge, la branche, le modèle, le contexte — **seulement s'il n'y a pas de statusline** : une statusline à toi reste, et init te donne la ligne à poser. |
 | 3. Configuration | crée `brain-compose.local.yml` (ta machine) — ton instance y déclare `noyau: lecture` : ton `noyau/` se lit, tes retouches vont dans `instance/` —, remplit `PATHS.md` — tes projets y sont attendus à côté du brain, sauf `PROJECTS_ROOT=<dossier>` —, et `focus.md` : le dossier, la date, le nom de ton instance ; ses projets d'exemple s'en vont (« aucun projet »). Ce que tu y as écrit reste |
-| 4. MYSECRETS | vérifie seulement — le brain fonctionne sans |
+| 4. MYSECRETS | vérifie le fichier de tes secrets — le brain fonctionne sans —, tait **`brain-secrets/` en entier** dans ton `.gitignore` (un brain déjà installé reçoit la ligne, rien d'autre ne change) et pose son inventaire vide, `brain-secrets/secrets.yml`, s'il manque — sauf quand `satellites.yml` déclare ce dossier comme satellite : c'est lui qui le porte |
 | 5. Outils | vérifie Claude Code, Node et Python |
 | 6. brain-engine | crée `brain-engine/.venv` et y installe les dépendances |
 | 7. Dolt | installe Dolt si besoin (sans root), crée la base `brain-dolt/` et le service utilisateur `dolt-server.service`, et déclare la base au moteur : `brain-engine/.env.local` (`BRAIN_DB_BACKEND=dolt`), jamais réécrit s'il existe |
@@ -179,3 +179,9 @@ base suit le schéma : la page **Se mettre à jour** donne les {{ETAPES_MAJ}} é
 
 Non. C'est le fichier de tes secrets de projets (jetons, mots de passe), dans
 `brain-secrets/`. Le brain démarre sans ; `MYSECRETS.example` montre la forme.
+
+À côté, `brain-secrets/secrets.yml` est leur **inventaire** : les noms des clés,
+jamais une valeur. `brain init` le pose vide ; le doctor (« registre des
+secrets ») compare les deux, et son outil `registre_des_secrets.py --bootstrap`
+déclare d'un coup les clés qui manquent. Le dossier entier reste hors de ton
+dépôt : ton `.gitignore` tait `/brain-secrets/`.

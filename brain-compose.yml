@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.5.7"
+version: "3.5.8"
 
 # ---
 # Ownership — kerneluser
@@ -235,3 +235,6 @@ changelog:
   - version: "3.5.7"
     date: "2026-10-13"
     notes: "Le premier boot d'un brain neuf, releve par un utilisateur neuf sur un PC neuf. brain boot sans type, ou avec un type inconnu : le Claude presente les six types et demande lequel ; personne pour repondre (claude -p) : explore, dit dans le briefing. La config locale du moteur se lit la ou elle est ecrite : chez un brain servi par le paquet, les scripts qui passent par le lien brain-engine (bsi-query, bsi-claim) cherchaient .env.local dans le programme et disaient a chaque appel BRAIN_DB_BACKEND non declare ; brain init l'ecrit s'il manque, jamais par-dessus. focus.md est rempli par brain init (le dossier, la date, le nom de l'instance) et perd ses projets d'exemple. Les reglages du doctor (instance/doctor/) sont poses et commites par brain init apres son premier commit : git status propre apres init et doctor. brain-satellites --cloner regarde d'abord ce qui manque : sans manquant, il reussit, origin ou pas ; une cle forge: facultative en tete de satellites.yml sert a un brain sans origin. bsi-query open dit aucune session ouverte sur stderr, stdout inchange. demarrer.md a la voie du paquet, et le README du gabarit aussi. Mise a jour depuis la v3.5.6 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.5.8"
+    date: "2026-10-13"
+    notes: "La statusline livree, l'installation completee, brain maj recoit les fichiers que brain init remplit. Une statusline Claude Code part avec le programme (scripts/brain-statusline.sh) : le claim de la session (scope, age, plusieurs, pas de claim), la branche, le dossier, le modele, le contexte ; brain init la branche seulement si aucune statusLine n'existe, sinon il donne la ligne a poser. Le .gitignore livre tait le coffre du brain en entier ; brain init pose un inventaire des secrets vide, sauf si le coffre est declare satellite ; --bootstrap du registre des secrets declare la machine courante. Un satellite devenu depot : ses hooks reposes, ses semis desuivis et annonces, une url: par satellite dans satellites.yml. brain maj recoit PATHS.md et focus.md par une fusion a trois sur les semis remplis : les lignes de la personne restent, ce qui n'est que du semis prend l'amont, une ligne changee des deux cotes garde la sienne et l'amont est pose a cote. PATHS.md renvoie a brain init. Mise a jour depuis la v3.5.7 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."

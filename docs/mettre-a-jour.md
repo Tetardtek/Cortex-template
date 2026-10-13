@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.5.7.
+> travail. Kernel v3.5.8.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -52,6 +52,16 @@ déclare la version et branche le garde de lecture. Il ne se lance jamais seul.
   calcul est refait chez toi, et tes agents et tes pistes y reviennent. La
   version d'avant de chacun est gardée dans
   `workspace/scratch/brain-maj-<version>/`, avec les commandes pour comparer.
+- **`PATHS.md` et `focus.md` se reçoivent remplis** : le gabarit les sème à
+  marqueurs (`<BRAIN_ROOT>`…), `brain init` les a remplis chez toi. Quand une
+  version change leur semis, `brain maj` le remplit avec tes valeurs (lues dans
+  ton fichier : ta ligne `projects/` corrigée garde son chemin), puis le fusionne
+  à trois avec le tien. Ce qui n'est que du semis prend l'amont ; tes lignes
+  restent — tes projets, ta direction. Une ligne que vous avez changée tous les
+  deux : la tienne reste, celle de l'amont est posée à côté
+  (`workspace/scratch/brain-maj-<version>/<fichier>.amont`), à relire. Le plan
+  dit ce qu'il reçoit, `remplis.md` ce qu'il a fait ; l'avant est gardé. Une
+  version qui ne change pas leur semis ne les touche pas.
 - **C'est le `brain maj` de la version reçue qui la reçoit** : le tien passe la
   main au `scripts/maj.py` de la version, s'il diffère. Ce qu'elle apprend à la
   mise à jour te sert dès cette fois, pas à la suivante. Il prend la main dès le

@@ -23,6 +23,7 @@ Le brain lui-même est compté avec ses satellites : il était en retard aussi.
     divergé     les deux
     absent      déclaré pour cette machine, pas sur le disque (ou
                 un dossier vide)                                  → --cloner
+                (depuis son `url:`, sinon la forge du brain + `depot:`)
     pas un dépôt  un dossier AVEC du contenu à la place : jamais écrasé
     non déclaré un dépôt sous le brain que la liste ignore
     sans amont  une branche qui ne suit rien
@@ -236,16 +237,21 @@ def main() -> int:
             for c in sans_depot:
                 print(f"  ❌ {c:<16} un dossier avec du contenu, sans dépôt git — ni cloné ni écrasé")
             return 1 if sans_depot else 0
-        base = base_de_la_forge(brain, registre.get("forge"))
-        if not base:
-            print(f"❌ {len(manquants)} satellite(s) à cloner — {', '.join(manquants)} — "
+        # L'adresse d'un satellite : son `url:` s'il en déclare une — un brain sur une forge,
+        # ses satellites sur une autre (issue #24) —, sinon la forge du brain et son `depot:`.
+        # La forge n'est exigée que pour les manquants sans `url:`.
+        sans_url = [c for c in manquants if not (miens[c] or {}).get("url")]
+        base = base_de_la_forge(brain, registre.get("forge")) if sans_url else None
+        if sans_url and not base:
+            print(f"❌ {len(sans_url)} satellite(s) à cloner — {', '.join(sans_url)} — "
                   "et aucune forge d'où les cloner : le brain n'a pas de remote `origin`, et "
                   "`satellites.yml` ne déclare pas `forge:`.")
             print("   → git remote add origin <URL du brain>   (les satellites sont ses voisins sur la forge)")
             print("   → ou, en tête de satellites.yml : forge: <URL de la forge sans le nom du dépôt>")
+            print("   → ou, pour un satellite ailleurs : url: <URL complète de son dépôt>")
             return 1
         for c in manquants:
-            url = f"{base}/{miens[c]['depot']}.git"
+            url = miens[c].get("url") or f"{base}/{miens[c]['depot']}.git"
             r = subprocess.run(["git", "clone", "-q", url, str(emplacement(brain, c, miens[c]))],
                                capture_output=True, text=True, timeout=600,
                                env={**os.environ, **SANS_QUESTION})

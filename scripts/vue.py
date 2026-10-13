@@ -371,6 +371,52 @@ def ignorer_les_satellites(brain: Path) -> list[str]:
     return noms
 
 
+def desuivre_les_satellites(brain: Path, noms: list[str]) -> list[str]:
+    """Un satellite devenu dépôt n'est plus suivi par le dossier de données : ses fichiers
+    encore suivis — les semis du premier commit (`README.md`, `_template.md`, `.gitkeep`) —
+    sortent de l'index (`git rm --cached`), JAMAIS du disque. Sans ça, deux dépôts suivaient
+    les mêmes fichiers : une retouche du `README.md` du satellite se voyait dans les deux
+    (mesuré dans un brain servi par le paquet, 13/10). Seuls les satellites qui sont un
+    dépôt : un satellite déclaré et pas encore cloné garde ses fichiers. La suppression
+    reste à commiter — par la personne. Rend les fichiers désuivis."""
+    brain = Path(brain)
+    desuivis: list[str] = []
+    for nom in noms:
+        if not (brain / nom / ".git").exists():
+            continue
+        r = subprocess.run(["git", "-C", str(brain), "ls-files", "-z", "--", nom],
+                           capture_output=True, text=True)
+        fichiers = [f for f in r.stdout.split("\0") if f]
+        if not fichiers:
+            continue
+        r = subprocess.run(["git", "-C", str(brain), "rm", "-q", "-r", "--cached", "--", nom],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            desuivis += fichiers
+        else:
+            print(f"⚠️  {nom}/ : ses fichiers restent suivis — {r.stderr.strip()[:160]}")
+    return desuivis
+
+
+def poser_les_hooks(brain: Path) -> str | None:
+    """Un satellite devenu dépôt (`handoffs/`, `progression/`, `instance/agents/`) a ses
+    lanceurs de hooks : sans eux, le doctor rougit « hooks git installés ». Ils se posent
+    par l'installateur, si son contrôle échoue — jamais autrement. `None` : rien à faire ;
+    sinon ce qui s'est passé."""
+    script = programme() / "scripts" / "install-brain-hooks.sh"
+    if not script.is_file() or subprocess.run(
+            ["git", "-C", str(brain), "rev-parse", "--git-dir"], capture_output=True).returncode != 0:
+        return None
+    env = {**os.environ, "BRAIN_ROOT": str(brain)}
+    if subprocess.run(["bash", str(script), "--check"], cwd=brain, env=env,
+                      capture_output=True, text=True).returncode == 0:
+        return None
+    r = subprocess.run(["bash", str(script)], cwd=brain, env=env, capture_output=True, text=True)
+    if r.returncode == 0:
+        return "hooks git posés (install-brain-hooks.sh) — ceux des satellites devenus dépôts compris"
+    return f"⚠️  les hooks ne se sont pas posés — relancer : bash scripts/install-brain-hooks.sh ({r.stderr.strip()[:120]})"
+
+
 def donnee(rel: Path) -> bool:
     return bool(rel.parts) and Path(rel.parts[0]) in DONNEES
 
@@ -698,7 +744,8 @@ def main() -> int:
     a.add_argument("--relier", action="store_true",
                    help="programme installé à part : poser ses liens et semer, sans la vue des agents (brain init)")
     a.add_argument("--satellites", action="store_true",
-                   help="programme installé à part : le .gitignore du dossier tait ses satellites (brain init)")
+                   help="programme installé à part : le .gitignore du dossier tait ses satellites, un satellite "
+                        "devenu dépôt est désuivi (jamais retiré du disque) et reçoit ses hooks (brain init)")
     a.add_argument("--deverrouiller", action="store_true",
                    help="rendre le noyau modifiable le temps d'une mise à jour (brain maj)")
     o = a.parse_args()
@@ -710,6 +757,15 @@ def main() -> int:
         noms = ignorer_les_satellites(brain)
         print(f"brain vue --satellites : {len(noms)} satellite(s) tus par le .gitignore"
               + (f" — {', '.join(noms)}" if noms else ""))
+        desuivis = desuivre_les_satellites(brain, noms)
+        if desuivis:
+            print(f"  {len(desuivis)} fichier(s) d'un satellite devenu dépôt ne sont plus suivis par ce "
+                  f"dossier (toujours sur le disque) : {', '.join(desuivis[:6])}"
+                  + (f" (+{len(desuivis) - 6})" if len(desuivis) > 6 else ""))
+            print("  à commiter : git commit -m 'config: les satellites, des dépôts à part'")
+        hooks = poser_les_hooks(brain)
+        if hooks:
+            print(f"  {hooks}")
         return 0
     if o.relier:
         if not programme_a_part(brain):
