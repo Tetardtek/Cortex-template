@@ -74,6 +74,7 @@ onglet Docs) :
 | | |
 |---|---|
 | [Démarrer](docs/demarrer.md) | l'installation, étape par étape |
+| [Les commandes](docs/commandes.md) | ce que `brain` sait faire, depuis son aide |
 | [Sessions](docs/sessions.md) | les types, ce qu'ils chargent, où ils écrivent |
 | [Architecture](docs/architecture.md) | noyau, satellites, instance |
 | [Agents](docs/agents.md) | la liste complète, générée depuis les agents |

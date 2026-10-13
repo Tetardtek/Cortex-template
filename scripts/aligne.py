@@ -42,6 +42,7 @@ Sortie 0 : aligné. 1 : la fusion a refusé, ou un fichier non suivi reste dans
 """
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
@@ -119,6 +120,10 @@ def declarer(brain: Path) -> str:
 
 
 def main() -> int:
+    # Les arguments AVANT tout geste : sans eux, `brain aligne --help` partait en
+    # `git fetch` puis en fusion.
+    argparse.ArgumentParser(prog="brain aligne", description=__doc__,
+                            formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     brain = _racine_des_donnees(env_d_abord=True)
     amont = git(brain, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
     if amont.returncode != 0:

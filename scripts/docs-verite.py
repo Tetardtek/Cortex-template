@@ -25,6 +25,9 @@ avec le gabarit est un renvoi mort chez le fork.
     boot          `brain boot <type>` : un type dont le manifest existe,
                   sans le `mode` d'avant les sessions V2
     commande      `<script>.sh <sous-commande>` : le script la connaît
+    brain         `brain <verbe> --option` : le verbe est dans l'aide de
+                  `scripts/brain`, et l'option aussi, sur une ligne de ce verbe
+                  — une option que la doc fait taper et que l'aide tait
     agent         `nom` d'agent : il part avec le gabarit
     retiré        le vocabulaire de ce que le brain a supprimé, avec sa raison
     gabarit       un {{PLACEHOLDER}} ou un ${var} resté tel quel
@@ -56,6 +59,7 @@ est mort : dans un dépôt, il l'est.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -127,6 +131,12 @@ RE_CHEMIN = re.compile(r"(?<![\w./~-])((?:%s)/[\w./-]*[\w/])" % "|".join(RACINES
 RE_LIEN = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?(?:\s+\"[^\"]*\")?\)")
 RE_BOOT = re.compile(r"\bbrain boot\s+(mode\s+)?([a-z][\w-]*)")
 RE_COMMANDE = re.compile(r"([\w-]+\.sh)\s+([a-z][\w-]*)")
+# `brain <verbe> …` en position de commande : en tête du code, ou après `&&`, `;`,
+# `|`, `$(` — « le brain du laptop » dans un commentaire n'est pas un appel. La
+# suite s'arrête au maillon suivant ou au commentaire.
+RE_BRAIN = re.compile(r"(?:^|&&|;|\|\|?|\$\()\s*(?:\$\s+)?brain\s+([a-z][\w-]*)([^&;|#]*)")
+#: `brain boot` est une commande de Claude Code, jugée par sa règle (`boot`).
+VERBES_HORS_AIDE = {"boot"}
 RE_BACKTICK = re.compile(r"`([a-z][a-z0-9]*(?:-[a-z0-9]+)*)`")
 # Un marqueur resté tel quel, bien ou mal formé (`{{ NB }}`, un bloc
 # `genere:` que le générateur n'a pas pris) — jugé hors code : `${HOME}` dans un
@@ -199,6 +209,27 @@ def sous_commandes(script: Path) -> str | None:
     if not re.search(r'case\s+"?\$\{?(1|CMD|cmd|action|ACTION|commande|arg)\b', texte):
         return None
     return texte
+
+
+def aide_de_brain(script: Path) -> dict[str, set[str]] | None:
+    """{verbe: options nommées par ses lignes} — lu par LA règle de `docs-generer.py`,
+    importée, jamais recopiée : la page des commandes et ce jugement lisent la même
+    aide. `None` sans `scripts/brain` : rien à juger."""
+    if not script.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location(
+        "docs_generer", Path(__file__).resolve().parent / "docs-generer.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    try:
+        lignes = gen.aide_de_brain(script.read_text(encoding="utf-8"))
+    except gen.Illisible as e:
+        raise Illisible(str(e)) from e
+    verbes: dict[str, set[str]] = {}
+    for commande, _ in lignes:
+        mots = commande.split()
+        verbes.setdefault(mots[1], set()).update(re.findall(r"--[\w-]+", commande))
+    return verbes
 
 
 def ecrit_par_un_script(gabarit: Path, chemin: str) -> bool:
@@ -292,6 +323,7 @@ def juger(gabarit: Path, brain: Path | None = None,
     connus = publies | set(AGENTS_RETIRES) | (agents(brain) if brain else set())
     retires = [(re.compile(m, re.IGNORECASE), r) for m, r in RETIRES]
     courante = version_du_gabarit(gabarit)
+    aide = aide_de_brain(gabarit / "scripts" / "brain")
     faux: list[tuple[str, int, str, str]] = []
 
     for page in pages(gabarit, motifs):
@@ -374,6 +406,21 @@ def juger(gabarit: Path, brain: Path | None = None,
                     dire("commande", f"`{script}` n'est pas un script du gabarit")
                 elif (texte := sous_commandes(chemin)) is not None and not connait(texte, sous):
                     dire("commande", f"`{script}` ne connaît pas `{sous}`")
+
+            for m in (m for c in codes for m in RE_BRAIN.finditer(c)) if aide else ():
+                verbe, suite = m.group(1), m.group(2)
+                if verbe in VERBES_HORS_AIDE:
+                    continue
+                if verbe not in aide:
+                    dire("brain", f"`brain {verbe}` : l'aide de `brain` ne connaît pas ce verbe "
+                                  f"({', '.join(aide)})")
+                    continue
+                # `--help` : chaque verbe y répond, sans rien faire — c'est un test qui le
+                # garantit (`TestChaqueVerbeASonAide`), pas cette liste.
+                for opt in re.findall(r"(?<![\w-])--[\w-]+", suite):
+                    if opt not in aide[verbe] and opt != "--help":
+                        dire("brain", f"`brain {verbe} {opt}` : l'aide de `brain` ne nomme pas "
+                                      f"cette option — la doc la fait taper, `brain --help` la tait")
 
             for m in RE_BACKTICK.finditer(ligne):
                 nom = m.group(1)

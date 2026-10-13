@@ -6983,6 +6983,52 @@ class TestBrainInit(unittest.TestCase):
         r, _, _ = self._jouer('scripts/brain', '--help')
         self.assertIn('brain init', r.stdout)
 
+    # ── Une aide, pas un nom ──
+    def test_init_help_imprime_l_aide_et_n_ecrit_rien(self):
+        """L'incident lu dans le code : `--help` tombait dans les positionnels — un brain
+        nommé « --help », puis les 13 étapes."""
+        self._poser()
+        r, avant, apres = self._jouer('scripts/brain', 'init', '--help')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('brain init', r.stdout)
+        self.assertIn('--sans-service', r.stdout)
+        self.assertEqual(avant, apres, "brain init --help a écrit")
+
+    def test_init_refuse_une_option_inconnue(self):
+        self._poser()
+        r, avant, apres = self._jouer('scripts/brain', 'init', 'essai', '--sans-servise')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('--sans-servise', r.stderr)
+        self.assertEqual(avant, apres, "une option inconnue est devenue un nom")
+
+    def test_l_aide_ne_cherche_pas_le_brain(self):
+        """Le paquet (`.cortex-programme`) cherchait les données AVANT d'aiguiller — l'aide
+        comprise : juste après `pipx install`, aucun brain déclaré, `brain --help` échouait."""
+        self._poser()
+        (self.b / 'scripts' / 'lib' / 'donnees.sh').write_bytes(
+            (BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'donnees.sh').read_bytes())
+        (self.b / '.cortex-programme').touch()
+        for aide in ('--help', '-h', 'help'):
+            r, avant, apres = self._jouer('scripts/brain', aide)
+            self.assertEqual(r.returncode, 0, f"{aide} : {r.stdout + r.stderr}")
+            self.assertIn('brain init', r.stdout)
+            self.assertEqual(avant, apres)
+
+    def test_aligne_help_ne_lance_rien(self):
+        """`aligne.py` ne lisait aucun argument : `--help` partait en `git fetch`."""
+        (self.b / 'scripts' / 'aligne.py').write_bytes((BRAIN_ROOT_PATH / 'scripts' / 'aligne.py').read_bytes())
+        env = {'PATH': os.environ.get('PATH', ''), 'HOME': str(self.home), 'BRAIN_ROOT': str(self.b)}
+        avant = self._arbre()
+        r = subprocess.run([sys.executable, str(self.b / 'scripts' / 'aligne.py'), '--help'],
+                           cwd=self.b, capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('brain aligne', r.stdout)
+        self.assertEqual(avant, self._arbre())
+        r = subprocess.run([sys.executable, str(self.b / 'scripts' / 'aligne.py'), '--vite'],
+                           cwd=self.b, capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertEqual(avant, self._arbre(), "un argument inconnu a fait agir aligne")
+
 
 class TestExempleConfigLocale(unittest.TestCase):
     """`brain-compose.local.yml.example` a la forme de ce que le setup écrit.
@@ -7888,6 +7934,161 @@ class TestEtapesGenerees(unittest.TestCase):
         page = (BRAIN_ROOT_PATH / 'docs' / 'demarrer.md').read_text(encoding='utf-8')
         self.assertNotIn('sept étapes', page)
         self.assertNotIn('treize étapes', page)
+
+
+class TestCommandesDeBrain(unittest.TestCase):
+    """L'aide de `brain` est la source des commandes : `brain --help` l'imprime, la
+    liste des verbes connus en dérive, `docs/commandes.md` la rend, et une option que
+    la doc fait taper sans que l'aide la nomme rougit `docs-verite`. Le 13/10, l'aide
+    était un `sed -n '4,15p'` et taisait `--ports`, que l'installation fait taper."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain'
+    AIDE = ('#!/usr/bin/env bash\n# brain — essai\n#\n# Usage :\n'
+            '#   brain serve [http|mcp]       les portes\n'
+            '#   brain serve --ports          les deux ports\n'
+            '#   brain doctor                 le verdict\n#\n# la suite\n')
+
+    def _generer(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'docs_generer_commandes', BRAIN_ROOT_PATH / 'scripts' / 'docs-generer.py')
+        dg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dg)
+        return dg
+
+    def _juger(self, page: str, aide: str | None = None):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = TestDocsVerite._gabarit(self, Path(tmp), page)
+            (g / 'scripts' / 'brain').write_text(aide if aide is not None else self.AIDE)
+            r = subprocess.run([sys.executable, str(TestDocsVerite.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        return r.returncode, r.stdout + r.stderr
+
+    # ── L'aide ──
+    def test_l_aide_imprime_tout_le_bloc_usage(self):
+        """Le témoin du `sed -n '4,15p'` : l'aide imprime AUTANT de commandes que le
+        bloc en porte — une ligne ajoutée au bloc n'en tombe pas."""
+        lignes = self._generer().aide_de_brain(self.SCRIPT.read_text(encoding='utf-8'))
+        r = subprocess.run(['bash', str(self.SCRIPT), '--help'], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        imprimees = [l for l in r.stdout.splitlines() if l.strip().startswith('brain ')]
+        self.assertEqual(len(imprimees), len(lignes), r.stdout)
+        self.assertGreater(len(lignes), 12, "le bloc a grandi au-delà de l'ancienne plage 4-15")
+
+    def test_les_verbes_de_l_aide_sont_ceux_de_l_aiguillage(self):
+        """Un verbe ajouté au `case` sans ligne d'aide — ou l'inverse — se voit ici."""
+        texte = self.SCRIPT.read_text(encoding='utf-8')
+        aiguillage = set(re.findall(r'(?m)^  ([a-z]+)\)', texte))
+        aide = {c.split()[1] for c, _ in self._generer().aide_de_brain(texte)}
+        self.assertEqual(aiguillage, aide)
+
+    def test_un_verbe_inconnu_dit_les_verbes_de_l_aide(self):
+        r = subprocess.run(['bash', str(self.SCRIPT), 'nimporte'], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('connus : init, serve, doctor, maj, vue, aligne, briefing, migrer', r.stderr)
+
+    # ── La page générée ──
+    def test_une_ligne_ajoutee_a_l_aide_apparait_dans_la_table(self):
+        dg = self._generer()
+        d = Path(tempfile.mkdtemp(prefix='commandes-'))
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        (d / 'scripts').mkdir()
+        (d / 'scripts' / 'brain').write_text(self.AIDE.replace(
+            '#   brain doctor', '#   brain neuf --vite            une commande neuve\n#   brain doctor'))
+        table = dg.bloc_commandes(dg.Mesures(d))
+        self.assertIn('| `brain neuf --vite` | une commande neuve |', table)
+        self.assertIn('| `brain serve [http\\|mcp]` |', table)
+
+    def test_une_ligne_d_aide_sans_description_est_illisible(self):
+        dg = self._generer()
+        with self.assertRaises(dg.Illisible):
+            dg.aide_de_brain(self.AIDE.replace('les deux ports', ''))
+        with self.assertRaises(dg.Illisible):
+            dg.aide_de_brain('#!/usr/bin/env bash\n# rien\n')
+
+    # ── Le garde de la doc ──
+    def test_une_option_que_l_aide_tait_rougit(self):
+        """L'incident : `installer-avec-claude.md` faisait taper `brain serve --ports`."""
+        code, sortie = self._juger('```bash\nbrain serve --ports --vite\n```\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('`brain serve --vite`', sortie)
+        self.assertNotIn('`brain serve --ports`', sortie)
+
+    def test_une_option_d_un_autre_verbe_rougit(self):
+        code, sortie = self._juger('Lance `brain doctor --ports`.\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('[brain]', sortie)
+
+    def test_un_verbe_inconnu_rougit(self):
+        code, sortie = self._juger('```bash\ncd x && brain demarrer\n```\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('ne connaît pas ce verbe', sortie)
+
+    def test_ce_qui_n_est_pas_un_appel_ne_rougit_pas(self):
+        code, sortie = self._juger(
+            '```bash\nbrain serve --ports   # --rien en commentaire\n'
+            'ls ~/.local/bin/brain --x\n# le brain du laptop --y\nbrain serve --help\n```\n'
+            'Le `brain boot work` et le paquet `brain-cortex`.\n')
+        self.assertEqual(code, 0, sortie)
+
+    def test_sans_scripts_brain_rien_n_est_juge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = TestDocsVerite._gabarit(self, Path(tmp), '`brain serve --vite`\n')
+            r = subprocess.run([sys.executable, str(TestDocsVerite.SCRIPT), '--gabarit', str(g)],
+                               capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_la_doc_du_brain_ne_fait_rien_taper_que_l_aide_taise(self):
+        r = subprocess.run([sys.executable, str(TestDocsVerite.SCRIPT), '--gabarit', str(BRAIN_ROOT_PATH)],
+                           capture_output=True, text=True, timeout=60)
+        self.assertNotIn('[brain]', r.stdout + r.stderr)
+
+
+class TestChaqueVerbeASonAide(unittest.TestCase):
+    """`docs-verite` permet `brain <verbe> --help` à tous les verbes : vrai seulement si chaque
+    verbe de l'aide répond `--help` en sortie 0, sans rien écrire. Un verbe ajouté sans aide
+    rougit ici.
+
+    Joué sur une COPIE du programme, jamais sur ce dépôt : un verbe sans aide fait son
+    travail — mesuré le 14/10, `brain init --help` lançait les 13 étapes, le dépôt pour racine."""
+
+    def test_chaque_verbe_repond_help(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'docs_generer_aides', BRAIN_ROOT_PATH / 'scripts' / 'docs-generer.py')
+        dg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dg)
+        tmp = Path(tempfile.mkdtemp(prefix='aides-'))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        prog, home = tmp / 'prog', tmp / 'home'
+        home.mkdir()
+        shutil.copytree(BRAIN_ROOT_PATH / 'scripts', prog / 'scripts', symlinks=True,
+                        ignore=shutil.ignore_patterns('__pycache__'))
+        (prog / 'brain-engine').mkdir()
+        for module in (BRAIN_ROOT_PATH / 'brain-engine').glob('*.py'):
+            shutil.copy(module, prog / 'brain-engine' / module.name)
+        if (BRAIN_ROOT_PATH / 'brain-engine' / 'doctor').is_dir():
+            shutil.copytree(BRAIN_ROOT_PATH / 'brain-engine' / 'doctor', prog / 'brain-engine' / 'doctor',
+                            ignore=shutil.ignore_patterns('__pycache__'))
+        script = prog / 'scripts' / 'brain'
+        verbes = dict.fromkeys(c.split()[1] for c, _ in dg.aide_de_brain(script.read_text(encoding='utf-8')))
+        env = {**os.environ, 'HOME': str(home),
+               'PATH': f"{Path(sys.executable).parent}:{os.environ.get('PATH', '')}"}
+        for cle in ('MYELINE_ROOT', 'BRAIN_ROOT'):
+            env.pop(cle, None)
+        arbre = lambda: sorted(str(p) for p in tmp.rglob('*') if '__pycache__' not in p.parts)
+        avant = arbre()
+        for verbe in verbes:
+            with self.subTest(verbe=verbe):
+                r = subprocess.run(['bash', str(script), verbe, '--help'], cwd=tmp, capture_output=True,
+                                   text=True, env=env, timeout=60, stdin=subprocess.DEVNULL)
+                if verbe == 'doctor' and 'aucun doctor dans ce brain' in r.stderr:
+                    continue    # le brain d'origine : son doctor est dans le dépôt de Myéline
+                self.assertEqual(r.returncode, 0, f"brain {verbe} --help : {r.stdout[-400:]}{r.stderr[-400:]}")
+                # Une AIDE, pas une sortie quelconque : un verbe qui ignore `--help` et fait un
+                # travail sans bruit sortirait en 0 lui aussi.
+                self.assertIn('usage', r.stdout.lower(), f"brain {verbe} --help n'imprime pas d'aide")
+        self.assertEqual(avant, arbre(), "une aide a écrit")
 
 
 class TestTypesDeCommitGeneres(unittest.TestCase):

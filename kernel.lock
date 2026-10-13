@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.6.0"
-generated_at: "2026-10-13T22:09"
+kernel_version: "3.6.1"
+generated_at: "2026-10-14T01:12"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: cf319a9e13daf6ec903b4b485dd0123b4b480856488eb6685db35c7a44e589e8
+  brain-compose.yml: 7f6e34a875380f3c859007a5dc377d7c199601fe58cd3c880532df722ddb58ae
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -70,11 +70,11 @@ files:
   noyau/agents/toolkit-scribe.md: 7e71c92fb54c93286d2843112c03484a5931e48675f9ae74e879fee8c3cc909f
   noyau/agents/vps.md: a8fdf0bdecb5dd13162fcbb18722a33cf288d3f1d83bdd46adaaef8cc8ab23aa
   noyau/agents/watch.md: 8339cbe7fec7f31eb2cbcd13d4db000c08b7e29df14138a124139a7017afce9d
-  scripts/aligne.py: f8a2e4e13a6e4a36d8043690a56284f8c3a4c539a3f7bdda97539d098e023351
-  scripts/brain: 6ae6dc2f10824d0875377580731c478394f8357b3af6e044cf169c14d2a30ffc
+  scripts/aligne.py: f0ff56c48aef70f743aeff168b88e3ee63399509410e805e7e76d4b86075f347
+  scripts/brain: c08963ce364bb3d89300e402cb3708a9df0c57bab02e64a44b75457770bdd006
   scripts/brain-db-sync.sh: 63a1693df32efd1663a97aac5cabe615e8602a88ef798c5d44cb1fd021b5977e
   scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
-  scripts/brain-init.sh: 9a6bc85afa96066dcb42dd493b3121ab55b7247f853c6514fda7f67380cb450c
+  scripts/brain-init.sh: ed698889e127a9a22328f359c087c32293fe3fb46fad44e2dfaa13ca0d20cdc4
   scripts/brain-satellites.py: fa94a8f64fa129ae4b0d9e20ca1c79055541711a05cce1cd9198cdb0fd5ad8c2
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
   scripts/brain-statusline.sh: 6956c72f44fd5f1816c046c3adbb854a4d6d38315a0cd9425b7962cbdefa4677
@@ -84,8 +84,8 @@ files:
   scripts/bsi-query.sh: ee69710d04027a1ef57755ab5ca62820ff91dbd271e59ed6acf13187709e1c67
   scripts/bsi-signal.sh: a9126500543535fdd19194ad80e6e336b9095caf1cacd3b936a20b132f2b30bc
   scripts/claude-programme.py: 3dbe6777e2e3f3e571925e109400f8aa892c8a1ed4afc41a17441d693d5d06b2
-  scripts/docs-generer.py: f92731cca2dc48342a26f1db4a6119510bbb85b9e68a374e78ceba87ee36cbe1
-  scripts/docs-verite.py: 2298d8d7a3bb90bb7daf1d634ace3fc990869164350d0e5a096306592d68210e
+  scripts/docs-generer.py: befe70937985034aa77be2aa60743317b404ab4754e279dbca2d975b39818b64
+  scripts/docs-verite.py: b6fd06f5737eefe5e13f36a300ce9d0f6d3dfcfc512ccbe87789585af106d874
   scripts/dolt-dump-reparer.py: 958ebb311df192f26a3a0eec6cc2ab086fc0f9ffffb111cc7dc1231e8ef4836b
   scripts/dolt-schema-gen.sh: 73564e28bf5810ff15ef7b9596810b044f4882ea15f7931a51b7bd5ca7f5cf70
   scripts/dolt-setup.sh: f12cbeabc15dcf2a6e239670a099138b9cf4e9a141539d034f46b7ee2a1a9f69

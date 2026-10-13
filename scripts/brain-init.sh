@@ -1,10 +1,10 @@
 #!/bin/bash
 # brain-distribuable: oui
 # brain-init.sh — `brain init` : créer un brain sur une machine (les 13 étapes).
-# Usage : [BRAIN_MACHINE=laptop] [PROJECTS_ROOT=~/Dev] bash scripts/brain init [brain_name] [brain_root] [--sans-service] [--reecrire-claude-md]
-#         bash scripts/brain init --verifier      les prérequis seulement — rien n'est écrit
-# Ex    : bash scripts/brain init my-brain ~/Dev/Brain
-#
+# Usage : [BRAIN_MACHINE=laptop] [PROJECTS_ROOT=~/Dev] brain init [nom] [dossier] [--sans-service] [--reecrire-claude-md]
+#         brain init --verifier      les prérequis seulement — rien n'est écrit
+#         brain init --help          cette aide
+# Ex    : brain init my-brain ~/Dev/Brain
 # Idempotent — safe à relancer si une étape a échoué : la seconde passe ne change rien.
 # `--sans-service` : tout sauf les unités systemd (conteneur, essai).
 # `--reecrire-claude-md` : remplacer un `~/.claude/CLAUDE.md` existant (sauvegardé).
@@ -29,6 +29,14 @@ for a in "$@"; do
     --sans-service) SANS_SERVICE=true ;;
     --reecrire-claude-md) REECRIRE_CLAUDE_MD=true ;;
     --verifier) VERIFIER=true ;;
+    # L'aide : le bloc « Usage : » ci-dessus. Sans elle, `--help` tombait dans les
+    # positionnels — un brain nommé « --help », et les étapes partaient (14/10).
+    -h|--help)
+      awk '/^# Usage :/ { u = 1 } u && /^#$/ { exit } u { sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
+      exit 0 ;;
+    -*)
+      echo "brain init : option inconnue « $a » — connues : --sans-service, --reecrire-claude-md, --verifier, --help" >&2
+      exit 2 ;;
     *) POSITIONNELS+=("$a") ;;
   esac
 done

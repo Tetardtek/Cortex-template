@@ -29,6 +29,8 @@ Dans `docs/src/*.md`, deux formes, remplacées dans `docs/*.md` :
               tables     les tables et les vues, depuis le schéma Dolt
               routes     les routes de l'API, lues dans server.py (ast)
               outils     les outils MCP, lus dans mcp_server.py (ast)
+              commandes  les commandes de `brain`, lues dans le bloc « Usage : »
+                         de scripts/brain — ce que `brain --help` imprime
 
 Deux cibles, même mécanisme : `docs/src/` → `docs/` (la doc humaine) et
 `skills/brain/src/` → `skills/brain/` (la skill, la doc que l'AGENT croit —
@@ -245,6 +247,28 @@ def outils_mcp(brain: Path) -> list[tuple[str, str]]:
     return trouves
 
 
+def aide_de_brain(texte: str) -> list[tuple[str, str]]:
+    """(commande, ce qu'elle fait) pour chaque ligne du bloc « Usage : » de
+    `scripts/brain` — lu par LA règle de `brain --help` : du titre jusqu'à la
+    première ligne vide du commentaire. Une ligne ajoutée à l'aide apparaît
+    dans la doc sans rien d'autre à écrire."""
+    dedans, lignes = False, []
+    for ligne in texte.splitlines():
+        if ligne == "# Usage :":
+            dedans = True
+            continue
+        if dedans and ligne == "#":
+            break
+        if dedans:
+            m = re.match(r"^#\s+(brain \S.*?)\s{2,}(\S.*)$", ligne)
+            if not m:
+                raise Illisible(f"scripts/brain, ligne d'aide sans « commande  ce qu'elle fait » : {ligne!r}")
+            lignes.append((m.group(1), m.group(2)))
+    if not lignes:
+        raise Illisible("scripts/brain sans bloc « # Usage : » — l'aide n'a pas de source")
+    return lignes
+
+
 class Mesures:
     """Ce que le brain contient, mesuré À LA DEMANDE : une source n'est lue que
     si une page la réclame — un brain sans `mcp_server.py` a quand même sa doc,
@@ -277,6 +301,13 @@ class Mesures:
     @functools.cached_property
     def outils(self) -> list[tuple[str, str]]:
         return outils_mcp(self.brain)
+
+    @functools.cached_property
+    def commandes(self) -> list[tuple[str, str]]:
+        script = self.brain / "scripts" / "brain"
+        if not script.is_file():
+            raise Illisible("scripts/brain absent — les commandes n'ont pas de source")
+        return aide_de_brain(script.read_text(encoding="utf-8"))
 
     @functools.cached_property
     def etapes_init(self) -> int:
@@ -432,8 +463,18 @@ def bloc_satellites(m: dict) -> str:
     return "\n".join(lignes)
 
 
+def bloc_commandes(m: dict) -> str:
+    lignes = ["| Commande | Ce qu'elle fait |", "|---|---|"]
+    for commande, quoi in m["commandes"]:
+        # `[http|mcp]` : un `|` nu, même dans un span de code, couperait la cellule.
+        cellule = commande.replace("|", "\\|")
+        lignes.append(f"| `{cellule}` | {quoi.replace('|', '/')} |")
+    return "\n".join(lignes)
+
+
 BLOCS = {"sessions": bloc_sessions, "agents": bloc_agents, "tables": bloc_tables,
-         "routes": bloc_routes, "outils": bloc_outils, "satellites": bloc_satellites}
+         "routes": bloc_routes, "outils": bloc_outils, "satellites": bloc_satellites,
+         "commandes": bloc_commandes}
 
 
 VALEURS = {

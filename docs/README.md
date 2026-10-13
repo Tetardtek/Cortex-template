@@ -1,13 +1,14 @@
 <!-- Généré depuis docs/src/README.md par scripts/docs-generer.py — ne pas éditer ici. -->
 # La doc du brain
 
-> Kernel v3.6.0 — 58 agents, 6 types de session.
+> Kernel v3.6.1 — 58 agents, 6 types de session.
 
 | Page | Pour |
 |---|---|
 | [Démarrer](demarrer.md) | installer un fork, du clone au premier `brain boot` |
 | [Installer avec Claude](installer-avec-claude.md) | la procédure qu'un Claude suit pour installer le paquet `brain-cortex` avec une personne |
 | [Se mettre à jour](mettre-a-jour.md) | recevoir une nouvelle version du gabarit dans ton fork |
+| [Les commandes](commandes.md) | ce que `brain` sait faire — la table vient de `brain --help` |
 | [Sessions](sessions.md) | les types de session, ce qu'ils chargent, où ils écrivent |
 | [Architecture](architecture.md) | le noyau, les satellites, l'instance, les zones |
 | [Agents](agents.md) | les agents, groupés par ce qu'ils font |

@@ -3,16 +3,32 @@
 # brain — le point d'entrée unique du brain.
 #
 # Usage :
-#   brain init [nom] [--sans-service]  créer un brain sur cette machine (les 13 étapes)
-#   brain init --verifier        les prérequis seulement — rien n'est écrit
-#   brain serve [http|mcp]       les portes réseau (HTTP + MCP), une seule déclaration
-#   brain serve --declaration    ce qui serait lancé, sans rien lancer
-#   brain doctor                 ce qui se dégrade en silence — le brain se contrôle
-#   brain maj [--appliquer]      recevoir une version du gabarit — à blanc par défaut
-#   brain vue [--construire]     agents/ comme une vue du noyau et de l'instance
-#   brain aligne                 reprendre le tronc, le noyau verrouillé compris
-#   brain briefing [--projet P]  le briefing du boot, calculé (helloWorld le lance)
-#   brain migrer [<dossier>]     un brain git passe au paquet, une fois (--a-blanc, --annuler)
+#   brain init [nom] [dossier]       créer un brain, ici ou dans ce dossier (les 13 étapes) ; relancé, il complète
+#   brain init --sans-service        idem, sans systemd utilisateur (conteneur, essai)
+#   brain init --reecrire-claude-md  idem, et remplacer ~/.claude/CLAUDE.md (l'ancien est sauvegardé)
+#   brain init --verifier            les prérequis seulement — rien n'est écrit
+#   brain serve [http|mcp]           les portes réseau (HTTP + MCP), une seule déclaration
+#   brain serve --declaration        ce qui serait lancé, sans rien lancer
+#   brain serve --ports              les deux ports, en CLÉ=valeur — pour un script
+#   brain doctor                     ce qui se dégrade en silence — le brain se contrôle
+#   brain maj [version]              un fork git : le plan vers la dernière version, ou celle-ci — rien ne bouge (le paquet : pipx upgrade)
+#   brain maj --appliquer            recevoir la version : fusionner, régénérer, réinstaller
+#   brain maj --sans-unites          avec --appliquer : sans réinstaller les unités systemd
+#   brain maj --sans-reseau          sans relire les tags de l'amont
+#   brain vue [--construire]         agents/ comme une vue du noyau et de l'instance
+#   brain vue --deverrouiller        rendre le noyau modifiable le temps d'une mise à jour
+#   brain vue --satellites           le .gitignore du dossier tait ses satellites (programme installé à part)
+#   brain aligne                     reprendre le tronc, le noyau verrouillé compris
+#   brain briefing [--projet P]      le briefing du boot, calculé (helloWorld le lance)
+#   brain briefing --fiches P        seulement les prochaines fiches d'un projet
+#   brain migrer [dossier]           un brain git passe au paquet, une fois
+#   brain migrer --a-blanc           dire ce qui serait fait — rien n'est touché
+#   brain migrer --annuler           rendre le clone d'avant la migration
+#
+# Ce bloc EST l'aide : `brain --help` l'imprime jusqu'à sa ligne vide, la liste
+# des verbes connus en dérive, et `docs-generer.py` en tire `docs/commandes.md`.
+# Une ligne ajoutée ici apparaît partout ; une option que la doc fait taper sans
+# qu'il la nomme fait rougir `docs-verite.py`.
 #
 # Les autres verbes viendront des scripts du brain, un par un (`brain <verbe>`)
 # — chacun le jour où il est prêt, pas avant.
@@ -21,6 +37,13 @@
 # `brain-engine.sh install`) : il retrouve son brain par le chemin RÉEL.
 
 set -euo pipefail
+
+# L'aide : le bloc « Usage : » de cet en-tête, jusqu'à sa première ligne vide.
+# Lu par son titre, jamais par numéros de ligne : `sed -n '4,15p'` aurait laissé
+# hors de l'aide toute ligne ajoutée au bloc.
+_usage() {
+  awk '/^# Usage :$/ { u = 1 } u && /^#$/ { exit } u { sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
+}
 
 _ici="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 source "$_ici/lib/python.sh"   # python3 = celui du venv de brain-engine
@@ -32,10 +55,17 @@ source "$_ici/lib/python.sh"   # python3 = celui du venv de brain-engine
 source "$_ici/lib/donnees.sh" 2>/dev/null || brain_donnees() { printf '%s\n' "$1"; }
 _donnees=""
 # `migrer` reçoit le clone à migrer : il ne cherche pas la data non plus.
-if [[ "${1:-}" != "init" && "${1:-}" != "migrer" && -e "$_ici/../.cortex-programme" ]]; then
-  _donnees="$(brain_donnees "$(cd "$_ici/.." && pwd)")" || exit 1
-  export BRAIN_ROOT="$_donnees"
-fi
+# L'aide non plus : juste après `pipx install`, aucun brain n'est déclaré, et
+# `brain --help` échouait à le chercher.
+case "${1:-}" in
+  init|migrer|""|-h|--help|help) ;;
+  *)
+    if [[ -e "$_ici/../.cortex-programme" ]]; then
+      _donnees="$(brain_donnees "$(cd "$_ici/.." && pwd)")" || exit 1
+      export BRAIN_ROOT="$_donnees"
+    fi
+    ;;
+esac
 
 case "${1:-}" in
   init)
@@ -90,10 +120,10 @@ case "${1:-}" in
     exec python3 "$_ici/briefing.py" "$@"
     ;;
   ""|-h|--help|help)
-    sed -n '4,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    _usage
     ;;
   *)
-    echo "brain : verbe inconnu « $1 » — connus : init, serve, doctor, maj, vue, aligne, migrer, briefing" >&2
+    echo "brain : verbe inconnu « $1 » — connus : $(_usage | awk '$1 == "brain" && !vu[$2]++ { printf "%s%s", (n++ ? ", " : ""), $2 }')" >&2
     exit 2
     ;;
 esac
