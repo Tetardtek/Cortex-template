@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.6.2"
-generated_at: "2026-10-14T21:51"
+kernel_version: "3.6.3"
+generated_at: "2026-10-14T23:18"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 6842b822aa427ac2a372ec9439dc5739b1a78991bd09cf4b90fbdb92f7468b16
+  brain-compose.yml: d88bb787f2a9cc40c61740f8fe446eeb1d78073fc553188b62632f667b653921
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -73,7 +73,7 @@ files:
   scripts/aligne.py: f0ff56c48aef70f743aeff168b88e3ee63399509410e805e7e76d4b86075f347
   scripts/brain: c08963ce364bb3d89300e402cb3708a9df0c57bab02e64a44b75457770bdd006
   scripts/brain-db-sync.sh: 63a1693df32efd1663a97aac5cabe615e8602a88ef798c5d44cb1fd021b5977e
-  scripts/brain-engine.sh: 777a70f9d471baf109e1c9560164a634c7d0cc376dfd9f75a3e50bcaad0e4cc0
+  scripts/brain-engine.sh: eaace3a2e89e8d1049179f0348411aeb4c826d6b0e95315c4562de9f2d4aea6f
   scripts/brain-init.sh: ed698889e127a9a22328f359c087c32293fe3fb46fad44e2dfaa13ca0d20cdc4
   scripts/brain-satellites.py: fa94a8f64fa129ae4b0d9e20ca1c79055541711a05cce1cd9198cdb0fd5ad8c2
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
@@ -108,7 +108,7 @@ files:
   scripts/lib/secrets-semis.sh: 79897641c9bd69b3f8178ed7542cfa3775dbd60b6151d08093e27e889b2c72f2
   scripts/maj-disponible.py: 97f6537cb2ee7c2ae36931ffe9b17f043eef2bb1bc1eb942f94200c1d9d78c16
   scripts/maj.py: f78dc91eb5af5e504ef7e15bae9ca2e2af4aab0dc7e7038b21bfa6634ae2f87d
-  scripts/migrer.py: 6d92515d8eecdf44c27aa4ec52d074ede9ccf2ae47aa46614dd1e2732a1780af
+  scripts/migrer.py: 3cf6d0f42a5a4d3b9755a85b1e7f7eb0829b429d07b46b496a3955eb0c40902f
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
   scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
   scripts/saboter.py: 1bab6652ae9a59753cc35177250616d3302fc1babe651eaa6181017b097a22f2

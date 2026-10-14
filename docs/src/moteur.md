@@ -61,7 +61,9 @@ brain serve --declaration    # ce qui serait lancé (ports, mode, secrets), sans
 ```
 
 `install systemd` pose la commande `brain` dans `~/.local/bin`, en lien vers
-`scripts/brain`. Sans elle : `bash scripts/brain serve`.
+`scripts/brain`. Sans elle : `bash scripts/brain serve`. Un brain servi par le paquet
+garde la commande de pipx : `install systemd` ne la remplace pas, et y ramène un lien
+qu'une version d'avant aurait posé vers le script.
 
 La déclaration se calcule dans cet ordre, la plus forte en dernier : les défauts
 (7700, 7701, les scopes du MCP local), `brain-engine/.env.local`,

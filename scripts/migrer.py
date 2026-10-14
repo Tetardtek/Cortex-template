@@ -564,6 +564,10 @@ def migrer(dossier: Path, a_blanc: bool, sans_service: bool, laisser: bool) -> i
         lien.unlink()
         lien.symlink_to(cible)
         dire(f"  ✅ 6. la commande {lien} désignait le clone — elle désigne le paquet ({cible})")
+    elif cible and lien.is_symlink() and Path(os.readlink(lien)) == cible:
+        # Déjà la commande du paquet (un `pipx install --force`, ou un ancien lien vers le
+        # script d'un paquet, que `brain init` a ramené) : le dire, pas « laissée telle quelle ».
+        dire(f"  ✅ 6. la commande {lien} désigne le paquet ({cible})")
     else:
         dire(f"  ✅ 6. la commande {lien} : laissée telle quelle")
     morts = sorted({p for cmd in hooks_globaux() for p in chemins_vises(cmd, dossier)

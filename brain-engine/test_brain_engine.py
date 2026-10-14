@@ -7466,6 +7466,98 @@ class TestInstallSystemd(unittest.TestCase):
         self.assertIn('tourne déjà', sortie)
 
 
+class TestLaCommandeBrain(unittest.TestCase):
+    """`~/.local/bin/brain` : un fork git y lie `scripts/brain` ; un programme installé
+    à part garde la commande de pipx (`<venv>/bin/brain`, le point d'entrée qui met son python
+    en tête du PATH) — `brain init` la remplaçait par un lien vers le script (laptop, 14/10).
+
+    La fonction est jouée SEULE, extraite du vrai script, dans un HOME jetable : ni systemd,
+    ni le vrai lien de la machine."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.home = self.tmp / 'home'
+        self.lien = self.home / '.local' / 'bin' / 'brain'
+        self.lien.parent.mkdir(parents=True)
+        # un venv de pipx : pyvenv.cfg, son point d'entrée, le programme marqué
+        self.venv = self.tmp / 'pipx' / 'venvs' / 'brain-cortex'
+        (self.venv / 'bin').mkdir(parents=True)
+        (self.venv / 'pyvenv.cfg').write_text('home = /usr/bin\n')
+        self.entree = self.venv / 'bin' / 'brain'
+        self.programme = self.venv / 'lib' / 'python3.14' / 'site-packages' / 'brain_cortex' / 'programme'
+        (self.programme / 'scripts').mkdir(parents=True)
+        (self.programme / '.cortex-programme').write_text('')
+        self.script = self.programme / 'scripts' / 'brain'
+        for f in (self.entree, self.script):
+            f.write_text('#!/bin/sh\n')
+            f.chmod(0o755)
+        # un fork git : le programme, c'est le brain
+        self.fork = self.tmp / 'fork'
+        (self.fork / 'scripts').mkdir(parents=True)
+        (self.fork / 'scripts' / 'brain').write_text('#!/bin/sh\n')
+        (self.fork / 'scripts' / 'brain').chmod(0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _poser(self, programme):
+        fonctions = subprocess.run(
+            ['awk', r'/^[a-z_]+\(\) \{/ { f = ($1 ~ /^(poser_la_commande_brain|venv_du_programme)\(\)$/) } f { print } /^\}/ { f = 0 }',
+             str(BRAIN_ROOT_PATH / 'scripts' / 'brain-engine.sh')], capture_output=True, text=True).stdout
+        self.assertIn('poser_la_commande_brain()', fonctions)
+        code = 'info() { echo "$1"; }; warn() { echo "⚠️ $1"; }\n' + fonctions + '\nposer_la_commande_brain\n'
+        env = {**os.environ, 'HOME': str(self.home), 'PROGRAMME': str(programme)}
+        r = subprocess.run(['bash', '-c', 'PROGRAMME="$PROGRAMME"; ' + code], env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def _cible(self):
+        return Path(os.readlink(self.lien)) if self.lien.is_symlink() else None
+
+    def test_le_lien_de_pipx_est_garde(self):
+        self.lien.symlink_to(self.entree)
+        self._poser(self.programme)
+        self.assertEqual(self._cible(), self.entree, 'le lien de pipx a été remplacé')
+
+    def test_un_lien_vers_le_script_est_ramene_a_pipx(self):
+        """Ce que les versions d'avant ont posé — le laptop, la v3.6.2."""
+        self.lien.symlink_to(self.script)
+        sortie = self._poser(self.programme)
+        self.assertEqual(self._cible(), self.entree, sortie)
+
+    def test_un_lien_d_un_autre_python_est_ramene_a_pipx(self):
+        """Le script d'une version d'avant, sous un autre python : un lien mort, le nôtre."""
+        self.lien.symlink_to(self.tmp / 'pipx/venvs/brain-cortex/lib/python3.13/site-packages/brain_cortex/programme/scripts/brain')
+        self._poser(self.programme)
+        self.assertEqual(self._cible(), self.entree)
+
+    def test_sans_commande_celle_de_pipx_est_posee(self):
+        self._poser(self.programme)
+        self.assertEqual(self._cible(), self.entree)
+
+    def test_un_lien_vers_autre_chose_est_laisse_et_dit(self):
+        autre = self.tmp / 'autre-brain'
+        autre.write_text('#!/bin/sh\n')
+        autre.chmod(0o755)
+        self.lien.symlink_to(autre)
+        sortie = self._poser(self.programme)
+        self.assertEqual(self._cible(), autre)
+        self.assertIn('laissé tel quel', sortie)
+
+    def test_un_vrai_fichier_n_est_jamais_touche(self):
+        self.lien.write_text('#!/bin/sh\necho le mien\n')
+        self._poser(self.programme)
+        self.assertFalse(self.lien.is_symlink())
+        self.assertIn('le mien', self.lien.read_text())
+
+    def test_un_fork_git_lie_son_script(self):
+        """Inchangé pour un fork : il lie `scripts/brain`, et remplace un lien déjà là."""
+        self.lien.symlink_to(self.entree)
+        self._poser(self.fork)
+        self.assertEqual(self._cible(), self.fork / 'scripts' / 'brain')
+
+
 class TestBrainImbrique(unittest.TestCase):
     """Une copie de brain posée dans celui-ci ne s'indexe pas.
 

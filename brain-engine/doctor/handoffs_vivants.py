@@ -26,7 +26,9 @@ Il s'éprouve avant de juger. Sortie 1 si un handoff ne tient pas.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -87,11 +89,65 @@ def juger(brain: Path, jours: int = SEUIL_JOURS, maintenant: float | None = None
     return defauts, n
 
 
+class NettoyageRefuse(Exception):
+    """Le dossier jetable de l'auto-épreuve ne s'efface pas : quelque chose y écrit encore."""
+
+
+def _qui_y_travaille(dossier: Path) -> list[str]:
+    """Les processus dont le dossier courant est sous `dossier` (Linux, `/proc`) — au mieux."""
+    qui = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            cwd = os.readlink(proc / "cwd")
+            if cwd == str(dossier) or cwd.startswith(f"{dossier}/"):
+                cmd = (proc / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+                qui.append(f"{proc.name} {cmd[:80]}")
+        except OSError:
+            continue
+    return qui
+
+
+def _ce_qui_reste(dossier: Path, maintenant: float) -> list[str]:
+    """Les entrées encore là, avec leur âge. Ce qui disparaît pendant l'inventaire — le cas
+    même où quelque chose écrit encore — est sauté : le refus doit sortir, pas une autre erreur."""
+    restes = []
+    try:
+        for f in dossier.rglob("*"):
+            try:
+                age = maintenant - f.lstat().st_mtime
+            except OSError:
+                continue
+            restes.append(f"{f.relative_to(dossier)}{'/' if f.is_dir() else ''} ({age:.2f} s)")
+    except OSError:
+        restes.append("… (l'inventaire s'est interrompu)")
+    return sorted(restes)
+
+
+@contextlib.contextmanager
+def dossier_jetable(prefixe: str):
+    """Un `TemporaryDirectory` qui DIT pourquoi il ne s'efface pas. Le 14/10, à la release
+    v3.6.2, l'effacement a levé `Directory not empty` (1 essai du paquet sur 11), sans dire
+    ce qui restait ni qui écrivait. Le contrôle reste rouge : il le dit, rien n'est tu."""
+    dossier = Path(tempfile.mkdtemp(prefix=prefixe))
+    try:
+        yield dossier
+    finally:
+        try:
+            shutil.rmtree(dossier)
+        except OSError as exc:
+            qui = _qui_y_travaille(dossier)
+            restes = _ce_qui_reste(dossier, time.time())
+            shutil.rmtree(dossier, ignore_errors=True)
+            raise NettoyageRefuse(
+                f"le dossier jetable ne s'efface pas ({exc.strerror}) — y restaient : "
+                f"{', '.join(restes[:5]) or 'rien'}{f' (+{len(restes) - 5})' if len(restes) > 5 else ''}"
+                f" ; y travaillaient : {', '.join(qui) or 'personne'}") from exc
+
+
 def auto_epreuve() -> list[str]:
     """Chaque défaut, dans un dépôt jetable aux commits datés, doit être vu."""
     rates = []
-    with tempfile.TemporaryDirectory(prefix="handoffs-") as tmp:
-        b = Path(tmp)
+    with dossier_jetable("handoffs-") as b:
         (b / "handoffs").mkdir()
         env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
@@ -130,8 +186,7 @@ def auto_epreuve() -> list[str]:
     # `handoffs/` en satellite : son historique vit dans SON dépôt.
     # Le témoin du défaut : daté depuis le brain, le vieil actif — écrit sur le
     # disque à l'instant — paraîtrait frais.
-    with tempfile.TemporaryDirectory(prefix="handoffs-sat-") as tmp:
-        b = Path(tmp)
+    with dossier_jetable("handoffs-sat-") as b:
         h = b / "handoffs"
         h.mkdir()
         (b / ".gitignore").write_text("/handoffs/\n", encoding="utf-8")
@@ -157,7 +212,10 @@ def main() -> int:
     a = p.parse_args()
     brain = a.brain.expanduser().resolve()
 
-    rates = auto_epreuve()
+    try:
+        rates = auto_epreuve()
+    except NettoyageRefuse as exc:
+        rates = [str(exc)]
     if rates:
         print("\nLES HANDOFFS — l'auto-épreuve a échoué, rien n'est jugé :")
         for r in rates:

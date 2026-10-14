@@ -823,12 +823,40 @@ verifier_unites() {
   info "unités : celles de cette version"
 }
 
+# Le venv qui porte un programme installé par pipx : le dossier de `pyvenv.cfg`.
+venv_du_programme() {
+  local d="$PROGRAMME"
+  while [[ "$d" != / && -n "$d" ]]; do
+    [[ -f "$d/pyvenv.cfg" ]] && { printf '%s\n' "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+
 # La commande `brain` dans ~/.local/bin, en LIEN vers `scripts/brain` de ce
 # brain. Un lien déjà là est remplacé (un autre brain, une version
 # d'avant) ; un VRAI fichier ne l'est jamais : il n'est pas à nous.
+# Un programme installé à part par pipx : la commande est la SIENNE (`<venv>/bin/brain`,
+# le point d'entrée qui met son python en tête du PATH). Elle n'est pas remplacée ; un
+# lien vers le script du programme — posé par une version d'avant, ou mort avec un
+# ancien python — y est ramené ; un lien vers autre chose est laissé, et dit.
 poser_la_commande_brain() {
-  local bin="$HOME/.local/bin" cible="$PROGRAMME/scripts/brain"
+  local bin="$HOME/.local/bin" cible="$PROGRAMME/scripts/brain" venv actuel
   [[ -x "$cible" ]] || return 0
+  if [[ -e "$PROGRAMME/.cortex-programme" ]] && venv="$(venv_du_programme)" && [[ -x "$venv/bin/brain" ]]; then
+    cible="$venv/bin/brain"
+    if [[ -L "$bin/brain" ]]; then
+      actuel="$(readlink "$bin/brain")"
+      if [[ "$actuel" == "$cible" ]]; then
+        info "commande : $bin/brain → $cible (celle de pipx)"
+        return 0
+      fi
+      if [[ "$actuel" != */brain_cortex/programme/scripts/brain ]]; then
+        warn "$bin/brain désigne $actuel — laissé tel quel (la commande du paquet : $cible)"
+        return 0
+      fi
+    fi
+  fi
   mkdir -p "$bin"
   if [[ -e "$bin/brain" && ! -L "$bin/brain" ]]; then
     warn "$bin/brain existe et n'est pas un lien — laissé tel quel"

@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.6.2"
+version: "3.6.3"
 
 # ---
 # Ownership — kerneluser
@@ -250,3 +250,6 @@ changelog:
   - version: "3.6.2"
     date: "2026-10-14"
     notes: "Deux corrections. L adresse d un depot se lit juste quand elle est copiee depuis le navigateur : la forge d un projet (repo: et issues: de sa fiche, kanban, backlog_issues) prenait les deux derniers morceaux du chemin, et https://github.com/o/n/tree/main designait le depot tree/main ; le depot, ce sont maintenant les deux morceaux qui suivent l hote, un port ne se lit qu avec un schema (git@hote:1234/n nomme l owner 1234), et un schema en majuscules se reconnait. Le .gitignore d un brain servi par le paquet ne tait plus le coffre deux fois : la ligne des secrets et le bloc des satellites posaient tous deux /brain-secrets/ quand le coffre est declare satellite ; le bloc ne repete plus un satellite deja tu ailleurs, et un doublon deja ecrit disparait au prochain brain init. Mise a jour depuis la v3.6.1 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.6.3"
+    date: "2026-10-14"
+    notes: "La commande brain d un brain servi par le paquet reste celle de pipx, et un controle du doctor dit pourquoi il rougit. brain init (par brain-engine.sh install systemd) remplacait la commande brain posee par pipx dans ~/.local/bin par un lien vers le script du programme : le point d entree du paquet, qui met le python de pipx en tete du PATH, etait saute, et pipx avertissait a chaque mise a jour. La commande d un programme installe a part est maintenant celle de pipx (<venv>/bin/brain) : gardee si elle y est, posee si elle manque ; un lien vers le script du programme, pose par une version d avant ou mort avec un ancien python, y est ramene ; un lien vers autre chose est laisse, et dit. Un fork clone par git garde son lien vers scripts/brain. L auto-epreuve du controle des handoffs dit pourquoi son dossier jetable ne s efface pas, quand ca arrive : ce qui y restait, et quels processus y travaillaient ; le controle reste rouge en le racontant. Mise a jour depuis la v3.6.2 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
