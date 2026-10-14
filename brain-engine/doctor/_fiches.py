@@ -256,21 +256,25 @@ def adresse(valeur) -> tuple[str | None, str] | None:
     """`(hôte, "owner/nom")` — l'hôte None si l'adresse n'en porte pas.
 
     `git.x/o/n`, `https://git.x/o/n(.git)`, `git@git.x:o/n`,
-    `ssh://git@git.x:2222/o/n`, `o/n`. None si ce n'est pas un dépôt."""
+    `ssh://git@git.x:2222/o/n`, `o/n`. Le dépôt, ce sont les deux morceaux qui
+    suivent l'hôte : une URL copiée du navigateur (`…/o/n/tree/main`) garde
+    `o/n`. None si ce n'est pas un dépôt."""
     if not valeur:
         return None
-    v = str(valeur).strip().rstrip("/").removesuffix(".git")
-    v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", v)
+    v = str(valeur).strip()
+    v, schema = re.subn(r"^[a-z][a-z0-9+.-]*://", "", v, flags=re.I)
     v = re.sub(r"^[^@/]+@", "", v)
-    # `hôte:o/n` (la forme scp de git) comme `hôte:port/o/n` : le `:` sépare, et
-    # seuls l'hôte (en tête) et les deux derniers morceaux comptent.
-    tete, sep, reste = v.partition("/")
-    v = tete.replace(":", "/", 1) + sep + reste
-    morceaux = [m for m in v.split("/") if m]
-    if len(morceaux) == 2:
-        return None, "/".join(morceaux)
+    # `hôte:port/o/n` n'a de port qu'avec un schéma : la forme scp de git
+    # (`hôte:o/n`) n'en a pas, et `git@hôte:1234/n` nomme l'owner « 1234 ».
+    tete, _, reste = v.partition("/")
+    hote, deux_points, apres = tete.partition(":")
+    if not (schema and apres.isdigit()):
+        reste = f"{apres}/{reste}"
+    morceaux = [m for m in [hote, *reste.split("/")] if m]
+    if len(morceaux) == 2 and not (schema or deux_points):
+        return None, f"{morceaux[0]}/{morceaux[1].removesuffix('.git')}"
     if len(morceaux) >= 3:
-        return morceaux[0].lower(), "/".join(morceaux[-2:])
+        return morceaux[0].lower(), f"{morceaux[1]}/{morceaux[2].removesuffix('.git')}"
     return None
 
 

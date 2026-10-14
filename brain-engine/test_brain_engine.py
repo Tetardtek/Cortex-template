@@ -5980,6 +5980,35 @@ class TestVueDuProgramme(unittest.TestCase):
         ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', 'perso'])
         self.assertEqual(ign.returncode, 0, 'le satellite n est pas ignoré par le dépôt')
 
+    def test_un_satellite_deja_tu_ne_se_repete_pas(self):
+        """La ligne des secrets (`brain_secrets_taire`) précède le bloc ; le coffre déclaré
+        satellite y revenait : `/brain-secrets/` deux fois (laptop, 14/10). Un doublon déjà
+        écrit guérit au passage suivant."""
+        regle = '# tes secrets et leur inventaire (brain-secrets/) — jamais dans ce dépôt\n/brain-secrets/\n'
+        (self.data / '.gitignore').write_text('handoffs/*\n' + regle + '/autre/\n')
+        (self.data / 'satellites.yml').write_text(
+            'satellites:\n  brain-secrets: {depot: brain-secrets, machines: [fixe]}\n'
+            '  autre: {depot: autre, machines: [fixe]}\n  echanges: {depot: echanges, machines: [fixe]}\n')
+        for _ in range(2):
+            r = self._satellites()
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            g = (self.data / '.gitignore').read_text()
+            for n in ('/brain-secrets/', '/autre/', '/echanges/'):
+                self.assertEqual(g.splitlines().count(n), 1, f'{n} — {g}')
+            self.assertIn('3 satellite(s) tus', r.stdout, 'tus ailleurs, ils restent tus')
+        self.assertTrue(g.startswith('handoffs/*\n' + regle), 'la ligne des secrets a bougé')
+        for n in ('brain-secrets', 'autre', 'echanges'):
+            (self.data / n).mkdir(exist_ok=True)   # `/nom/` ne tait qu'un dossier
+            ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', n])
+            self.assertEqual(ign.returncode, 0, f'{n} n est plus ignoré')
+        # Le doublon écrit avant le correctif : le bloc réécrit le perd.
+        (self.data / '.gitignore').write_text(g.replace('# fin satellites', '/brain-secrets/\n# fin satellites'))
+        r = self._satellites()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        gueri = (self.data / '.gitignore').read_text().splitlines()
+        self.assertEqual(gueri.count('/brain-secrets/'), 1, gueri)
+        self.assertEqual(gueri.count('/echanges/'), 1, 'la guérison a vidé le bloc')
+
     # ── Un satellite devenu dépôt APRÈS le premier commit (issue #24, I3 et I5) ──
 
     def _git_data(self, *a, cwd=None):

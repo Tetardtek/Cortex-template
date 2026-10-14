@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.6.1"
-generated_at: "2026-10-14T01:12"
+kernel_version: "3.6.2"
+generated_at: "2026-10-14T21:51"
 
 files:
   KERNEL.md: 3d028d4fff05b1fc222e23e0951f4ee2194a81006fda7f3acf6463832085906e
-  brain-compose.yml: 7f6e34a875380f3c859007a5dc377d7c199601fe58cd3c880532df722ddb58ae
+  brain-compose.yml: 6842b822aa427ac2a372ec9439dc5739b1a78991bd09cf4b90fbdb92f7468b16
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -116,5 +116,5 @@ files:
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be
   scripts/semis-remplir.py: ea129e9e2c1f8c599d0a516eba41abae677ef13474f6f2a47e5f71cea7ed68c9
-  scripts/vue.py: 10ab5cb2c56cc7ed709a633b91ad53725e7710c5c9ab96a2d2c906cc76f6b502
+  scripts/vue.py: b57bd5fd025f2e72c7318d428074760e8bb6259558c479e1ae81b3e0991e6c0d
   scripts/zone-du-diff.py: 41b5de54ed6fb8552da4b753bdada77348c0222eda486fedf13c5c991dd6f726

@@ -358,15 +358,18 @@ def ignorer_les_satellites(brain: Path) -> list[str]:
     """Le `.gitignore` du dossier de données tait chaque satellite EN ENTIER (`/nom/`) : le
     `.gitignore` semé n'en tait que le contenu (`handoffs/*`), et un `git add` y aurait vu
     un dépôt imbriqué — un gitlink sans `.gitmodules`, que le contrôle des niveaux refuse.
-    Un bloc que `brain init` tient (réécrit, jamais dupliqué)."""
+    Un bloc que `brain init` tient (réécrit, jamais dupliqué).
+    Un satellite déjà tu hors du bloc (`/brain-secrets/`, posé par la ligne des
+    secrets) n'y est pas répété ; il reste dans la liste rendue : il est tu."""
     f = Path(brain) / ".gitignore"
     lignes = f.read_text(encoding="utf-8").splitlines() if f.is_file() else []
     if BLOC_SATELLITES[0] in lignes and BLOC_SATELLITES[1] in lignes:
         i, j = lignes.index(BLOC_SATELLITES[0]), lignes.index(BLOC_SATELLITES[1])
         lignes[i:j + 1] = []
     noms = satellites_a_part(brain)
-    if noms:
-        lignes += [BLOC_SATELLITES[0], *(f"/{n}/" for n in noms), BLOC_SATELLITES[1]]
+    a_taire = [f"/{n}/" for n in noms if f"/{n}/" not in lignes]
+    if a_taire:
+        lignes += [BLOC_SATELLITES[0], *a_taire, BLOC_SATELLITES[1]]
     f.write_text("\n".join(lignes) + "\n", encoding="utf-8")
     return noms
 

@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.6.1"
+version: "3.6.2"
 
 # ---
 # Ownership — kerneluser
@@ -247,3 +247,6 @@ changelog:
   - version: "3.6.1"
     date: "2026-10-13"
     notes: "Les commandes de brain, et une aide qui n agit pas. brain --help imprime le bloc Usage de scripts/brain, lu par son titre : il nomme maintenant ce que la doc fait taper (brain init [nom] [dossier], --reecrire-claude-md, brain serve --ports, brain maj [version] --sans-unites --sans-reseau, brain vue --deverrouiller --satellites, brain briefing --fiches, brain migrer --a-blanc --annuler) ; brain maj dit qu il sert un fork git (le paquet : pipx upgrade). docs/commandes.md est generee depuis cette aide (une commande ajoutee y apparait seule), et docs-verite rougit si une page fait taper une option que l aide tait. brain init --help lancait les etapes, pour un brain nomme --help : il imprime son usage, et une option inconnue est refusee avant toute ecriture. brain aligne --help partait en git fetch : il lit ses arguments avant tout geste. Le programme installe a part, sans brain declare, repond a brain --help. Mise a jour depuis la v3.6.0 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.6.2"
+    date: "2026-10-14"
+    notes: "Deux corrections. L adresse d un depot se lit juste quand elle est copiee depuis le navigateur : la forge d un projet (repo: et issues: de sa fiche, kanban, backlog_issues) prenait les deux derniers morceaux du chemin, et https://github.com/o/n/tree/main designait le depot tree/main ; le depot, ce sont maintenant les deux morceaux qui suivent l hote, un port ne se lit qu avec un schema (git@hote:1234/n nomme l owner 1234), et un schema en majuscules se reconnait. Le .gitignore d un brain servi par le paquet ne tait plus le coffre deux fois : la ligne des secrets et le bloc des satellites posaient tous deux /brain-secrets/ quand le coffre est declare satellite ; le bloc ne repete plus un satellite deja tu ailleurs, et un doublon deja ecrit disparait au prochain brain init. Mise a jour depuis la v3.6.1 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
