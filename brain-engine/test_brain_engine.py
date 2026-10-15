@@ -5506,26 +5506,6 @@ class TestSyncSansSigpipe(unittest.TestCase):
                     fautives.append(f"{f.relative_to(BRAIN_ROOT_PATH)}:{n}")
         self.assertEqual(fautives, [])
 
-    def test_brain_status_survit_a_un_claim_incomplet(self):
-        """`grep` rend 1 sur un champ absent : `status=$(claim_field …)` tuait
-        brain-status sous pipefail, avant d'afficher le claim (mesuré le 28/09)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            b = Path(tmp) / 'b'
-            (b / 'scripts' / 'lib').mkdir(parents=True)
-            for d in ('claims', 'locks'):
-                (b / d).mkdir()
-            shutil.copy2(BRAIN_ROOT_PATH / 'scripts' / 'brain-status.sh', b / 'scripts')
-            if self.LIB.exists():
-                shutil.copy2(self.LIB, b / 'scripts' / 'lib')
-            subprocess.run(['git', 'init', '-q', str(b)], check=True)
-            (b / 'claims' / 'sess-x.yml').write_text(
-                'sess_id: sess-x\nstatus: open\nscope: work/x\nopened_at: 2026-09-28T10:00:00Z\n')
-            r = subprocess.run(['bash', str(b / 'scripts' / 'brain-status.sh')], cwd=b,
-                               capture_output=True, text=True, timeout=30)
-        self.assertEqual(r.returncode, 0, r.stdout[-300:] + r.stderr[-300:])
-        self.assertIn('sess-x', r.stdout)
-
-
 
 class TestSchemaRetraits(unittest.TestCase):
     """Un retrait de table atteint les instances — et jamais sur des lignes.
@@ -6615,6 +6595,20 @@ class TestUnitesDuProgrammeAPart(unittest.TestCase):
         lien = self.tmp / 'home' / '.local' / 'bin' / 'brain'
         self.assertEqual(os.readlink(lien), str(self.prog / 'scripts' / 'brain'))
 
+    def test_le_paquet_n_est_pas_envoye_vers_un_amont_git(self):
+        """`install systemd` (l'étape 9 de `brain init`) suggérait `git remote add upstream` à
+        tout brain : chez le paquet, cette piste mène à `brain maj` qui échoue sur un historique
+        sans ancêtre commun, et rapatrie les tags du gabarit (issue #2 de Cortex-template)."""
+        env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
+               'HOME': str(self.tmp / 'home'), 'XDG_CONFIG_HOME': str(self.tmp / 'config'),
+               'BRAIN_ROOT': str(self.data), 'BRAIN_MODE': 'prod',
+               'BRAIN_PORT': '17797', 'BRAIN_MCP_PORT': '17796'}
+        r = subprocess.run(['bash', str(self.prog / 'scripts' / 'brain-engine.sh'), 'install', 'systemd'],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn('remote add upstream', r.stdout + r.stderr)
+        self.assertIn('pipx upgrade brain-cortex', r.stdout)
+
 
 class TestStatuslineLivree(unittest.TestCase):
     """La statusline Claude Code livrée : `scripts/brain-statusline.sh` (issue #27).
@@ -7408,6 +7402,13 @@ class TestInstallSystemd(unittest.TestCase):
         self.assertIn(str(self.racine), service)
         self.assertNotIn(f'{BRAIN_ROOT_PATH}/', service.replace(str(self.racine), ''))
 
+    def test_un_fork_garde_la_piste_de_l_amont(self):
+        """Le témoin inverse : un fork cloné par git suit son amont par `brain maj`."""
+        r, _ = self._installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('git remote add upstream', r.stdout)
+        self.assertNotIn('pipx upgrade', r.stdout)
+
     def test_la_commande_brain_se_pose_dans_le_home_recu(self):
         vrai = Path(os.path.expanduser('~/.local/bin/brain'))
         avant = os.readlink(vrai) if vrai.is_symlink() else None
@@ -8157,7 +8158,7 @@ class TestCommandesDeBrain(unittest.TestCase):
     def test_un_verbe_inconnu_dit_les_verbes_de_l_aide(self):
         r = subprocess.run(['bash', str(self.SCRIPT), 'nimporte'], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 2)
-        self.assertIn('connus : init, servir, doctor, maj, vue, satellites, sessions, aligne, briefing, migrer', r.stderr)
+        self.assertIn('connus : init, servir, doctor, maj, vue, satellites, sessions, signaux, etat, aligne, briefing, migrer', r.stderr)
 
     # ── La page générée ──
     def test_une_ligne_ajoutee_a_l_aide_apparait_dans_la_table(self):
@@ -8372,13 +8373,222 @@ class TestBrainSessions(unittest.TestCase):
             self.assertNotRegex(r.stdout, re.escape(cache) + r'(?![\w-])', cache)   # `--result` ≠ `--resultat`
 
 
+class TestBrainEtat(unittest.TestCase):
+    """`brain etat` — l'instant du brain : un résumé qui délègue à ceux qui savent.
+    Joué contre de FAUX scripts qui notent leurs arguments, disent une ligne reconnaissable et
+    rendent le code qu'on leur donne : aucune base n'est ouverte, aucun peer joint."""
+
+    SOURCES = {'bsi-query.sh': 'CLAIM-sess-x', 'file-lock.sh': 'VERROU-a.md', 'bsi-signal.sh': 'SIGNAL-s1'}
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='etat-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        d = self.tmp / 'scripts'
+        (d / 'lib').mkdir(parents=True)
+        for nom in ('etat.py', 'brain-status.sh', 'sessions.py'):
+            if (BRAIN_ROOT_PATH / 'scripts' / nom).exists():
+                shutil.copy(BRAIN_ROOT_PATH / 'scripts' / nom, d / nom)
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'premieres.sh', d / 'lib')
+        self.journal = self.tmp / 'appels'
+        for nom, dit in self.SOURCES.items():
+            var = 'CODE_' + nom.split('.')[0].replace('-', '_').upper()
+            (d / nom).write_text(f'#!/bin/bash\necho "{nom} $*" >> "{self.journal}"\n'
+                                 f'echo "{dit}"\nexit "${{{var}:-0}}"\n')
+        (self.tmp / 'brain-compose.local.yml').write_text('machine: banc\n')
+        self.etat, self.status = d / 'etat.py', d / 'brain-status.sh'
+
+    def _jouer(self, cmd, **codes):
+        if self.journal.exists():
+            self.journal.unlink()
+        env = {k: v for k, v in os.environ.items() if k != 'BRAIN_ROOT'}
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=self.tmp,
+                           env={**env, **{k: str(v) for k, v in codes.items()}})
+        appels = self.journal.read_text().splitlines() if self.journal.exists() else []
+        return r, appels
+
+    def test_chaque_section_vient_de_sa_source(self):
+        r, appels = self._jouer([sys.executable, str(self.etat)])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(appels, ['bsi-query.sh open', 'file-lock.sh list', 'bsi-signal.sh inbox'])
+        for dit in self.SOURCES.values():
+            self.assertIn(dit, r.stdout)
+        self.assertIn('brain sessions --toutes', r.stdout, 'les autres machines : le verbe des sessions')
+        self.assertIn('brain signaux --accuser', r.stdout, 'accuser : le verbe des signaux')
+        self.assertIn('banc', r.stdout, 'la machine, lue dans brain-compose.local.yml')
+
+    def test_verrous_seuls(self):
+        r, appels = self._jouer([sys.executable, str(self.etat), '--verrous'])
+        self.assertEqual((r.returncode, appels), (0, ['file-lock.sh list']), r.stderr)
+        self.assertIn('VERROU-a.md', r.stdout)
+        self.assertNotIn('CLAIM-sess-x', r.stdout)
+
+    def test_une_source_muette_n_est_jamais_aucun(self):
+        """Le défaut de l'ancien script : un dossier que plus rien n'écrit, lu comme « (aucun) »."""
+        r, appels = self._jouer([sys.executable, str(self.etat)], CODE_FILE_LOCK=2)
+        self.assertEqual(r.returncode, 1, 'une section illisible rend le résumé rouge')
+        self.assertEqual(len(appels), 3, 'les autres sections sont lues quand même')
+        verrous = r.stdout.split('── Verrous', 1)[-1].split('\n', 1)[-1].split('\n──', 1)[0]
+        self.assertIn("n'ai pas pu regarder", verrous)
+        self.assertNotRegex(verrous.lower(), r'\baucun')
+        self.assertIn('SIGNAL-s1', r.stdout)
+
+    def test_hors_d_un_depot_git(self):
+        """Un brain servi par le paquet : le programme n'est pas un dépôt — l'ancien script y mourait
+        sur `git rev-parse`. Le dossier de données peut ne pas l'être non plus."""
+        r, _ = self._jouer([sys.executable, str(self.etat)])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('pas un dépôt git', r.stdout)
+        subprocess.run(['git', 'init', '-q', '-b', 'tronc', str(self.tmp)], check=True)
+        r, _ = self._jouer([sys.executable, str(self.etat)])
+        self.assertIn('tronc', r.stdout)
+
+    def test_l_ancien_script_relaie(self):
+        """`brain-status.sh` reste appelable, ses sous-commandes passent au nouveau code."""
+        cas = {(): ['bsi-query.sh open', 'file-lock.sh list', 'bsi-signal.sh inbox'],
+               ('all',): ['bsi-query.sh open', 'file-lock.sh list', 'bsi-signal.sh inbox'],
+               ('claims',): ['bsi-query.sh open'],
+               ('locks',): ['file-lock.sh list'],
+               ('signals',): ['bsi-signal.sh inbox']}
+        for args, attendu in cas.items():
+            r, appels = self._jouer(['bash', str(self.status), *args])
+            self.assertEqual((r.returncode, appels), (0, attendu), (args, r.stdout[-300:], r.stderr[-300:]))
+        r, appels = self._jouer(['bash', str(self.status), 'autre'])
+        self.assertEqual((r.returncode, appels), (1, []))
+
+    def test_l_aide_ne_lance_rien(self):
+        r, appels = self._jouer([sys.executable, str(self.etat), '--help'])
+        self.assertEqual((r.returncode, appels), (0, []))
+        self.assertIn('--verrous', r.stdout)
+        self.assertIn('brain etat', r.stdout)
+
+
+class TestBrainSignaux(unittest.TestCase):
+    """`brain signaux` — une façade en français devant `bsi-signal.sh`. Jouée contre
+    un FAUX script qui note ses arguments et rend le code qu'on lui donne : aucune base n'est
+    ouverte, aucun peer joint."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='signaux-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        d = self.tmp / 'scripts'
+        d.mkdir()
+        if (BRAIN_ROOT_PATH / 'scripts' / 'signaux.py').exists():
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'signaux.py', d / 'signaux.py')
+        self.journal = self.tmp / 'appels'
+        (d / 'bsi-signal.sh').write_text(
+            f'#!/bin/bash\nprintf "%s|" "$@" >> "{self.journal}"\nexit "${{CODE:-0}}"\n')
+        self.script = d / 'signaux.py'
+
+    def _jouer(self, *args, code=0):
+        if self.journal.exists():
+            self.journal.unlink()
+        r = subprocess.run([sys.executable, str(self.script), *args], capture_output=True, text=True,
+                           timeout=30, env={**os.environ, 'CODE': str(code)})
+        appel = self.journal.read_text().rstrip('|').split('|') if self.journal.exists() else []
+        return r, appel
+
+    def test_chaque_option_lance_le_bon_geste(self):
+        cas = {
+            (): ['inbox'],
+            ('--pour', 'prod@laptop'): ['inbox', 'prod@laptop'],
+            ('--envoyes',): ['outbox'],
+            ('--accuser', 'sig-1'): ['ack', 'sig-1'],
+            ('--envoyer', 'prod@laptop', '--type', 'INFO', '--message', 'deux mots'):
+                ['send', 'prod@laptop', '--type', 'INFO', '--payload', 'deux mots'],
+            ('--envoyer', 'sess-x', '--type', 'HANDOFF', '--projet', 'myeline', '--message', 'm'):
+                ['send', 'sess-x', '--type', 'HANDOFF', '--projet', 'myeline', '--payload', 'm'],
+        }
+        for args, attendu in cas.items():
+            r, appel = self._jouer(*args)
+            self.assertEqual(r.returncode, 0, (args, r.stderr))
+            self.assertEqual(appel, attendu, args)
+
+    def test_le_nom_d_avant_reste_un_alias(self):
+        r, appel = self._jouer('--envoyer', 'd', '--type', 'INFO', '--payload', 'p')
+        self.assertEqual(appel, ['send', 'd', '--type', 'INFO', '--payload', 'p'], r.stderr)
+
+    def test_un_message_sans_envoi_est_refuse(self):
+        """`--type`, `--message`, `--projet` n'ont de sens qu'avec `--envoyer` : rien ne part."""
+        for args in (('--message', 'm'), ('--type', 'INFO'), ('--accuser', 's', '--projet', 'p')):
+            r, appel = self._jouer(*args)
+            self.assertEqual((r.returncode, appel), (2, []), args)
+
+    def test_le_code_de_sortie_traverse(self):
+        for args in ((), ('--accuser', 's'), ('--envoyer', 'd', '--type', 'INFO', '--message', 'm')):
+            r, _ = self._jouer(*args, code=3)
+            self.assertEqual(r.returncode, 3, args)
+
+    def test_l_aide_parle_francais_et_tait_l_alias(self):
+        r, appel = self._jouer('--help')
+        self.assertEqual((r.returncode, appel), (0, []))
+        for nom in ('--pour', '--envoyes', '--envoyer', '--accuser', '--type', '--message', '--projet'):
+            self.assertIn(nom, r.stdout)
+        self.assertNotIn('--payload', r.stdout)
+
+
+class TestSignauxSansInjection(unittest.TestCase):
+    """L'argument d'`inbox` et un `sig_id` partent chez le peer dans une commande SSH. Deux
+    protections, écrites après une vraie faille (une quote sortait de la commande) : `valide()`
+    refuse tôt, `b64()` rend l'injection impossible. Rien ne les éprouvait.
+    Brain jetable, base factice, `ssh` leurré qui note ses arguments, réseau coupé."""
+
+    COMPOSE = ('instances:\n  essai:\n    active: true\nmachine: fixe\npeers:\n  laptop:\n'
+               '    active: true\n    url: http://192.0.2.9:7700\n')
+    PIEGE = "x'; touch /tmp/pwn-signaux; '"
+
+    def _jouer(self, *args):
+        if not shutil.which('unshare'):
+            self.skipTest("il faut unshare")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            b = tmp / 'brain'
+            (b / 'scripts' / 'lib').mkdir(parents=True)
+            (b / 'brain-engine').mkdir()
+            shutil.copy2(BRAIN_ROOT_PATH / 'scripts' / 'bsi-signal.sh', b / 'scripts')
+            for f in ('pair.py', 'instance.py', 'python.sh'):
+                shutil.copy2(BRAIN_ROOT_PATH / 'scripts' / 'lib' / f, b / 'scripts' / 'lib' / f)
+            (b / 'brain-engine' / 'db.py').write_text(
+                'def query(*a, **k):\n    return []\n\ndef execute(*a, **k):\n    return 0\n')
+            (b / 'brain-compose.local.yml').write_text(self.COMPOSE)
+            leurres = tmp / 'leurres'
+            leurres.mkdir()
+            (leurres / 'ssh').write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> {tmp}/ssh.log\nexit 0\n')
+            (leurres / 'ssh').chmod(0o755)
+            env = {'PATH': f'{leurres}:/usr/bin:/bin', 'HOME': str(tmp), 'USER': 'alice'}
+            r = subprocess.run(['unshare', '-rn', 'bash', str(b / 'scripts' / 'bsi-signal.sh'), *args],
+                               env=env, capture_output=True, text=True, timeout=60)
+            appel = (tmp / 'ssh.log').read_text() if (tmp / 'ssh.log').exists() else ''
+        return r, appel
+
+    def test_le_destinataire_d_inbox_part_en_base64(self):
+        import base64
+        r, appel = self._jouer('inbox', self.PIEGE)
+        self.assertIn(base64.b64encode(self.PIEGE.encode()).decode(), appel, r.stdout + r.stderr)
+        self.assertNotIn('touch', appel, "le destinataire ne part jamais en clair dans la commande")
+
+    def test_un_sig_id_piege_est_refuse_avant_tout_appel(self):
+        r, appel = self._jouer('ack', self.PIEGE)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('sig_id invalide', r.stderr)
+        self.assertEqual(appel, '', "le peer n'est jamais joint")
+
+    def test_un_destinataire_piege_n_est_jamais_ecrit(self):
+        r, appel = self._jouer('send', self.PIEGE, '--type', 'INFO', '--payload', 'p')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('destinataire invalide', r.stderr)
+
+
 class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
-    """Ce qu'un Claude ou un humain lit et tape passe par `brain sessions` ; le code, lui,
-    appelle les scripts (un contrat interne, sans dépendre de la commande dans le PATH).
-    Les journaux de modifications et les agents archivés racontent l'histoire : non jugés."""
+    """Ce qu'un Claude ou un humain lit et tape passe par le verbe — `brain sessions`,
+    `brain signaux` ; le code, lui, appelle les scripts (un contrat interne, sans
+    dépendre de la commande dans le PATH). Les journaux de modifications et les agents archivés
+    racontent l'histoire : non jugés."""
+
+    VERBES = {'sessions': 'sessions.py', 'signaux': 'signaux.py'}
 
     GESTE = re.compile(r"(bsi-claim\.sh|bsi-query\.sh)\s+(open|close|close-stale|touch|rattacher|peers|stale|"
-                       r"health|recent|count-open|count-stale)\b|claims-orphelins\.py\s+--")
+                       r"health|recent|count-open|count-stale)\b|claims-orphelins\.py\s+--|"
+                       r"bsi-signal\.sh\"?\s+(send|inbox|outbox|ack)\b")
 
     def _instructions(self):
         b = BRAIN_ROOT_PATH
@@ -8386,6 +8596,8 @@ class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
         fichiers += sorted((b / 'skills' / 'brain' / 'src').glob('*.md')) + sorted((b / 'docs' / 'src').glob('*.md'))
         fichiers += sorted((b / 'contexts').glob('*.yml'))
         fichiers += [b / 'KERNEL.md', b / 'gabarit' / 'BRAIN-INDEX.md', b / 'scripts' / 'hooks' / 'pre-commit-zone']
+        # L'aiguillage de l'instance : ce qu'un agent lit pour taper un geste du BSI.
+        fichiers += [b / 'BRAIN-INDEX.md']
         # Le modèle du CLAUDE.md d'un fork vit dans le satellite `profil/` : jugé quand il est là
         # (le brain d'origine, le gabarit rendu) ; un worktree ne l'a pas.
         fichiers += [b / 'profil' / 'CLAUDE.md.example']
@@ -8406,21 +8618,32 @@ class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
 
     def test_aucune_instruction_ne_fait_taper_le_script(self):
         restes = [f"{f}:{n}: {l.strip()[:90]}" for f, n, l in self._instructions() if self.GESTE.search(l)]
-        self.assertEqual(restes, [], "une instruction fait taper le script — `brain sessions` le fait")
+        self.assertEqual(restes, [], "une instruction fait taper le script — le verbe le fait")
 
     def test_chaque_option_ecrite_existe(self):
+        import argparse
         import importlib.util
-        spec = importlib.util.spec_from_file_location('sessions_verbe', BRAIN_ROOT_PATH / 'scripts' / 'sessions.py')
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        connues = set(m.analyseur()._option_string_actions)
+        connues = {}
+        for verbe, script in self.VERBES.items():
+            spec = importlib.util.spec_from_file_location(f'{verbe}_verbe', BRAIN_ROOT_PATH / 'scripts' / script)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            # Un nom d'avant (`--payload`, `--scope`) reste un alias pour qui le tape, hors de
+            # l'aide : une instruction écrit le nom que l'aide montre. Un alias est une option
+            # cachée qui partage sa destination avec une option visible ; une option cachée seule
+            # (`--sante`, le contrat du boot) reste permise.
+            options = m.analyseur()._option_string_actions
+            visibles = {act.dest for act in options.values() if act.help != argparse.SUPPRESS}
+            connues[verbe] = {o for o, act in options.items()
+                              if act.help != argparse.SUPPRESS or act.dest not in visibles}
         fausses = []
         for f, n, ligne in self._instructions():
-            for appel in re.findall(r"brain sessions((?:\s+(?:--[a-z-]+(?:\|--[a-z-]+)*|[^\s`|]+))*)", ligne):
+            for verbe, appel in re.findall(
+                    r"brain (sessions|signaux)((?:\s+(?:--[a-z-]+(?:\|--[a-z-]+)*|[^\s`|]+))*)", ligne):
                 for opt in re.findall(r"--[a-z-]+", appel):
-                    if opt not in connues:
-                        fausses.append(f"{f}:{n}: {opt}")
-        self.assertEqual(fausses, [], "une instruction écrit une option que le verbe ne connaît pas")
+                    if opt not in connues[verbe]:
+                        fausses.append(f"{f}:{n}: brain {verbe} {opt}")
+        self.assertEqual(fausses, [], "une instruction écrit une option que l'aide du verbe ne montre pas")
 
 
 class TestChaqueVerbeASonAide(unittest.TestCase):
@@ -12630,6 +12853,76 @@ class TestBrainMaj(unittest.TestCase):
                       "celle de l'amont posée à côté")
         self.assertIn('focus.md', (d / 'remplis.md').read_text(encoding='utf-8'))
         self.assertIn('à relire', r.stdout)
+
+
+class TestBrainMajChezLePaquet(unittest.TestCase):
+    """`brain maj` fusionne un tag dans un fork cloné par git ; un brain servi par le paquet se
+    met à jour par pipx. Il répondait « Pas d'amont … Une seule fois » et, l'amont déclaré, mourait
+    sur `git merge-base` sans un mot (issue #2 de Cortex-template, 15/10).
+    Un faux `git` en tête du PATH note chaque appel : chez le paquet, aucun ne doit partir."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='maj-paquet-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.prog, self.data = self.tmp / 'programme', self.tmp / 'MonBrain'
+        (self.prog / 'scripts').mkdir(parents=True)
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'maj.py', self.prog / 'scripts' / 'maj.py')
+        self.data.mkdir()
+        self.bin = self.tmp / 'bin'
+        self.bin.mkdir()
+        self.appels = self.tmp / 'appels-git'
+
+    def _maj(self, *args, faux_git=True):
+        path = os.environ['PATH']
+        if faux_git:
+            vrai = shutil.which('git')
+            (self.bin / 'git').write_text(f'#!/bin/sh\necho "$*" >> {self.appels}\nexec {vrai} "$@"\n')
+            (self.bin / 'git').chmod(0o755)
+            path = f'{self.bin}:{path}'
+        env = {**os.environ, 'PATH': path, 'BRAIN_ROOT': str(self.data)}
+        r = subprocess.run([sys.executable, str(self.prog / 'scripts' / 'maj.py'), *args],
+                           env=env, capture_output=True, text=True, timeout=60)
+        appels = self.appels.read_text().splitlines() if self.appels.exists() else []
+        return r, appels
+
+    def _g(self, cwd, *args):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=cwd,
+                              check=True, capture_output=True, text=True)
+
+    def test_le_paquet_dit_pipx_et_ne_lance_aucun_git(self):
+        (self.prog / '.cortex-programme').touch()
+        self._g(self.tmp, 'init', '-q', str(self.data))
+        for args in ((), ('--appliquer',), ('v9.9.9',)):
+            with self.subTest(args):
+                r, appels = self._maj(*args)
+                self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+                self.assertIn('pipx upgrade brain-cortex', r.stdout)
+                self.assertIn('brain init', r.stdout)
+                self.assertNotIn('Une seule fois', r.stdout)
+                self.assertEqual(appels, [], 'chez le paquet, maj ne touche pas au dépôt')
+
+    def test_un_fork_sans_amont_garde_sa_phrase(self):
+        """Le témoin inverse : sans la marque, le brain est un fork — la phrase de l'amont reste."""
+        self._g(self.tmp, 'init', '-q', str(self.data))
+        r, _ = self._maj('--sans-reseau', faux_git=False)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('Une seule fois', r.stdout)
+        self.assertNotIn('pipx', r.stdout)
+
+    def test_un_historique_etranger_le_dit(self):
+        """Un amont déclaré sans ancêtre commun : `git merge-base` sortait en 1, sans un mot."""
+        amont = self.tmp / 'amont'
+        self._g(self.tmp, 'init', '-q', '-b', 'main', str(amont))
+        (amont / 'brain-compose.yml').write_text('version: "1.0.0"\n')
+        self._g(amont, 'add', '-A'); self._g(amont, 'commit', '-qm', 'v1'); self._g(amont, 'tag', 'v1.0.0')
+        self._g(self.tmp, 'init', '-q', '-b', 'main', str(self.data))
+        (self.data / 'notes.md').write_text('le brain naît\n')
+        self._g(self.data, 'add', '-A'); self._g(self.data, 'commit', '-qm', 'scribe: le brain naît')
+        self._g(self.data, 'remote', 'add', 'upstream', str(amont))
+        self._g(self.data, 'fetch', '-q', 'upstream', '--tags')
+        r, _ = self._maj('--sans-reseau', faux_git=False)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('aucun ancêtre commun', r.stdout)
 
 
 class TestMajDisponible(unittest.TestCase):

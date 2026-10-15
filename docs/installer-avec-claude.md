@@ -9,7 +9,7 @@ ordre: 0.5
 
 > **Cette page s'adresse à un Claude** qui accompagne une personne dans
 > l'installation de son brain. Donne-la-lui telle quelle : elle ne suppose
-> rien d'autre. Kernel v3.6.4.
+> rien d'autre. Kernel v3.6.5.
 
 ---
 

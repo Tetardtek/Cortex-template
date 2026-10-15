@@ -46,9 +46,9 @@ dans `brain-compose.local.yml`, par SSH).
 ## Les signaux entre sessions
 
 ```bash
-bash scripts/bsi-signal.sh send <destinataire> --type <TYPE> [--projet X] --payload "..."
-bash scripts/bsi-signal.sh inbox          # ce qui m'attend, ici et chez les peers
-bash scripts/bsi-signal.sh ack <sig_id>   # une fois TRAITÉ — jamais d'office
+brain signaux --envoyer <destinataire> --type <TYPE> [--projet X] --message "..."
+brain signaux                     # ce qui m'attend, ici et chez les peers
+brain signaux --accuser <sig_id>  # une fois TRAITÉ — jamais d'office
 ```
 
 Types : `READY_FOR_REVIEW`, `REVIEWED`, `BLOCKED_ON`, `HANDOFF`, `CHECKPOINT`,

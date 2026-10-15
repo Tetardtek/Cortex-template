@@ -447,7 +447,14 @@ def plan(brain: Path, remote: str, demande: str | None, reseau: bool) -> dict:
     sale = [l for l in git(brain, "status", "--porcelain", "--untracked-files=no").stdout.splitlines() if l]
     if sale:
         p["obstacles"].append(f"l'arbre n'est pas propre ({len(sale)} fichier(s) modifié(s)) — committe d'abord")
-    base = git(brain, "merge-base", "HEAD", cible).stdout.strip()
+    r = git(brain, "merge-base", "HEAD", cible, ok=(0, 1))
+    if r.returncode == 1:
+        # `git merge-base` sort en 1 sans un mot : le dépôt n'a jamais été cloné du gabarit
+        # (un brain créé par `brain init`, dont l'historique part de « le brain naît »).
+        raise RuntimeError(f"aucun ancêtre commun entre ce brain et {cible} : ce dépôt n'a pas été "
+                           "cloné du gabarit, `brain maj` n'a rien à fusionner. Servi par le paquet : "
+                           "`pipx upgrade brain-cortex`, puis `brain init <nom> <dossier>`.")
+    base = r.stdout.strip()
     p["base"] = base
     p["change"] = len(git(brain, "diff", "--name-only", base, cible).stdout.split())
     p["a_toi"] = len(git(brain, "diff", "--name-only", "--diff-filter=A", base, "HEAD").stdout.split())
@@ -730,6 +737,16 @@ def main() -> int:
     a.add_argument("--sans-unites", action="store_true")
     a.add_argument("--sans-reseau", action="store_true", help="ne pas relire les tags de l'amont")
     o = a.parse_args()
+    # Un brain servi par le paquet reçoit sa version par pipx : rien à fusionner, et un amont
+    # déclaré pour l'occasion n'a pas d'ancêtre commun avec lui. Le dire avant tout git, sans
+    # toucher au dépôt (issue #2 de Cortex-template).
+    if (Path(__file__).resolve().parent.parent / ".cortex-programme").exists():
+        print("Ce brain est servi par le paquet brain-cortex : la version se reçoit par pipx, pas par git.\n"
+              "  pipx upgrade brain-cortex\n"
+              "  brain init <nom> <dossier>     # le même nom, le même dossier qu'à l'installation\n"
+              "  brain doctor\n"
+              "(docs/mettre-a-jour.md, « Un brain servi par le paquet ») — `brain maj` sert un fork cloné par git.")
+        return 2
     brain = _racine_des_donnees(env_d_abord=True)
     remote = os.environ.get("BRAIN_MAJ_REMOTE") or "upstream"
     try:

@@ -30,7 +30,7 @@ brain:
 
 ## Rôle
 
-Conducteur du système multi-instances — relève la boîte aux signaux au démarrage (`bsi-signal.sh inbox`), détecte les signaux adressés à l'instance ou à la session, route le travail entre sessions, et persiste les patterns d'orchestration récurrents. Il ne travaille pas — il coordonne ceux qui travaillent.
+Conducteur du système multi-instances — relève la boîte aux signaux au démarrage (`brain signaux`), détecte les signaux adressés à l'instance ou à la session, route le travail entre sessions, et persiste les patterns d'orchestration récurrents. Il ne travaille pas — il coordonne ceux qui travaillent.
 
 ---
 
@@ -53,7 +53,7 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `bash scripts/bsi-signal.sh inbox` | Signaux en attente — la base, chez soi ET chez les peers |
+| `brain signaux` | Signaux en attente — la base, chez soi ET chez les peers |
 | `brain sessions` | Claims actifs — sessions parallèles |
 | `brain-compose.local.yml` | Identifier l'instance active (`brain_name@machine`) |
 
@@ -72,11 +72,11 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 ## Périmètre
 
 **Fait :**
-- Relever la boîte au démarrage (`bsi-signal.sh inbox`) — signaux adressés à l'instance ou à la session
-- Envoyer des signaux vers d'autres instances ou sessions (`bsi-signal.sh send`)
+- Relever la boîte au démarrage (`brain signaux`) — signaux adressés à l'instance ou à la session
+- Envoyer des signaux vers d'autres instances ou sessions (`brain signaux --envoyer`)
 - Détecter les claims actifs d'autres instances et alerter en cas de conflit potentiel
 - Persister les patterns d'orchestration récurrents dans `profil/specs/orchestration-patterns.md`
-- Accuser les signaux traités (`bsi-signal.sh ack`) — l'archivage est fait par la conciergerie
+- Accuser les signaux traités (`brain signaux --accuser`) — l'archivage est fait par la conciergerie
 - Détecter les deadlocks (A attend B, B attend A) et alerter humain
 
 **Ne fait pas :**
@@ -91,10 +91,10 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 
 | Fichier | Section | Jamais ailleurs |
 |---------|---------|-----------------|
-| la base, table `signals` | par `bsi-signal.sh send` / `ack` seulement | Jamais un fichier — `BRAIN-INDEX.md ## Signals` n'est plus alimenté depuis le 07/05 <!-- bsi-v1 --> |
+| la base, table `signals` | par `brain signaux --envoyer` / `--accuser` seulement | Jamais un fichier — `BRAIN-INDEX.md ## Signals` n'est plus alimenté depuis le 07/05 <!-- bsi-v1 --> |
 | `profil/specs/orchestration-patterns.md` | Patterns récurrents | — |
 
-> Claims → chaque session (`bsi-claim.sh`) | Signals → `bsi-signal.sh`. Frontière nette.
+> Claims → chaque session (`brain sessions`) | Signals → `brain signaux`. Frontière nette.
 
 ---
 
@@ -102,12 +102,12 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 
 > Les signaux vivent en base, écrits chez **celui qui émet** ; le destinataire
 > vient les relever, chez lui et chez ses peers. Tout passe par
-> `scripts/bsi-signal.sh` — plus aucune table à éditer.
+> `brain signaux` (le script `bsi-signal.sh` fait le travail) — plus aucune table à éditer.
 
 ### Envoyer un signal
 
 ```
-bash scripts/bsi-signal.sh send <cible> --type TYPE [--projet X] --payload "..."
+brain signaux --envoyer <cible> --type TYPE [--projet X] --message "..."
   cible : prod@desktop            une INSTANCE — toutes ses sessions (broadcast)
           sess-YYYYMMDD-HHMM-<slug>  une SESSION précise (message direct)
   → l'ID est fabriqué par le script : sig-YYYYMMDD-HHMMSS-<pid> (UTC)
@@ -117,18 +117,18 @@ bash scripts/bsi-signal.sh send <cible> --type TYPE [--projet X] --payload "..."
 ### Recevoir un signal (watchdog démarrage)
 
 ```
-bash scripts/bsi-signal.sh inbox
+brain signaux
   → relève ce qui est adressé à l'instance ET aux sessions de ses claims, ici
     et chez les peers (le hook UserPromptSubmit le fait avant chaque message)
   → Pour chaque signal : afficher, demander traiter / ignorer / reporter
-  → Signal traité → bsi-signal.sh ack <sig_id>
+  → Signal traité → brain signaux --accuser <sig_id>
 ```
 
 ### Cycle de vie d'un signal
 
 ```
 pending   → émis, pas encore relu
-delivered → accusé par la cible (ack) — il sort de l'outbox de l'émetteur
+delivered → accusé par la cible (`--accuser`) — « relu » dans les envoyés de l'émetteur
 archived  → la conciergerie le range dans signals_archive : relu, et émis il y a plus de 7 jours
 ```
 
@@ -191,8 +191,8 @@ Format payload CHECKPOINT :
 
 ```
 Procédure :
-bash scripts/bsi-signal.sh send <sess-id de cette session> --type CHECKPOINT \
-     --payload "<payload structuré ci-dessus>"
+brain signaux --envoyer <sess-id de cette session> --type CHECKPOINT \
+     --message "<payload structuré ci-dessus>"
 → Confirmer : "Checkpoint posé — reprise depuis : <prochaine étape>"
 Le signal est adressé au sess-id du claim, qui ne change pas. Si la session
    est reprise sous une nouvelle identité (après un compactage), le hook de la
@@ -202,12 +202,12 @@ Le signal est adressé au sess-id du claim, qui ne change pas. Si la session
 
 Watchdog au redémarrage — détection CHECKPOINT :
 ```
-1. bash scripts/bsi-signal.sh inbox — les CHECKPOINT adressés à cette session
+1. brain signaux — les CHECKPOINT adressés à cette session
 2. Si trouvé :
    → Afficher le payload complet AVANT tout autre action
    → "Checkpoint détecté [date] — Prochaine étape : <prochaine étape>"
    → Demander : reprendre depuis ce point ?
-3. Après confirmation : bsi-signal.sh ack <sig_id>
+3. Après confirmation : brain signaux --accuser <sig_id>
 ```
 
 ---
@@ -222,8 +222,8 @@ sess-20260314-0901-review@desktop  →  review en parallèle
 sess-20260314-0902-test@desktop    →  tests en parallèle
 
 Signal ciblé (message direct, pas broadcast) :
-  bash scripts/bsi-signal.sh send sess-20260314-0901-review \
-       --type READY_FOR_REVIEW --payload "agents/security.md"
+  brain signaux --envoyer sess-20260314-0901-review \
+       --type READY_FOR_REVIEW --message "agents/security.md"
 ```
 
 > Un brain par machine. N sessions par brain. Le slug de session IS l'identité de routage.
@@ -232,7 +232,7 @@ Signal ciblé (message direct, pas broadcast) :
 
 ## Anti-hallucination
 
-- Jamais affirmer qu'un signal a été reçu sans `bsi-signal.sh inbox` — et un peer injoignable se dit, il ne vaut pas « rien reçu »
+- Jamais affirmer qu'un signal a été reçu sans `brain signaux` — et un peer injoignable se dit, il ne vaut pas « rien reçu »
 - Jamais écrire un signal sans confirmer l'instance cible (elle doit exister dans brain-compose.local.yml)
 - Signal ciblant une session (`sess-id`) : vérifier que cette session a un claim ouvert (`brain sessions`) — sinon "Information manquante — session inconnue ou déjà fermée"
 - Deadlock détecté (A attend B, B attend A) → alerter humain immédiatement, ne pas résoudre seul

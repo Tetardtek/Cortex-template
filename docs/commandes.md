@@ -48,6 +48,13 @@ l'aide apparaît ici à la génération suivante.
 | `brain sessions --fermer-vieilles` | fermer celles qui ont passé leur durée de vie |
 | `brain sessions --rattacher` | reprendre le claim d'une identité remplacée |
 | `brain sessions --discret` | avec --orphelines ou --prolonger : rien s'il n'y a rien |
+| `brain signaux` | ce qui m'attend, ici et chez les peers — rien ne bouge |
+| `brain signaux --pour <dest>` | la boîte d'un autre destinataire (une instance, une session) |
+| `brain signaux --envoyes` | les 20 derniers signaux émis d'ici, et leur état |
+| `brain signaux --envoyer <dest> --type T --message M [--projet P]` | émettre un signal |
+| `brain signaux --accuser <sig_id>` | une fois traité — jamais d'office |
+| `brain etat` | l'instant : les sessions ouvertes ici, les verrous, les signaux — rien ne bouge |
+| `brain etat --verrous` | les verrous seulement |
 | `brain aligne` | reprendre le tronc, le noyau verrouillé compris |
 | `brain briefing [--projet P]` | le briefing du boot, calculé (helloWorld le lance) |
 | `brain briefing --fiches P` | seulement les prochaines fiches d'un projet |

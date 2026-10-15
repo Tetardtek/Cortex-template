@@ -205,7 +205,7 @@ Handoff next team
 | `code-review` | Sur finding technique pendant l'intégration → déléguer sans déborder |
 | `testing` | Validation couverture (peut tourner en parallèle) |
 | `security` | Gate sécu sur features auth/data avant push |
-| `orchestrator-scribe` | Après push → signal HANDOFF (`bsi-signal.sh send`) |
+| `orchestrator-scribe` | Après push → signal HANDOFF (`brain signaux --envoyer`) |
 | `todo-scribe` | Hors-périmètre détectés → captures en todo |
 | `scribe` | Livrable significatif → mise à jour `projets/<projet>.md` |
 

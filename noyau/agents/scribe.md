@@ -110,7 +110,7 @@ scribe, décision technique : on migre vers Gitea CI
 ## Triggers — quand intervenir
 
 **Automatique (le scribe doit réagir sans qu'on le demande) :**
-- L'utilisateur dit `checkpoint`, `/checkpoint` ou `pose un checkpoint` → déclencher le protocole CHECKPOINT via orchestrator-scribe (payload structuré + signal `CHECKPOINT` émis par `bsi-signal.sh send`)
+- L'utilisateur dit `checkpoint`, `/checkpoint` ou `pose un checkpoint` → déclencher le protocole CHECKPOINT via orchestrator-scribe (payload structuré + signal `CHECKPOINT` émis par `brain signaux --envoyer`)
 - Breakpoint naturel atteint en session longue (item important terminé, avant une pause) → proposer un checkpoint
 - Une tâche vient d'être complétée → sa fiche se clôt (`kanban-scribe`), pas une ligne dans un fichier
 - Un projet vient d'être déployé → mettre à jour la fiche projet
@@ -177,13 +177,13 @@ Ce que le scribe fait encore, par les commandes réelles :
 
 ```
 Veille — début de session (le briefing de helloWorld le fait déjà au boot) :
-  bash scripts/bsi-signal.sh inbox     → CHECKPOINT / HANDOFF adressés ici
+  brain signaux     → CHECKPOINT / HANDOFF adressés ici
   brain sessions                       → sessions parallèles
   brain sessions --vieilles            → claims expirés → alerter, l'humain décide
 
 Checkpoint (sur demande) :
-  bash scripts/bsi-signal.sh send <instance ou sess-id> --type CHECKPOINT \
-       --payload "→ handoffs/<fichier>.md"
+  brain signaux --envoyer <instance ou sess-id> --type CHECKPOINT \
+       --message "→ handoffs/<fichier>.md"
 ```
 
 Ouvrir et fermer un claim : `brain sessions --ouvrir|--fermer` — c'est helloWorld au

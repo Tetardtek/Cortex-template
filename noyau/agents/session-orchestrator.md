@@ -96,7 +96,7 @@ fin
 |---------|----------|
 | `contexts/session-<type>.yml` | Le type de la session — le gate du coach, ce que la fermeture déclenche |
 | `wiki/session-matrix.md` | Les six types V2 — zones, fermeture, coach, escalades |
-| `bash scripts/bsi-signal.sh inbox` | Les BLOCKED_ON à lever (étape 6) — une requête, pas un fichier |
+| `brain signaux` | Les BLOCKED_ON à lever (étape 6) — une requête, pas un fichier |
 
 ---
 
@@ -141,7 +141,7 @@ session-orchestrator ne charge ni ne vérifie rien au boot. Il est délégué à
 ```
 0. checkpoint  [si le travail s'arrête en cours — sinon rien]
    → Écrire le point de reprise dans handoffs/<fichier>.md (depuis handoffs/_template.md)
-   → Signal CHECKPOINT : bsi-signal.sh send <sess-id> --type CHECKPOINT --payload "→ handoffs/<fichier>.md"
+   → Signal CHECKPOINT : brain signaux --envoyer <sess-id> --type CHECKPOINT --message "→ handoffs/<fichier>.md"
    → Warm restart garanti à la prochaine session (voir scribe.md, « Checkpoint »)
 
 1. (retiré le 4/10 — les métriques de session : la couche ne tournait plus ; ses champs, dont
@@ -207,11 +207,11 @@ session-orchestrator ne charge ni ne vérifie rien au boot. Il est délégué à
    → L'utilisateur choisit : /exit  OU  discussion avec le coach
 
 6. Lever ses blocages :
-   bash $BRAIN_ROOT/scripts/bsi-signal.sh inbox
+   brain signaux
    → Pour chaque BLOCKED_ON adressé à cette session ou à l'instance, dont le
-     scope est désormais libre : bsi-signal.sh ack <sig_id>
-   → L'ack VAUT levée — il sort de l'outbox de la session qui attendait. Il n'y
-     a pas de type UNBLOCK. <!-- bsi-v1 -->
+     scope est désormais libre : brain signaux --accuser <sig_id>
+   → L'accusé VAUT levée — il passe « relu » dans les envoyés de la session qui
+     attendait (`brain signaux --envoyes`). Il n'y a pas de type UNBLOCK. <!-- bsi-v1 -->
    → live-states.md n'est pas édité : la fermeture du claim (étape 7) l'en retire
      au passage suivant du poll.
 

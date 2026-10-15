@@ -225,6 +225,10 @@ brain doctor                       # le verdict : son code de sortie
   n'est pas touché : s'il diffère du modèle, le modèle est posé à côté
   (`CLAUDE.md.modele`).
 - **`brain doctor`** dit si le brain est sain sur la nouvelle version.
+- **Pas d'amont git** : l'historique de ton dossier part de sa naissance (`brain init`),
+  pas du gabarit. `brain maj` sert un fork cloné par git : ici, il le dit et renvoie à
+  cette section. Un `git remote add upstream` n'y mène nulle part — aucun ancêtre commun
+  à fusionner — et son `fetch` rapatrie les tags du gabarit dans ton dépôt.
 
 ---
 

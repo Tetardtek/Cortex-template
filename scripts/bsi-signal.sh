@@ -14,8 +14,10 @@
 #
 #   bsi-signal.sh send <destinataire> --type TYPE [--projet X] --payload "..."
 #   bsi-signal.sh inbox [<destinataire>]     → ce qui m'attend, ici ET chez les peers
-#   bsi-signal.sh outbox                     → ce que j'ai emis et qui n'est pas relu
+#   bsi-signal.sh outbox                     → les 20 derniers signaux emis d'ici, et leur etat
 #   bsi-signal.sh ack <sig_id>               → marquer delivered, meme chez un peer
+#
+# Le verbe : `brain signaux` — ce script fait le travail et garde son nom.
 #
 # TYPE : READY_FOR_REVIEW · REVIEWED · BLOCKED_ON · HANDOFF · CHECKPOINT · INFO
 #

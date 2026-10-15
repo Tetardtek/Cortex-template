@@ -981,7 +981,13 @@ cmd_install_systemd() {
   if [[ "$mode" != "demo" ]]; then
     systemctl --user enable --now brain-maj.timer
     ok "versions de l'amont : brain-maj.timer (une fois par jour) — le briefing dit quand une version plus récente existe"
-    info "  suivre l'amont : git remote add upstream <URL_DU_GABARIT> (voir docs/mettre-a-jour.md)"
+    # Un brain servi par le paquet n'a pas d'amont git : la piste le menait à un `brain maj`
+    # sans ancêtre commun, et aux tags du gabarit dans son dépôt (issue #2).
+    if [[ "$PROGRAMME" == "$BRAIN_ROOT" ]]; then
+      info "  suivre l'amont : git remote add upstream <URL_DU_GABARIT> (voir docs/mettre-a-jour.md)"
+    else
+      info "  se mettre à jour : pipx upgrade brain-cortex, puis brain init <nom> <dossier> (voir docs/mettre-a-jour.md)"
+    fi
   fi
 }
 

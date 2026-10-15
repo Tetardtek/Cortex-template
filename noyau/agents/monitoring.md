@@ -226,15 +226,15 @@ qu'il ne voit pas (disque, conteneur dégradé, secret manquant) :
 ```bash
 # Alerte critique — interruption humaine : le bureau tout de suite, la boîte pour la suite
 notify-send -u critical "🔴 Monitoring" "Service X down — action requise"
-bash "$BRAIN_ROOT/scripts/bsi-signal.sh" send "$(python3 "$BRAIN_ROOT/scripts/lib/instance.py")" \
-  --type BLOCKED_ON --payload "Service X down — Gatus confirme — action requise"
+brain signaux --envoyer "$(python3 "$BRAIN_ROOT/scripts/lib/instance.py")" \
+  --type BLOCKED_ON --message "Service X down — Gatus confirme — action requise"
 
 # Info passive — reprise de service : la boîte suffit
-bash "$BRAIN_ROOT/scripts/bsi-signal.sh" send "$(python3 "$BRAIN_ROOT/scripts/lib/instance.py")" \
-  --type INFO --payload "Service X de nouveau en ligne"
+brain signaux --envoyer "$(python3 "$BRAIN_ROOT/scripts/lib/instance.py")" \
+  --type INFO --message "Service X de nouveau en ligne"
 ```
 
-Le signal persiste dans la base : le boot suivant le relève (`bsi-signal.sh inbox`).
+Le signal persiste dans la base : le boot suivant le relève (`brain signaux`).
 
 ---
 
