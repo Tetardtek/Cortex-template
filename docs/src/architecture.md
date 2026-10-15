@@ -133,4 +133,4 @@ worktree n'est jamais verrouillé.
 Chaque machine a **sa propre base** : rien ne la réplique. Le code et la doc
 voyagent par git ; les sessions des autres machines se lisent par SSH, pour
 les machines déclarées sous `peers:` dans `brain-compose.local.yml`
-(`bash scripts/bsi-query.sh peers`).
+(`brain sessions --toutes`).

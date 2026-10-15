@@ -3210,6 +3210,38 @@ class TestBrainSatellites(unittest.TestCase):
             self.assertTrue((brain / 'profil' / 'nouveau.md').exists(), "--pull a avancé")
             self.assertEqual(self._lancer(brain, '--check').returncode, 0)
 
+    def test_tirer_et_discret_les_noms_du_verbe_et_les_alias_d_avant(self):
+        """`brain satellites --tirer` / `--discret` ; `--pull` / `--quiet` restent des alias."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._lancer(brain, '--cloner')
+            self._pousser(tmp, forge, 'profil-depot', 'tire.md')
+            # par le vrai dispatcher : `brain satellites` transmet ses arguments au script
+            r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'brain'), 'satellites',
+                                '--brain', str(brain), '--tirer', '--discret'], capture_output=True, text=True,
+                               timeout=120, env={k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')})
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue((brain / 'profil' / 'tire.md').exists(), "--tirer a avancé")
+            self.assertNotIn('à jour', r.stdout, "--discret tait ce qui va bien")
+            self._pousser(tmp, forge, 'todo-depot', 'alias.md')
+            r = self._lancer(brain, '--pull', '--quiet')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue((brain / 'todo' / 'alias.md').exists(), "l'alias --pull tire encore")
+            self._pousser(tmp, forge, 'profil-depot', 'conseil.md')
+            r = self._lancer(brain)
+            self.assertIn('brain satellites --tirer', r.stdout, "le conseil nomme le verbe")
+
+    def test_l_aide_du_verbe_tait_les_alias_et_le_contrat_du_doctor(self):
+        r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'brain'), 'satellites', '--help'],
+                           capture_output=True, text=True, timeout=60,
+                           env={k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for nom in ('--tirer', '--cloner', '--taire', '--discret'):
+            self.assertIn(nom, r.stdout)
+        for cache in ('--pull', '--quiet', '--check', '--brain'):
+            self.assertNotIn(cache, r.stdout)
+
     def test_pull_ne_touche_ni_un_depot_devant_ni_un_fichier_modifie(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -3427,7 +3459,9 @@ class TestSyncTemplate(unittest.TestCase):
 
     # `noyau` et `instance` : une source migrée n'a plus d'agents suivis sous `agents/`
     # (une vue, ignorée) — sans eux, le brain jetable n'en avait aucun.
-    CHEMINS = ('scripts', 'agents', 'noyau', 'instance', 'docs', 'contexts', 'workflows', 'brain-engine',
+    # `skills` : sans lui, le rendu gardait la skill du gabarit publié — la v3.6.4 a rougi douze tests
+    # quand l'aide a renommé `serve`, que la skill d'avant faisait encore taper.
+    CHEMINS = ('scripts', 'agents', 'noyau', 'instance', 'docs', 'contexts', 'workflows', 'brain-engine', 'skills',
                'gabarit', 'KERNEL.md', 'brain-compose.yml', 'brain-constitution.md',
                'MYSECRETS.example', 'brain-compose.local.yml.example',
                'NIVEAUX.yml', 'handoffs/_template.md', 'projets/_template.md')
@@ -5980,6 +6014,22 @@ class TestVueDuProgramme(unittest.TestCase):
         ign = subprocess.run(['git', '-C', str(self.data), 'check-ignore', '-q', 'perso'])
         self.assertEqual(ign.returncode, 0, 'le satellite n est pas ignoré par le dépôt')
 
+    def test_brain_satellites_taire_tait_comme_vue(self):
+        """`brain satellites --taire` délègue à `vue.py --satellites` ; `brain vue --satellites` en est
+        l'alias."""
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'brain-satellites.py', self.prog / 'scripts' / 'brain-satellites.py')
+        self._depot('perso')
+        (self.data / '.gitignore').write_text('handoffs/*\n')
+        (self.data / 'satellites.yml').write_text('satellites:\n  autre: {depot: autre, machines: [fixe]}\n')
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        r = subprocess.run([sys.executable, str(self.prog / 'scripts' / 'brain-satellites.py'),
+                            '--brain', str(self.data), '--taire'], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('brain satellites --taire : 2 satellite(s) tus', r.stdout)
+        g = (self.data / '.gitignore').read_text()
+        for n in ('/autre/', '/perso/'):
+            self.assertEqual(g.splitlines().count(n), 1, g)
+
     def test_un_satellite_deja_tu_ne_se_repete_pas(self):
         """La ligne des secrets (`brain_secrets_taire`) précède le bloc ; le coffre déclaré
         satellite y revenait : `/brain-secrets/` deux fois (laptop, 14/10). Un doublon déjà
@@ -8099,14 +8149,15 @@ class TestCommandesDeBrain(unittest.TestCase):
     def test_les_verbes_de_l_aide_sont_ceux_de_l_aiguillage(self):
         """Un verbe ajouté au `case` sans ligne d'aide — ou l'inverse — se voit ici."""
         texte = self.SCRIPT.read_text(encoding='utf-8')
-        aiguillage = set(re.findall(r'(?m)^  ([a-z]+)\)', texte))
+        # `servir|serve)` : le premier nom est le verbe, les suivants des alias hors de l'aide
+        aiguillage = set(re.findall(r'(?m)^  ([a-z]+)(?:\|[a-z]+)*\)', texte))
         aide = {c.split()[1] for c, _ in self._generer().aide_de_brain(texte)}
         self.assertEqual(aiguillage, aide)
 
     def test_un_verbe_inconnu_dit_les_verbes_de_l_aide(self):
         r = subprocess.run(['bash', str(self.SCRIPT), 'nimporte'], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 2)
-        self.assertIn('connus : init, serve, doctor, maj, vue, aligne, briefing, migrer', r.stderr)
+        self.assertIn('connus : init, servir, doctor, maj, vue, satellites, sessions, aligne, briefing, migrer', r.stderr)
 
     # ── La page générée ──
     def test_une_ligne_ajoutee_a_l_aide_apparait_dans_la_table(self):
@@ -8163,6 +8214,213 @@ class TestCommandesDeBrain(unittest.TestCase):
         r = subprocess.run([sys.executable, str(TestDocsVerite.SCRIPT), '--gabarit', str(BRAIN_ROOT_PATH)],
                            capture_output=True, text=True, timeout=60)
         self.assertNotIn('[brain]', r.stdout + r.stderr)
+
+
+class TestLaLangueDesCommandes(unittest.TestCase):
+    """La langue de la commande : en français, minuscules, sans accents ; `doctor` l'exception
+    nommée par la page (docs/src/commandes.md, « La langue des commandes »). La FORME se vérifie
+    ici ; le français lui-même, à la relecture."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'brain'
+    PAGE = BRAIN_ROOT_PATH / 'docs' / 'src' / 'commandes.md'
+    # Des mots anglais qu'une commande attire : un verbe ou une option qui en contient un
+    # doit être une exception NOMMÉE par la page. La liste ne prouve pas le français.
+    ANGLAIS = {'serve', 'doctor', 'pull', 'push', 'clone', 'check', 'quiet', 'status', 'search', 'sync',
+               'update', 'upgrade', 'install', 'run', 'start', 'stop', 'list', 'show', 'verbose', 'force',
+               'dry', 'apply', 'build', 'unlock', 'validate', 'help', 'version', 'migrate', 'view', 'align',
+               'fetch', 'merge', 'commit', 'reset', 'add', 'remove', 'delete'}
+
+    def _mots(self, aide: str):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('docs_generer_langue', BRAIN_ROOT_PATH / 'scripts' / 'docs-generer.py')
+        dg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dg)
+        mots = set()
+        for commande, _ in dg.aide_de_brain(aide):
+            mots.add(commande.split()[1])
+            mots.update(re.findall(r"--([^\s\[\]|]+)", commande))
+        return mots
+
+    def _exceptions(self, page: str) -> set:
+        m = re.search(r"^- \*\*L'exception\*\* : (.+?) —", page, re.M)
+        self.assertIsNotNone(m, "la page ne nomme plus son exception")
+        return set(re.findall(r"`([^`]+)`", m.group(1)))
+
+    def _defauts(self, aide: str, page: str) -> list:
+        exceptions = self._exceptions(page)
+        defauts = []
+        for mot in sorted(self._mots(aide)):
+            if not re.fullmatch(r"[a-z]+(-[a-z]+)*", mot):
+                defauts.append(f"{mot} : minuscules ASCII et tirets seulement")
+            elif set(mot.split('-')) & self.ANGLAIS and mot not in exceptions:
+                defauts.append(f"{mot} : un mot anglais, et pas une exception nommée par la page")
+        return defauts
+
+    def test_l_aide_suit_la_convention(self):
+        self.assertEqual(self._defauts(self.SCRIPT.read_text(), self.PAGE.read_text()), [])
+
+    def test_un_accent_une_majuscule_un_anglicisme_rougissent(self):
+        aide = self.SCRIPT.read_text()
+        for ligne, attendu in (('#   brain maj --récupérer            un accent', 'récupérer'),
+                               ('#   brain maj --Tirer                une majuscule', 'Tirer'),
+                               ('#   brain status                     un anglicisme', 'status')):
+            fausse = aide.replace('#   brain doctor ', ligne + '\n#   brain doctor ', 1)
+            defauts = self._defauts(fausse, self.PAGE.read_text())
+            self.assertTrue(any(d.startswith(attendu) for d in defauts), (attendu, defauts))
+
+    def test_l_exception_vient_de_la_page(self):
+        page = self.PAGE.read_text().replace("**L'exception** : `doctor`", "**L'exception** : `aucune`")
+        self.assertIn('doctor', ' '.join(self._defauts(self.SCRIPT.read_text(), page)))
+
+    def test_serve_reste_l_alias_de_servir(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+        for verbe in ('servir', 'serve'):
+            r = subprocess.run(['bash', str(self.SCRIPT), verbe, '--help'], capture_output=True, text=True,
+                               timeout=60, env=env)
+            self.assertEqual(r.returncode, 0, verbe + r.stdout + r.stderr)
+            self.assertIn('brain servir', r.stdout, verbe)
+        aide = subprocess.run(['bash', str(self.SCRIPT), '--help'], capture_output=True, text=True, timeout=60).stdout
+        self.assertNotIn('brain serve ', aide, "l'alias reste hors de l'aide")
+
+
+class TestBrainSessions(unittest.TestCase):
+    """`brain sessions` — une façade en français devant `bsi-query.sh`, `bsi-claim.sh` et
+    `claims-orphelins.py`. Jouée contre de FAUX scripts qui notent leurs arguments et
+    rendent le code qu'on leur donne : aucune base n'est ouverte, aucun claim réel touché."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='sessions-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        d = self.tmp / 'scripts'
+        d.mkdir()
+        shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'sessions.py', d / 'sessions.py')
+        self.journal = self.tmp / 'appels'
+        for nom in ('bsi-query.sh', 'bsi-claim.sh'):
+            (d / nom).write_text(f'#!/bin/bash\necho "{nom} $*" >> "{self.journal}"\nexit "${{CODE:-0}}"\n')
+        (d / 'claims-orphelins.py').write_text(
+            'import os, sys\n'
+            f'open({str(self.journal)!r}, "a").write("claims-orphelins.py " + " ".join(sys.argv[1:]) + "\\n")\n'
+            'sys.exit(int(os.environ.get("CODE", "0")))\n')
+        self.script = d / 'sessions.py'
+
+    def _jouer(self, *args, code=0):
+        if self.journal.exists():
+            self.journal.unlink()
+        r = subprocess.run([sys.executable, str(self.script), *args], capture_output=True, text=True,
+                           timeout=30, env={**os.environ, 'CODE': str(code)})
+        appel = self.journal.read_text().strip() if self.journal.exists() else ''
+        return r, appel
+
+    def test_chaque_option_lance_le_bon_geste(self):
+        cas = {
+            (): 'bsi-query.sh open',
+            ('--toutes',): 'bsi-query.sh peers',
+            ('--vieilles',): 'bsi-query.sh stale',
+            ('--vieilles', '--compte'): 'bsi-query.sh count-stale',
+            ('--compte',): 'bsi-query.sh count-open',
+            ('--orphelines', '--discret'): 'claims-orphelins.py --quiet',
+            ('--non-declarees',): 'claims-orphelins.py --sans-claim',
+            ('--ouvrir', 's1', '--portee', 'brain/kernel', '--type', 'brain', '--recit', 'une phrase', '--duree', '6'):
+                'bsi-claim.sh open s1 --scope brain/kernel --type brain --story une phrase --ttl 6',
+            ('--prolonger',): 'bsi-claim.sh touch',
+            ('--prolonger', 's1', '--discret'): 'bsi-claim.sh touch s1 --quiet 1',
+            ('--fermer',): 'bsi-claim.sh close',
+            ('--fermer', 's2', '--resultat', 'livré', '--energie', 'high', '--pas-le-mien'):
+                'bsi-claim.sh close s2 --result livré --energy high --pas-le-mien',
+            ('--fermer-vieilles',): 'bsi-claim.sh close-stale',
+            ('--rattacher',): 'bsi-claim.sh rattacher',
+        }
+        for args, attendu in cas.items():
+            r, appel = self._jouer(*args)
+            self.assertEqual(r.returncode, 0, (args, r.stderr))
+            self.assertEqual(appel, attendu, args)
+
+    def test_les_noms_d_avant_restent_des_alias(self):
+        r, appel = self._jouer('--ouvrir', 's1', '--scope', 'x', '--story', 'y', '--project', 'p', '--ttl', '2')
+        self.assertEqual(appel, 'bsi-claim.sh open s1 --scope x --story y --project p --ttl 2', r.stderr)
+        r, appel = self._jouer('--fermer', 's1', '--result', 'r', '--energy', 'low', '--tags', 't', '--deliverables', 'd')
+        self.assertEqual(appel, 'bsi-claim.sh close s1 --result r --energy low --tags t --deliverables d', r.stderr)
+        r, appel = self._jouer('--orphelines', '--quiet')
+        self.assertEqual(appel, 'claims-orphelins.py --quiet')
+        r, appel = self._jouer('--sans-claim')
+        self.assertEqual(appel, 'claims-orphelins.py --sans-claim')
+
+    def test_le_code_de_sortie_traverse(self):
+        for args in ((), ('--orphelines',), ('--fermer', 's1')):
+            r, _ = self._jouer(*args, code=3)
+            self.assertEqual(r.returncode, 3, args)
+
+    def test_touch_ne_lit_quiet_que_par_paire(self):
+        """La raison du « --quiet 1 » de `--prolonger --discret` : `bsi-claim.sh` lit ses options
+        par paires `--clé valeur`. Un `--quiet` seul après l'ID passe inaperçu. Témoin lu dans le
+        VRAI script : sa fonction `parse_opts`, extraite et jouée."""
+        source = (BRAIN_ROOT_PATH / 'scripts' / 'bsi-claim.sh').read_text()
+        m = re.search(r"^def parse_opts\(args\):\n.*?^    return opts\n", source, re.S | re.M)
+        self.assertIsNotNone(m, "parse_opts introuvable dans bsi-claim.sh")
+        espace = {}
+        exec(m.group(0), espace)
+        self.assertIn('quiet', espace['parse_opts'](['s1', '--quiet', '1']))
+        self.assertNotIn('quiet', espace['parse_opts'](['s1', '--quiet']), "un --quiet seul est perdu")
+
+    def test_l_aide_parle_francais_et_tait_les_alias(self):
+        r, appel = self._jouer('--help')
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(appel, '', "l'aide ne lance rien")
+        for nom in ('--ouvrir', '--fermer', '--prolonger', '--portee', '--recit', '--resultat', '--duree'):
+            self.assertIn(nom, r.stdout)
+        for cache in ('--scope', '--story', '--result', '--ttl', '--quiet', '--compte', '--tags', '--sans-claim'):
+            self.assertNotRegex(r.stdout, re.escape(cache) + r'(?![\w-])', cache)   # `--result` ≠ `--resultat`
+
+
+class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
+    """Ce qu'un Claude ou un humain lit et tape passe par `brain sessions` ; le code, lui,
+    appelle les scripts (un contrat interne, sans dépendre de la commande dans le PATH).
+    Les journaux de modifications et les agents archivés racontent l'histoire : non jugés."""
+
+    GESTE = re.compile(r"(bsi-claim\.sh|bsi-query\.sh)\s+(open|close|close-stale|touch|rattacher|peers|stale|"
+                       r"health|recent|count-open|count-stale)\b|claims-orphelins\.py\s+--")
+
+    def _instructions(self):
+        b = BRAIN_ROOT_PATH
+        fichiers = [f for f in sorted((b / 'noyau' / 'agents').glob('*.md'))]
+        fichiers += sorted((b / 'skills' / 'brain' / 'src').glob('*.md')) + sorted((b / 'docs' / 'src').glob('*.md'))
+        fichiers += sorted((b / 'contexts').glob('*.yml'))
+        fichiers += [b / 'KERNEL.md', b / 'gabarit' / 'BRAIN-INDEX.md', b / 'scripts' / 'hooks' / 'pre-commit-zone']
+        # Le modèle du CLAUDE.md d'un fork vit dans le satellite `profil/` : jugé quand il est là
+        # (le brain d'origine, le gabarit rendu) ; un worktree ne l'a pas.
+        fichiers += [b / 'profil' / 'CLAUDE.md.example']
+        for f in fichiers:
+            if not f.is_file():
+                continue
+            lignes = f.read_text(encoding='utf-8').splitlines()
+            n = 0
+            while n < len(lignes):
+                debut, ligne = n + 1, lignes[n]
+                # Une commande continuée par `\` se juge entière : ses options sont sur la suite.
+                while ligne.rstrip().endswith('\\') and n + 1 < len(lignes):
+                    n += 1
+                    ligne = ligne.rstrip()[:-1] + ' ' + lignes[n].strip()
+                n += 1
+                if not re.match(r"^\|\s*20\d\d-\d\d-\d\d", ligne):    # un journal de modifications
+                    yield f.relative_to(b), debut, ligne
+
+    def test_aucune_instruction_ne_fait_taper_le_script(self):
+        restes = [f"{f}:{n}: {l.strip()[:90]}" for f, n, l in self._instructions() if self.GESTE.search(l)]
+        self.assertEqual(restes, [], "une instruction fait taper le script — `brain sessions` le fait")
+
+    def test_chaque_option_ecrite_existe(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('sessions_verbe', BRAIN_ROOT_PATH / 'scripts' / 'sessions.py')
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        connues = set(m.analyseur()._option_string_actions)
+        fausses = []
+        for f, n, ligne in self._instructions():
+            for appel in re.findall(r"brain sessions((?:\s+(?:--[a-z-]+(?:\|--[a-z-]+)*|[^\s`|]+))*)", ligne):
+                for opt in re.findall(r"--[a-z-]+", appel):
+                    if opt not in connues:
+                        fausses.append(f"{f}:{n}: {opt}")
+        self.assertEqual(fausses, [], "une instruction écrit une option que le verbe ne connaît pas")
 
 
 class TestChaqueVerbeASonAide(unittest.TestCase):
@@ -14570,6 +14828,32 @@ class TestClaimsOrphelins(unittest.TestCase):
         spec.loader.exec_module(cls.o)
         cls.Claim = collections.namedtuple('Claim', 'sess_id scope agent_session')
 
+    def test_sans_claim_cherche_les_sessions_dans_le_dossier_de_donnees(self):
+        """Un programme installé à part n'est pas le brain : `--sans-claim` y cherchait les
+        sessions, n'en trouvait aucune, et se disait vert. Un fork garde la position."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            prog, data = tmp / 'programme', tmp / 'MonBrain'
+            (prog / 'scripts' / 'lib').mkdir(parents=True)
+            (prog / 'brain-engine').mkdir()
+            data.mkdir()
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'claims-orphelins.py', prog / 'scripts')
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'lib' / 'filiation.py', prog / 'scripts' / 'lib')
+            shutil.copy(BRAIN_ROOT_PATH / 'brain-engine' / 'donnees.py', prog / 'brain-engine')
+            code = ('import importlib.util, sys; s = importlib.util.spec_from_file_location("o", sys.argv[1]); '
+                    'm = importlib.util.module_from_spec(s); s.loader.exec_module(m); print(m._racine_des_donnees())')
+            env = {**{k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}, 'BRAIN_ROOT': str(data)}
+
+            def racine():
+                r = subprocess.run([sys.executable, '-c', code, str(prog / 'scripts' / 'claims-orphelins.py')],
+                                   capture_output=True, text=True, env=env, timeout=30)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                return Path(r.stdout.strip())
+
+            self.assertEqual(racine(), prog, "un fork : la position, même avec BRAIN_ROOT")
+            (prog / '.cortex-programme').touch()
+            self.assertEqual(racine(), data, "un programme à part : le dossier de données")
+
     def test_vivant_mort_repris_et_non_juges(self):
         C = self.Claim
         claims = [C('sess-vivant', 'brain', 'agent-vivant'),
@@ -14847,7 +15131,7 @@ class TestInstallPm2(unittest.TestCase):
         # qu'il ne lit plus MYSECRETS.
         for lecture in ("require('fs')", 'readFileSync', 'brain-secrets'):
             self.assertNotIn(lecture, texte, 'la déclaration ne se relit pas ici')
-        self.assertIn('`brain serve`', texte, 'le commentaire garde ses accents graves')
+        self.assertIn('`brain servir`', texte, 'le commentaire garde ses accents graves')
         self.assertIn('start ' + str(eco), self.appels.read_text())
 
 

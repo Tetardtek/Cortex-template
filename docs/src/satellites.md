@@ -65,7 +65,7 @@ ta couche) : sans eux, le doctor rougit « hooks git installés ». L'installate
 les pose, et ne touche à rien d'autre.
 
 Un brain **servi par le paquet** fait les deux en une commande :
-`brain vue --satellites`. Elle tait le satellite en entier dans le `.gitignore`
+`brain satellites --taire`. Elle tait le satellite en entier dans le `.gitignore`
 du dossier, pose ses hooks, et **désuit** ce que le dossier suivait encore de lui
 — les modèles de son premier commit (`README.md`, `_template.md`, `.gitkeep`) :
 `git rm --cached`, jamais un fichier retiré du disque. Le dossier le dit ; la
@@ -78,14 +78,14 @@ mêmes fichiers, et une retouche du `README.md` se voyait dans les deux.
 
 Une instance qui tourne sur plusieurs machines déclare ses satellites dans
 `satellites.yml`, à la racine : chaque dépôt, son chemin, les machines qui
-l'ont. `scripts/brain-satellites.py` s'en sert :
+l'ont. `brain satellites` s'en sert :
 
 | Commande | Effet |
 |---|---|
-| `python3 scripts/brain-satellites.py` | l'état de chaque dépôt, en lecture seule |
-| `… --check` | idem, avec un code de sortie : 0 tout est à jour |
-| `… --pull` | met à jour ce qui est en retard — en avance rapide seulement |
-| `… --cloner` | clone ce qui est déclaré pour cette machine et absent |
+| `brain satellites` | l'état de chaque dépôt, en lecture seule ; sortie 0 si tout est à jour |
+| `brain satellites --tirer` | met à jour ce qui est en retard — en avance rapide seulement |
+| `brain satellites --cloner` | clone ce qui est déclaré pour cette machine et absent |
+| `brain satellites --discret` | avec l'état ou `--tirer` : ne dit que ce qui ne va pas |
 
 Un dépôt dont le brain dépend sans le contenir se déclare avec un `chemin:`
 absolu ou en `~/…` : il est suivi et cloné là, et sa clé n'est plus qu'un nom.

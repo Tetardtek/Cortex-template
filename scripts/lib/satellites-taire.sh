@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # brain-distribuable: oui  # brain-init.sh le source
-# satellites-taire.sh — `brain vue --satellites` lancé par brain init, et ce qu'il a désuivi DIT
+# satellites-taire.sh — `brain satellites --taire` (`vue.py --satellites`) lancé par brain init, et ce qu'il a désuivi DIT
 #
 # Usage :
 #   source "$PROGRAMME/scripts/lib/satellites-taire.sh"

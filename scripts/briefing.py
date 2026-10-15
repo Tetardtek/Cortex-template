@@ -17,7 +17,7 @@ un handoff reçu, l'escalade, la fermeture.
                                         entre dans le contexte avant le premier message
 
 Ce qu'il écrit — les gestes du boot, rien de plus :
-    les satellites   brain-satellites.py --pull : avance rapide seulement
+    les satellites   brain satellites --tirer : avance rapide seulement
     la boîte         echanges-boite.sh : retient « vu », dans la config git locale
 Le reste ne fait que lire.
 
@@ -140,7 +140,7 @@ def entete(b: Briefing) -> list[str]:
 def satellites(b: Briefing):
     if not present("brain-satellites.py"):
         return
-    code, sortie = lancer(py("brain-satellites.py", "--pull", "--quiet"), delai=180)
+    code, sortie = lancer(py("brain-satellites.py", "--tirer", "--discret"), delai=180)
     if code not in (0, 1):
         b.panne("satellites", sortie)
     else:

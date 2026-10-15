@@ -17,7 +17,7 @@ ordre: 3
 **Le noyau — ce qui fait le brain.** Il est le même dans chaque fork.
 
 - `KERNEL.md`, `brain-constitution.md` — les règles
-- `brain-compose.yml` — la configuration du programme (version 3.6.3, kerneluser, postures)
+- `brain-compose.yml` — la configuration du programme (version 3.6.4, kerneluser, postures)
 - `noyau/agents/` — les 58 agents, lus par la vue `agents/`
 - `contexts/` — un manifest par type de session
 - `scripts/` — les outils : claims, base, synchronisation, installation
@@ -134,4 +134,4 @@ worktree n'est jamais verrouillé.
 Chaque machine a **sa propre base** : rien ne la réplique. Le code et la doc
 voyagent par git ; les sessions des autres machines se lisent par SSH, pour
 les machines déclarées sous `peers:` dans `brain-compose.local.yml`
-(`bash scripts/bsi-query.sh peers`).
+(`brain sessions --toutes`).

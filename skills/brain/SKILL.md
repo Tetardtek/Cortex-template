@@ -19,7 +19,7 @@ description: >
 
 # Le brain — mode d'emploi pour l'agent
 
-Kernel v3.6.3 — 58 agents, 6 types de session,
+Kernel v3.6.4 — 58 agents, 6 types de session,
 23 routes d'API, 10 outils MCP.
 
 Un brain est une mémoire externe pour les sessions Claude Code : des agents
@@ -51,7 +51,7 @@ tort — et c'est un défaut à signaler, pas à contourner.*
    `KERNEL.md`, `brain-constitution.md`, les agents, la partie invariante de
    `profil/` : proposer la diff, attendre le oui. → [`noyau.md`](noyau.md)
 2. **Une session a un claim.** Ouvert au début, fermé à la fin, par
-   `scripts/bsi-claim.sh` — jamais un fichier, jamais une écriture directe en
+   `brain sessions` (`scripts/bsi-claim.sh`) — jamais un fichier, jamais une écriture directe en
    base. → [`sessions.md`](sessions.md)
 3. **La base passe par `brain-engine/db.py`.** Un script qui ouvre sa propre
    connexion écrit dans une base que personne ne lit. → [`donnees.md`](donnees.md)

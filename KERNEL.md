@@ -118,7 +118,7 @@ Repos projets : GitHub, Gitea projets clients/perso
 | `kernel:` | KERNEL | Décision humaine | Modification contrat fondateur |
 | `feat:` | KERNEL agents/ | recruiter + humain | Nouvel agent forgé, capacité ajoutée |
 | `fix:` | KERNEL agents/ | debug / agent-review | Correction comportement |
-| `bsi:` | KERNEL — l'outillage BSI (`bsi-*.sh`, le CORE `bsi`) | scribe | Le protocole des claims et des signaux change — un claim, lui, s'ouvre et se ferme en base (`bsi-claim.sh`), sans commit |
+| `bsi:` | KERNEL — l'outillage BSI (`bsi-*.sh`, le CORE `bsi`) | scribe | Le protocole des claims et des signaux change — un claim, lui, s'ouvre et se ferme en base (`brain sessions`), sans commit |
 | `integrator:` | WORK (repos projets) | integrator | Commit d'absorption multi-agents, push sprint |
 | `scribe:` | INSTANCE + KERNEL profil/ | scribe | brain update (focus, projets, profil) |
 | `todo:` | SATELLITES `workspace/backlog/`, `projets/` | todo-scribe | Fiches ouvertes / closes — dans leur satellite depuis le 4/10 |

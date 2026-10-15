@@ -43,7 +43,7 @@ Propriétaire du cycle de vie de chaque session. Décide ce qui est chargé au b
 4.9. wrap check-in — seulement quand l'humain a demandé la fermeture
 5. rapport du coach (work, brain, pilote, explore/coach) — BLOQUANT
 6. les BLOCKED_ON reçus → ack (vaut levée)
-7. bsi-claim.sh close — NON NÉGOCIABLE, toujours, même sur /exit
+7. brain sessions --fermer — NON NÉGOCIABLE, toujours, même sur /exit
 ```
 
 ### Règles close
@@ -191,7 +191,7 @@ session-orchestrator ne charge ni ne vérifie rien au boot. Il est délégué à
 4.9. wrap check-in  [Pattern 12 — métriques humaines]
    → L'humain a demandé la fermeture — jamais proposée de soi-même — : afficher le micro-formulaire :
      ⚡ Energy : [h]/[m]/[l]  |  🎯 Intention : <suggest>  |  🏷️ Tags : <suggest>
-   → Réponse 1 message → parse → injecter dans bsi-claim.sh close
+   → Réponse 1 message → parse → injecter dans brain sessions --fermer
    → Pas de réponse à un champ → NULL
 
 5. coach → rapport de session  [si coach_gate NON silencieux — voir coach.md ## Gate par session type]
@@ -218,8 +218,8 @@ session-orchestrator ne charge ni ne vérifie rien au boot. Il est délégué à
 7. BSI close claim
    → <sess-id> vient du contexte de CETTE session ; sans identifiant, le script ferme
      le claim de CETTE session, retrouvé par CLAUDE_CODE_SESSION_ID (BRAIN-077)
-   bash $BRAIN_ROOT/scripts/bsi-claim.sh close <sess-id> --result "success" \
-     [--energy <val>] [--intention <val>] [--tags <val>] [--deliverables <val>]
+   brain sessions --fermer <sess-id> --resultat "success" \
+     [--energie <val>] [--intention <val>] [--etiquettes <val>] [--livrables <val>]
    → brain.db est la source unique (BRAIN-042) : pas de fichier de claim, pas
      de commit, pas de push.
    → Mandatory — même si l'utilisateur fait /exit sans lire le rapport

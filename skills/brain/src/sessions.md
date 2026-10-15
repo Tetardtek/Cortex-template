@@ -20,27 +20,27 @@ access ». En `explore/audit`, rien ne s'écrit sauf le rapport.
 ## Le claim
 
 Un claim est une ligne de la table `claims`, écrite **uniquement** par
-`scripts/bsi-claim.sh` :
+`scripts/bsi-claim.sh` — derrière le verbe `brain sessions` :
 
 ```bash
-bash scripts/bsi-claim.sh open <sess_id> --scope "<type>/<scope>" --type <type> \
-     [--zone <zone>] [--mode <mode>] [--story '<angle>'] [--project <projet>]
-bash scripts/bsi-claim.sh close <sess_id> --result <success|partial|fail> \
-     [--energy <high|medium|low>] [--intention '<suite>'] [--tags a,b] [--deliverables '<livré>']
-bash scripts/bsi-claim.sh close-stale      # ferme les claims échus
+brain sessions --ouvrir <sess_id> --portee "<type>/<scope>" --type <type> \
+     [--zone <zone>] [--mode <mode>] [--recit '<angle>'] [--projet <projet>]
+brain sessions --fermer <sess_id> --resultat <success|partial|fail> \
+     [--energie <high|medium|low>] [--intention '<suite>'] [--etiquettes a,b] [--livrables '<livré>']
+brain sessions --fermer-vieilles           # ferme les claims échus
 ```
 
 - l'identifiant a une forme — `sess-<AAAAMMJJ>-<HHMM>-<slug>` — et le script
   refuse le reste ;
 - la durée de vie vient du manifest du type (`ttl_hours`) ;
-- rien ne ferme un claim oublié tout seul : `bash scripts/bsi-claim.sh
-  close-stale` ferme ceux qui ont dépassé la durée de leur type, avec un
+- rien ne ferme un claim oublié tout seul : `brain sessions --fermer-vieilles`
+  ferme ceux qui ont dépassé la durée de leur type, avec un
   résultat que personne n'a dit — **le fermer soi-même** ;
 - fermer le claim d'une autre session est refusé, sauf `--pas-le-mien`.
 
-Lire : `bash scripts/bsi-query.sh open` (les sessions ouvertes ; sans session, stdout reste
+Lire : `brain sessions` (les sessions ouvertes ; sans session, stdout reste
 vide et « aucune session ouverte » s'écrit sur stderr),
-`bash scripts/bsi-query.sh peers` (celles des machines déclarées sous `peers:`
+`brain sessions --toutes` (celles des machines déclarées sous `peers:`
 dans `brain-compose.local.yml`, par SSH).
 
 ## Les signaux entre sessions

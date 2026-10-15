@@ -106,13 +106,13 @@ Chaque session ouvre un **claim** : un enregistrement dans la base (table
 depuis quand — deux sessions parallèles se voient ainsi.
 
 ```bash
-bash scripts/bsi-claim.sh open <sess_id> --scope "<type>/<scope>" --type <type>
-bash scripts/bsi-claim.sh close <sess_id> --result <success|partial|fail>
+brain sessions --ouvrir <sess_id> --portee "<type>/<scope>" --type <type>
+brain sessions --fermer <sess_id> --resultat <success|partial|fail>
 ```
 
-À la fermeture, `--energy`, `--intention`, `--tags` et `--deliverables`
+À la fermeture, `--energie`, `--intention`, `--etiquettes` et `--livrables`
 racontent la session ; la durée se calcule seule. Rien ne ferme
-un claim oublié tout seul : `bash scripts/bsi-claim.sh close-stale` ferme ceux
+un claim oublié tout seul : `brain sessions --fermer-vieilles` ferme ceux
 qui ont dépassé la durée de leur type — mieux vaut fermer soi-même, avec le
 résultat qu'on est seul à connaître.
 

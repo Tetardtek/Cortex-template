@@ -37,7 +37,7 @@ Tout passe par `bash scripts/brain-engine.sh <commande>` :
 | `logs` | suit le journal |
 | `embed` | indexe le corpus une fois (demande Ollama) |
 | `install systemd` | des unités **utilisateur** qui démarrent avec ta session : `brain-engine` et `brain-mcp`, et deux timers : `brain-embed`, l'indexation (ni en démo, ni sur un replica : les vecteurs sont au master), et `brain-maj`, qui lit une fois par jour les versions de l'amont (pas en démo). Se rejoue sans risque : il réécrit les unités et les relance |
-| `install pm2` | l'API et le serveur MCP sous pm2, par `brain serve`, relancés s'ils tombent — pas au démarrage de la session |
+| `install pm2` | l'API et le serveur MCP sous pm2, par `brain servir`, relancés s'ils tombent — pas au démarrage de la session |
 
 `stop` n'arrête jamais un moteur qu'il n'a pas lancé : si systemd ou pm2 le
 fait tourner, il le dit, et c'est à eux de l'arrêter
@@ -48,20 +48,20 @@ du brain.
 
 Pour que les unités systemd survivent à la déconnexion : `loginctl enable-linger $USER`.
 
-## `brain serve` — les deux portes, une seule déclaration
+## `brain servir` — les deux portes, une seule déclaration
 
-`start` et les unités systemd lancent les serveurs par `brain serve` : leur
+`start` et les unités systemd lancent les serveurs par `brain servir` : leur
 configuration se décide à **un** endroit, `brain-engine/serve.py`.
 
 ```bash
-brain serve                  # les deux portes, au premier plan ; si l'une tombe, l'autre s'arrête
-brain serve http             # l'API seule — ce que lance l'unité brain-engine
-brain serve mcp              # le serveur MCP seul — l'unité brain-mcp
-brain serve --declaration    # ce qui serait lancé (ports, mode, secrets), sans rien lancer
+brain servir                  # les deux portes, au premier plan ; si l'une tombe, l'autre s'arrête
+brain servir http             # l'API seule — ce que lance l'unité brain-engine
+brain servir mcp              # le serveur MCP seul — l'unité brain-mcp
+brain servir --declaration    # ce qui serait lancé (ports, mode, secrets), sans rien lancer
 ```
 
 `install systemd` pose la commande `brain` dans `~/.local/bin`, en lien vers
-`scripts/brain`. Sans elle : `bash scripts/brain serve`. Un brain servi par le paquet
+`scripts/brain`. Sans elle : `bash scripts/brain servir`. Un brain servi par le paquet
 garde la commande de pipx : `install systemd` ne la remplace pas, et y ramène un lien
 qu'une version d'avant aurait posé vers le script.
 

@@ -96,7 +96,7 @@ L2:
 #   "on parle de <projet>"    → projets/<projet>.md + workspace/backlog/<projet>/backlog.md
 #   "j'apprends X"            → flow learning (clarifier → explorer → ancrer)
 #   "charge l'agent Y"        → agents/Y.md
-#   "qu'est-ce qu'on a fait?" → bsi-query.sh recent + claims du jour
+#   "qu'est-ce qu'on a fait?" → brain sessions (les ouvertes) + les claims du jour
 L3:
   hint: "Tout en L3. Charger sur demande — projets, agents, learning tracks."
 
@@ -135,7 +135,7 @@ learning_flow:
 # --- Recontextualisation ---
 # L'utilisateur revient apres avoir travaille ailleurs :
 # "on a avance sur X, tu check ?"
-# → Relire : claims recents (bsi-query.sh recent), projets/X.md, focus.md
+# → Relire : les sessions ouvertes (brain sessions), projets/X.md, focus.md
 # → NE PAS poser des questions sur ce qui est dans les sources
 # → Repondre avec le contexte mis a jour
 

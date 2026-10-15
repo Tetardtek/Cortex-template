@@ -755,10 +755,10 @@ def main() -> int:
     brain = _racine_des_donnees(env_d_abord=True)
     if o.satellites:
         if not programme_a_part(brain):
-            print("brain vue --satellites : le programme n'est pas installé à part — le .gitignore est celui du gabarit.")
+            print("brain satellites --taire : le programme n'est pas installé à part — le .gitignore est celui du gabarit.")
             return 0
         noms = ignorer_les_satellites(brain)
-        print(f"brain vue --satellites : {len(noms)} satellite(s) tus par le .gitignore"
+        print(f"brain satellites --taire : {len(noms)} satellite(s) tus par le .gitignore"
               + (f" — {', '.join(noms)}" if noms else ""))
         desuivis = desuivre_les_satellites(brain, noms)
         if desuivis:

@@ -22,9 +22,9 @@ l'aide apparaît ici à la génération suivante.
 | `brain init --sans-service` | idem, sans systemd utilisateur (conteneur, essai) |
 | `brain init --reecrire-claude-md` | idem, et remplacer ~/.claude/CLAUDE.md (l'ancien est sauvegardé) |
 | `brain init --verifier` | les prérequis seulement — rien n'est écrit |
-| `brain serve [http\|mcp]` | les portes réseau (HTTP + MCP), une seule déclaration |
-| `brain serve --declaration` | ce qui serait lancé, sans rien lancer |
-| `brain serve --ports` | les deux ports, en CLÉ=valeur — pour un script |
+| `brain servir [http\|mcp]` | les portes réseau (HTTP + MCP), une seule déclaration |
+| `brain servir --declaration` | ce qui serait lancé, sans rien lancer |
+| `brain servir --ports` | les deux ports, en CLÉ=valeur — pour un script |
 | `brain doctor` | ce qui se dégrade en silence — le brain se contrôle |
 | `brain maj [version]` | un fork git : le plan vers la dernière version, ou celle-ci — rien ne bouge (le paquet : pipx upgrade) |
 | `brain maj --appliquer` | recevoir la version : fusionner, régénérer, réinstaller |
@@ -32,7 +32,22 @@ l'aide apparaît ici à la génération suivante.
 | `brain maj --sans-reseau` | sans relire les tags de l'amont |
 | `brain vue [--construire]` | agents/ comme une vue du noyau et de l'instance |
 | `brain vue --deverrouiller` | rendre le noyau modifiable le temps d'une mise à jour |
-| `brain vue --satellites` | le .gitignore du dossier tait ses satellites (programme installé à part) |
+| `brain satellites` | l'état des satellites de cette machine — rien ne bouge |
+| `brain satellites --tirer` | avancer ce qui est derrière (avance rapide seulement) |
+| `brain satellites --cloner` | cloner les satellites déclarés et absents |
+| `brain satellites --taire` | le .gitignore du dossier tait ses satellites (programme installé à part) |
+| `brain satellites --discret` | avec l'état ou --tirer : ne dire que ce qui ne va pas |
+| `brain sessions` | les sessions ouvertes ici, et leurs claims — rien ne bouge |
+| `brain sessions --toutes` | les sessions ouvertes sur toutes les machines |
+| `brain sessions --vieilles` | ouvertes depuis plus que leur durée de vie |
+| `brain sessions --orphelines` | ouvertes, mais la session Claude Code ne vit plus |
+| `brain sessions --non-declarees` | vivantes dans le brain, sans claim qui les déclare |
+| `brain sessions --ouvrir <id> --portee P --type T` | ouvrir le claim d'une session (les autres options : brain sessions --help) |
+| `brain sessions --prolonger` | la session est vivante : repousser l'expiration |
+| `brain sessions --fermer [<id>] --resultat R` | fermer le claim de cette session (une autre : <id> --pas-le-mien) |
+| `brain sessions --fermer-vieilles` | fermer celles qui ont passé leur durée de vie |
+| `brain sessions --rattacher` | reprendre le claim d'une identité remplacée |
+| `brain sessions --discret` | avec --orphelines ou --prolonger : rien s'il n'y a rien |
 | `brain aligne` | reprendre le tronc, le noyau verrouillé compris |
 | `brain briefing [--projet P]` | le briefing du boot, calculé (helloWorld le lance) |
 | `brain briefing --fiches P` | seulement les prochaines fiches d'un projet |
@@ -55,3 +70,24 @@ l'aide apparaît ici à la génération suivante.
   noyau et de l'instance : [Architecture](architecture.md).
 - **`brain migrer`** fait passer un brain cloné par git au paquet, une fois.
   `--a-blanc` d'abord.
+
+## La langue des commandes
+
+Une convention, tenue partout — pour que la commande ne devienne pas un
+mélange de deux langues. Un verbe ou une option qui s'ajoute la suit.
+
+- **En français**, en minuscules, sans accents : un mot qui n'en a pas besoin
+  de préférence (`--tirer` plutôt que « récupérer »), sinon l'accent tombe
+  (`--deverrouiller`, `--reecrire-claude-md`).
+- **Les mots communs aux deux langues** restent tels quels : `init`,
+  `satellites`, `briefing`, `ports`, `http`, `mcp`.
+- **L'exception** : `doctor` — un usage établi (`brew doctor`,
+  `flutter doctor`), et le seul anglicisme de la commande.
+- **Une action est une option** du verbe (`brain maj --appliquer`), pas un mot
+  qui le suit ; `brain servir [http|mcp]` nomme une porte, pas une action.
+- **Un nom renommé reste un alias**, hors de l'aide : `serve`, le nom d'avant,
+  lance toujours `brain servir`, et `--pull` toujours `--tirer`. Rien ne casse
+  chez un fork.
+
+La forme (minuscules, sans accents, l'exception nommée ici) est vérifiée par
+un test ; le français lui-même, par la relecture.

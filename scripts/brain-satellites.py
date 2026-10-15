@@ -2,10 +2,15 @@
 # brain-distribuable: oui
 """Les satellites de CETTE machine sont-ils là, et à jour ? — `satellites.yml`.
 
-    brain-satellites.py            état de chaque dépôt (lecture seule)
-    brain-satellites.py --check    idem, pour le doctor : 0 à jour, 1 sinon
-    brain-satellites.py --pull     met à jour en avance rapide ce qui est derrière
-    brain-satellites.py --cloner   clone les satellites déclarés et absents
+    brain satellites               état de chaque dépôt (lecture seule)
+    brain satellites --tirer       met à jour en avance rapide ce qui est derrière
+    brain satellites --cloner      clone les satellites déclarés et absents
+    brain satellites --taire       le .gitignore du dossier tait ses satellites (`vue.py --satellites`)
+    brain satellites --discret     ne dire que ce qui ne va pas
+    brain-satellites.py --check    l'état, pour le doctor : 0 à jour, 1 sinon
+
+Le verbe `brain satellites` ; `--pull` et `--quiet`, les noms d'avant, restent
+des alias hors de l'aide.
 
 Ce qui pourrirait en silence sans lui : **une machine qui boote sur un état
 révolu.** Le 27/09, le laptop avait `profil/` en retard de 30 commits — il
@@ -195,15 +200,27 @@ def depots_presents(brain: Path) -> set[str]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Les satellites de cette machine")
-    p.add_argument("--brain", type=Path, default=BRAIN)
+    p = argparse.ArgumentParser(prog="brain satellites", description="Les satellites de cette machine")
+    p.add_argument("--brain", type=Path, default=BRAIN, help=argparse.SUPPRESS)
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--check", action="store_true", help="pour le doctor : 0 à jour, 1 sinon")
-    mode.add_argument("--pull", action="store_true", help="avance rapide de ce qui est derrière")
-    mode.add_argument("--cloner", action="store_true", help="clone les satellites absents")
-    p.add_argument("--quiet", action="store_true", help="ne dire que ce qui ne va pas")
+    mode.add_argument("--tirer", dest="pull", action="store_true",
+                      help="avancer ce qui est derrière (avance rapide seulement)")
+    mode.add_argument("--cloner", action="store_true", help="cloner les satellites déclarés et absents")
+    mode.add_argument("--taire", action="store_true",
+                      help="le .gitignore du dossier tait ses satellites (programme installé à part)")
+    # Hors de l'aide : le contrat du doctor, et les noms d'avant le verbe.
+    mode.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument("--pull", dest="pull", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--discret", dest="quiet", action="store_true", help="ne dire que ce qui ne va pas")
+    p.add_argument("--quiet", dest="quiet", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args()
     brain = a.brain.resolve()
+
+    if a.taire:
+        # Le geste vit dans `vue.py` : le verbe le délègue, et
+        # `brain vue --satellites` en reste l'alias.
+        return subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "vue.py"), "--satellites"],
+                              env={**os.environ, "BRAIN_ROOT": str(brain)}).returncode
 
     liste = brain / "satellites.yml"
     if not liste.is_file():
@@ -263,7 +280,7 @@ def main() -> int:
     for chemin in [".", *miens]:
         depot = brain if chemin == "." else emplacement(brain, chemin, miens[chemin])
         if vide_ou_absent(depot):
-            lignes.append((chemin, "absent", "→ --cloner"))
+            lignes.append((chemin, "absent", "→ brain satellites --cloner"))
             continue
         if not (depot / ".git").exists():
             # Un dossier qui a du contenu n'est jamais écrasé : c'est à l'humain.
@@ -295,7 +312,7 @@ def main() -> int:
         print(f"❌ {len(derives)} dépôt(s) sur {total} ne sont pas à jour sur `{ici}`"
               + (f" ({injoignables} injoignable(s))" if injoignables else ""))
         if not a.pull:
-            print("   → python3 scripts/brain-satellites.py --pull   (et --cloner pour un absent)")
+            print("   → brain satellites --tirer   (et --cloner pour un absent)")
         return 1
     if not a.quiet or injoignables:
         print(f"✅ les {total} dépôts de `{ici}` sont à jour"

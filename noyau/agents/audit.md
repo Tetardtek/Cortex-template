@@ -53,7 +53,7 @@ brain boot explore/audit
 
 | Fichier | Pourquoi |
 |---------|----------|
-| `bash scripts/bsi-query.sh open` | État sessions, claims ouverts (la base) |
+| `brain sessions` | État sessions, claims ouverts (la base) |
 | `contexts/` | Liste des sessions déclarées (racine brain, pas dans profil/) |
 | `agents/AGENTS.md` | Index agents — source de vérité |
 
@@ -66,7 +66,7 @@ brain boot explore/audit
 | Audit agents | `agents/AGENTS.md` + glob `agents/*.md` | Détecter agents sans frontmatter, doublons |
 | Audit sessions | `contexts/session-*.yml` | Vérifier fichiers L1 présents |
 | Audit ADRs | `profil/decisions/*.md` | Identifier ADRs sans implémentation |
-| Audit claims | `bash scripts/bsi-query.sh open` (la base) | Claims ouverts depuis > 24h = stale |
+| Audit claims | `brain sessions` (la base) | Claims ouverts depuis > 24h = stale |
 
 ---
 

@@ -73,7 +73,7 @@ scribe, décision technique : on migre vers Gitea CI
 | Fichier | Pourquoi |
 |---------|----------|
 | `brain_focus` (ou `/focus`) | La direction — le cap, les fiches « en cours » calculées ; rien à y écrire |
-| `bash scripts/bsi-query.sh open` / `stale` | Veille BSI — sessions actives et claims expirés (la base, pas un fichier) |
+| `brain sessions` / `--vieilles` | Veille BSI — sessions actives et claims expirés (la base, pas un fichier) |
 | `README.md` | Structure globale du brain |
 | `agents/AGENTS.md` | Index des agents — vérifier cohérence |
 | `profil/objectifs.md` | Objectifs à long terme — ligne directrice |
@@ -178,21 +178,21 @@ Ce que le scribe fait encore, par les commandes réelles :
 ```
 Veille — début de session (le briefing de helloWorld le fait déjà au boot) :
   bash scripts/bsi-signal.sh inbox     → CHECKPOINT / HANDOFF adressés ici
-  bash scripts/bsi-query.sh open       → sessions parallèles
-  bash scripts/bsi-query.sh stale      → claims expirés → alerter, l'humain décide
+  brain sessions                       → sessions parallèles
+  brain sessions --vieilles            → claims expirés → alerter, l'humain décide
 
 Checkpoint (sur demande) :
   bash scripts/bsi-signal.sh send <instance ou sess-id> --type CHECKPOINT \
        --payload "→ handoffs/<fichier>.md"
 ```
 
-Ouvrir et fermer un claim : `bsi-claim.sh open|close` — c'est helloWorld au
+Ouvrir et fermer un claim : `brain sessions --ouvrir|--fermer` — c'est helloWorld au
 boot et session-orchestrator au close, pas le scribe.
 
 ### Règles BSI non négociables
 
 - Jamais auto-release sur action destructive — humain valide toujours
-- Conflit détecté → alerte, pas résolution silencieuse. `bsi-claim.sh open`
+- Conflit détecté → alerte, pas résolution silencieuse. `brain sessions --ouvrir`
   **refuse** un chevauchement en zone `kernel` et **avertit** en zone projet
   (« SCOPE OVERLAP — parallélisme autorisé ») : l'avertissement se relaie à
   l'humain, il ne s'ignore pas

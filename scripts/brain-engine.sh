@@ -65,11 +65,11 @@ SERVER="$ENGINE_DIR/server.py"
 PID_FILE="$BRAIN_ROOT/.brain-engine.pid"
 LOG_FILE="$BRAIN_ROOT/brain-engine.log"
 MCP_SERVER="$ENGINE_DIR/mcp_server.py"
-# Les deux portes se lancent par `brain serve` : la déclaration (ports, mode,
+# Les deux portes se lancent par `brain servir` : la déclaration (ports, mode,
 # secrets, scopes du MCP local) se décide là, une fois. Ce script garde
 # ce qui l'entoure — Dolt, les PID, les ports déjà tenus, l'installation.
 SERVE="$ENGINE_DIR/serve.py"
-# Les ports des deux portes : ceux que `brain serve` ouvrira. Une déclaration
+# Les ports des deux portes : ceux que `brain servir` ouvrira. Une déclaration
 # illisible (une BRAIN_ROOT qui n'est pas un dossier) ne doit pas empêcher
 # `stop` ni `status` : les défauts, et on le dit.
 if [[ -f "$SERVE" ]]; then
@@ -78,7 +78,7 @@ if [[ -f "$SERVE" ]]; then
       case "$_k" in BRAIN_PORT|BRAIN_MCP_PORT) export "$_k=$_v" ;; esac
     done <<< "$_ports"
   else
-    echo "⚠️  brain serve n'a pas pu lire sa déclaration — ports par défaut" >&2
+    echo "⚠️  brain servir n'a pas pu lire sa déclaration — ports par défaut" >&2
   fi
   unset _ports _k _v
 fi
@@ -344,7 +344,7 @@ cmd_start() {
   local port
   port=$(detect_port)
 
-  # La déclaration — mode, ports, secrets — est celle de `brain serve` : on
+  # La déclaration — mode, ports, secrets — est celle de `brain servir` : on
   # l'affiche, on ne la recalcule pas. Les secrets ne sont plus `source`s (le
   # shell EXÉCUTAIT chaque ligne de MYSECRETS) : `serve.py` les lit comme
   # systemd lit un EnvironmentFile.
@@ -595,7 +595,7 @@ cmd_install_pm2() {
 // ecosystem.config.js — généré par brain-engine.sh install pm2
 // Usage : pm2 start ecosystem.config.js
 //
-// Les deux portes passent par \`brain serve\` (brain-engine/serve.py) : ports,
+// Les deux portes passent par \`brain servir\` (brain-engine/serve.py) : ports,
 // mode, secrets et scopes du MCP local se déclarent là, une fois. Ce fichier
 // ne lit plus MYSECRETS et ne recopie plus aucun port. Avant, pm2 ne lançait
 // que l'API : un brain sous pm2 n'avait pas de serveur MCP.

@@ -54,7 +54,7 @@ orchestrator-scribe, je passe la main à template-test@laptop — HANDOFF depuis
 | Fichier | Pourquoi |
 |---------|----------|
 | `bash scripts/bsi-signal.sh inbox` | Signaux en attente — la base, chez soi ET chez les peers |
-| `bash scripts/bsi-query.sh open` | Claims actifs — sessions parallèles |
+| `brain sessions` | Claims actifs — sessions parallèles |
 | `brain-compose.local.yml` | Identifier l'instance active (`brain_name@machine`) |
 
 ---
@@ -197,7 +197,7 @@ bash scripts/bsi-signal.sh send <sess-id de cette session> --type CHECKPOINT \
 Le signal est adressé au sess-id du claim, qui ne change pas. Si la session
    est reprise sous une nouvelle identité (après un compactage), le hook de la
    boîte lui rattache son claim par la filiation que Claude Code écrit — et le
-   signal est relevé. À la main : bsi-claim.sh rattacher.
+   signal est relevé. À la main : `brain sessions --rattacher`.
 ```
 
 Watchdog au redémarrage — détection CHECKPOINT :
@@ -234,7 +234,7 @@ Signal ciblé (message direct, pas broadcast) :
 
 - Jamais affirmer qu'un signal a été reçu sans `bsi-signal.sh inbox` — et un peer injoignable se dit, il ne vaut pas « rien reçu »
 - Jamais écrire un signal sans confirmer l'instance cible (elle doit exister dans brain-compose.local.yml)
-- Signal ciblant une session (`sess-id`) : vérifier que cette session a un claim ouvert (`bsi-query.sh open`) — sinon "Information manquante — session inconnue ou déjà fermée"
+- Signal ciblant une session (`sess-id`) : vérifier que cette session a un claim ouvert (`brain sessions`) — sinon "Information manquante — session inconnue ou déjà fermée"
 - Deadlock détecté (A attend B, B attend A) → alerter humain immédiatement, ne pas résoudre seul
 - Signal adressé à une instance inconnue → "Information manquante — vérifier brain-compose.local.yml"
 

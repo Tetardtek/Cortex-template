@@ -341,7 +341,7 @@ fi
 # ── Étape 3 (suite) — les satellites déclarés pour cette machine ────────────────────
 if [[ -f "$BRAIN_ROOT/satellites.yml" ]]; then
   python3 "$BRAIN_ROOT/scripts/brain-satellites.py" --brain "$BRAIN_ROOT" --cloner \
-    || warn "satellites incomplets (ce qui manque, et d'où les cloner : ci-dessus) — puis relancer : python3 scripts/brain-satellites.py --cloner"
+    || warn "satellites incomplets (ce qui manque, et d'où les cloner : ci-dessus) — puis relancer : brain satellites --cloner"
 fi
 
 # ── Étape 3.1 — PATHS.md (remplacer les placeholders) ─────────────────────────
@@ -733,7 +733,7 @@ if $A_PART && git -C "$BRAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     ok "les satellites, des dépôts à part : le .gitignore du dossier les tait"
     [[ -n "$_sat" ]] && printf '%s\n' "$_sat"
   else
-    warn "le .gitignore n'a pas tu les satellites — relancer : brain vue --satellites"
+    warn "le .gitignore n'a pas tu les satellites — relancer : brain satellites --taire"
   fi
   if ! git -C "$BRAIN_ROOT" rev-parse -q --verify HEAD >/dev/null 2>&1; then
     if git -C "$BRAIN_ROOT" add -A >/dev/null 2>&1 \

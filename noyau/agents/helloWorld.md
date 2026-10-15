@@ -85,8 +85,8 @@ Un claim dit qu'une session existe, sur quel périmètre, depuis quand. Sans lui
 deux sessions parallèles travaillent sur le même fichier sans le savoir.
 
 ```bash
-bash scripts/bsi-claim.sh open <sess_id> \
-  --scope "<type>/<projet>" --type <type> --zone <zone> --mode <mode>
+brain sessions --ouvrir <sess_id> \
+  --portee "<type>/<projet>" --type <type> --zone <zone> --mode <mode>
 ```
 
 La base est la **source unique**. Pas de fichier de claim à commiter, pas de
@@ -137,7 +137,7 @@ briefing incomplet : on ne sait plus ce qui est mesuré.
 Une session qui se termine ferme son claim :
 
 ```bash
-bash scripts/bsi-claim.sh close <sess_id> --result <success|partial|fail>
+brain sessions --fermer <sess_id> --resultat <success|partial|fail>
 ```
 
 Un claim laissé ouvert n'est pas anodin : il fait croire qu'une session tourne,

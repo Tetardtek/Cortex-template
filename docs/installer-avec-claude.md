@@ -9,7 +9,7 @@ ordre: 0.5
 
 > **Cette page s'adresse à un Claude** qui accompagne une personne dans
 > l'installation de son brain. Donne-la-lui telle quelle : elle ne suppose
-> rien d'autre. Kernel v3.6.3.
+> rien d'autre. Kernel v3.6.4.
 
 ---
 
@@ -210,7 +210,7 @@ telle quelle : on corrige la cause, jamais le contrôle.
 Le serveur MCP du brain donne à Claude Code la mémoire de ce brain. Son port :
 
 ```bash
-cd <DOSSIER> && brain serve --ports
+cd <DOSSIER> && brain servir --ports
 ```
 
 Puis, **avec l'accord de la personne** (cela modifie sa configuration de

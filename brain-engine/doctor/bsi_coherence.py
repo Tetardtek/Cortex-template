@@ -41,8 +41,9 @@ INTERDITS = [
     (re.compile(r"git (?:add|commit|push).{0,40}claim", re.I), "claim passé par git"),
     (re.compile(r"bsi: open/close claim"), "exception git accordée aux claims"),
 ]
-# Le nom de la commande qui fait foi.
-ATTENDU = "bsi-claim.sh open"
+# Le geste qui fait foi : le verbe `brain sessions --ouvrir`, ou le script qu'il
+# appelle, son nom d'avant — un brain d'une version antérieure le nomme encore.
+ATTENDUS = ("brain sessions --ouvrir", "bsi-claim.sh open")
 
 
 def main() -> int:
@@ -84,8 +85,8 @@ def main() -> int:
     # ── 3. le bon mécanisme est nommé là où il faut ──────────────────────────
     manquants = [c.name for c in (root / "agents" / "helloWorld.md", root / "BRAIN-INDEX.md")
                  if not c.exists()
-                 or ATTENDU not in c.read_text(encoding="utf-8", errors="replace")]
-    verifie(f"`{ATTENDU}` nommé dans helloWorld et BRAIN-INDEX", not manquants,
+                 or not any(a in c.read_text(encoding="utf-8", errors="replace") for a in ATTENDUS)]
+    verifie(f"`{ATTENDUS[0]}` nommé dans helloWorld et BRAIN-INDEX", not manquants,
             ", ".join(manquants) if manquants else "les deux le nomment")
 
     print()

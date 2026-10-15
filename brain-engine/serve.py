@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""brain serve — les portes réseau du brain, une seule déclaration.
+"""brain servir — les portes réseau du brain, une seule déclaration.
 
-    brain serve                  les deux portes, au premier plan, surveillées
-    brain serve http             le moteur seul (`server.py`)
-    brain serve mcp              le serveur MCP seul (`mcp_server.py`)
-    brain serve --declaration    ce qui serait lancé — rien n'est lancé
-    brain serve --ports          les deux ports, en `CLÉ=valeur` — pour un script
+    brain servir                  les deux portes, au premier plan, surveillées
+    brain servir http             le moteur seul (`server.py`)
+    brain servir mcp              le serveur MCP seul (`mcp_server.py`)
+    brain servir --declaration    ce qui serait lancé — rien n'est lancé
+    brain servir --ports          les deux ports, en `CLÉ=valeur` — pour un script
 
-`brain serve` LANCE les serveurs, il ne les remplace pas : `server.py` et
+`brain servir` LANCE les serveurs, il ne les remplace pas : `server.py` et
 `mcp_server.py` portent les routes éprouvées, rien n'y est réécrit. Ce qui
 change, c'est que leur configuration se décide à UN endroit.
 
@@ -23,7 +23,7 @@ dernier :
     `.env.local`         du programme (`brain-engine/.env.local`)
     MYSECRETS            `brain-secrets/MYSECRETS` de la data — sauf en démo
     l'environnement      ce qui est déjà posé gagne toujours (une unité
-                         systemd, un `BRAIN_PORT=… brain serve` à la main)
+                         systemd, un `BRAIN_PORT=… brain servir` à la main)
 
 Le mode : `satellite` quand la posture de l'instance refuse d'écrire le kernel
 (un `BRAIN_MODE` posé ne peut que le durcir) ; sinon `BRAIN_MODE`, puis le premier
@@ -49,13 +49,13 @@ des lignes `CLÉ=valeur`, rien d'autre. Aucune valeur n'est jamais affichée —
 
 ── Un seul processus par porte ─────────────────────────────────────────────
 
-`brain serve http` et `brain serve mcp` REMPLACENT leur processus par le
+`brain servir http` et `brain servir mcp` REMPLACENT leur processus par le
 serveur (`os.execve`) : le PID que voient systemd et le fichier de PID de
 `brain-engine.sh` est celui du serveur lui-même. Un enfant intermédiaire l'aurait
 cassé : `stop` aurait tué l'intermédiaire et laissé le serveur tourner.
 
 Sans argument, les deux portes tournent en enfants surveillés : si l'une
-s'arrête, l'autre est arrêtée, et `brain serve` sort en erreur.
+s'arrête, l'autre est arrêtée, et `brain servir` sort en erreur.
 """
 
 from __future__ import annotations
@@ -141,7 +141,7 @@ def ecrit_le_kernel(donnees: Path, posture: str) -> bool:
 
 
 # Les seuls modes qu'un `BRAIN_MODE` posé peut imposer à un satellite : plus
-# restrictifs que lui. `BRAIN_MODE=prod brain serve` ne lève pas la posture.
+# restrictifs que lui. `BRAIN_MODE=prod brain servir` ne lève pas la posture.
 PLUS_STRICTS_QUE_SATELLITE = ('template', 'demo')
 
 
@@ -274,13 +274,13 @@ def lancer_les_deux(decl: Declaration, programme: Path) -> int:
                                 cwd=decl.environ['BRAIN_ROOT'])
         for porte in ('http', 'mcp')
     }
-    print(f"▶ brain serve — http :{decl.port_http} · mcp :{decl.port_mcp} "
+    print(f"▶ brain servir — http :{decl.port_http} · mcp :{decl.port_mcp} "
           f"— Ctrl+C pour arrêter")
     return surveiller(enfants)
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog='brain serve', description=__doc__,
+    p = argparse.ArgumentParser(prog='brain servir', description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('porte', nargs='?', choices=sorted(SERVEURS),
                    help='une seule porte (sans : les deux, surveillées)')

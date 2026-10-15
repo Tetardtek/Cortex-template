@@ -7,12 +7,12 @@ de la base Dolt, pas un fichier. Il n'y a rien à commiter, rien à pousser.
 
 | Pour | Commande |
 |---|---|
-| ouvrir la session | `bash scripts/bsi-claim.sh open <sess_id> --type <type> --scope "<type>/<scope>"` |
-| la fermer | `bash scripts/bsi-claim.sh close <sess_id> --result <success\|partial\|fail>` |
-| voir les sessions ouvertes | `bash scripts/bsi-query.sh open` |
-| les sessions des autres machines | `bash scripts/bsi-query.sh peers` |
+| ouvrir la session | `brain sessions --ouvrir <sess_id> --type <type> --portee "<type>/<scope>"` |
+| la fermer | `brain sessions --fermer <sess_id> --resultat <success\|partial\|fail>` |
+| voir les sessions ouvertes | `brain sessions` |
+| les sessions des autres machines | `brain sessions --toutes` |
 
-Rien ne ferme un claim oublié tout seul : `bash scripts/bsi-claim.sh close-stale`
+Rien ne ferme un claim oublié tout seul : `brain sessions --fermer-vieilles`
 ferme ceux qui ont dépassé la durée de leur type de session.
 
 Le détail : [docs/sessions.md](docs/sessions.md).

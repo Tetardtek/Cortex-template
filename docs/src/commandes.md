@@ -32,3 +32,24 @@ l'aide apparaît ici à la génération suivante.
   noyau et de l'instance : [Architecture](architecture.md).
 - **`brain migrer`** fait passer un brain cloné par git au paquet, une fois.
   `--a-blanc` d'abord.
+
+## La langue des commandes
+
+Une convention, tenue partout — pour que la commande ne devienne pas un
+mélange de deux langues. Un verbe ou une option qui s'ajoute la suit.
+
+- **En français**, en minuscules, sans accents : un mot qui n'en a pas besoin
+  de préférence (`--tirer` plutôt que « récupérer »), sinon l'accent tombe
+  (`--deverrouiller`, `--reecrire-claude-md`).
+- **Les mots communs aux deux langues** restent tels quels : `init`,
+  `satellites`, `briefing`, `ports`, `http`, `mcp`.
+- **L'exception** : `doctor` — un usage établi (`brew doctor`,
+  `flutter doctor`), et le seul anglicisme de la commande.
+- **Une action est une option** du verbe (`brain maj --appliquer`), pas un mot
+  qui le suit ; `brain servir [http|mcp]` nomme une porte, pas une action.
+- **Un nom renommé reste un alias**, hors de l'aide : `serve`, le nom d'avant,
+  lance toujours `brain servir`, et `--pull` toujours `--tirer`. Rien ne casse
+  chez un fork.
+
+La forme (minuscules, sans accents, l'exception nommée ici) est vérifiée par
+un test ; le français lui-même, par la relecture.

@@ -24,12 +24,12 @@ bash scripts/brain-engine.sh install systemd   # unités UTILISATEUR
 `stop` n'arrête que ce que `start` a lancé, par son fichier de PID. Un moteur
 lancé par systemd s'arrête par `systemctl --user stop brain-engine`.
 
-**Les deux portes se lancent par `brain serve`** (`brain-engine/serve.py`) :
+**Les deux portes se lancent par `brain servir`** (`brain-engine/serve.py`) :
 `start` et les unités systemd passent par lui. La déclaration — ports, mode,
 secrets, scopes du MCP local — se décide là et nulle part ailleurs : pour
 changer un port, `.env.local` ; jamais une ligne `Environment=` dans une unité.
-`brain serve http` et `brain serve mcp` remplacent leur processus par le serveur
-(le PID suivi est le sien) ; `brain serve` seul tient les deux au premier plan.
+`brain servir http` et `brain servir mcp` remplacent leur processus par le serveur
+(le PID suivi est le sien) ; `brain servir` seul tient les deux au premier plan.
 MYSECRETS est lu comme un `EnvironmentFile`, jamais exécuté.
 
 ## Les 23 routes de l'API
