@@ -492,6 +492,12 @@ def controles(brain: Path, complet: bool) -> list[Controle]:
                  "une colonne déclarée qui n'atteint jamais la base",
                  [sys.executable, str(OUTILS / "schema_vs_base.py"),
                   "--brain", str(brain)]),
+        # Le schéma sait ajouter une table chez une instance, jamais en retirer : une
+        # version qui en retire laisse la table chez qui l'avait. Le doctor, dernière étape
+        # des deux chemins de mise à jour (fork et paquet), le rappelle.
+        Controle("la base a quitté ce que le schéma retire",
+                 "une table retirée du schéma, que la base garde en silence",
+                 ["bash", str(brain / "scripts" / "schema-retraits.sh"), "--check"]),
         Controle("schéma versionné",
                  "une base dont la structure n'existe que sur cette machine",
                  ["bash", str(brain / "scripts" / "dolt-schema-gen.sh"), "--check"]),

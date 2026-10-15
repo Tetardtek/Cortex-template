@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.6.7"
+version: "3.6.8"
 
 # ---
 # Ownership — kerneluser
@@ -265,3 +265,6 @@ changelog:
   - version: "3.6.7"
     date: "2026-10-15"
     notes: "Un brain servi par le paquet apprend qu une version plus recente existe. Le timer des versions (brain-maj.timer) lisait les tags d un remote git, qu un brain servi par le paquet n a pas : il notait sans amont, et le briefing se taisait a jamais. Chez un programme installe a part, il lit maintenant l index que pipx a garde de l installation, sans jeton, et la version de la roue ; la ligne du briefing nomme pipx upgrade brain-cortex, puis brain init <nom> <dossier>. Installe depuis un fichier, sans index garde : le briefing se tait, et le journal du timer dit pourquoi. Un fork clone par git garde son remote. Mise a jour depuis la v3.6.6 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.6.8"
+    date: "2026-10-15"
+    notes: "brain schema, et brain satellites compte ce qu il attend. brain schema dit ce qu une version a retire du schema et que la base garde, a blanc ; --appliquer le retire, refuse tout entier si une seule table porte des lignes. Le doctor le rappelle tant qu il reste une table a retirer (la base a quitte ce que le schema retire) : un brain servi par le paquet n en entendait jamais parler. brain maj et la page Se mettre a jour tapent le verbe. brain satellites : un depot que le .gitignore du dossier tait est un satellite du dossier - la regle du doctor - mesure, tire, compte ; un depot que rien ne declare se dit et se compte a part ; le dossier d un brain servi par le paquet, sans amont, est local, son etat voulu. Le bilan disait 12 depot(s) sur 4 chez un brain servi par le paquet. Mise a jour depuis la v3.6.7 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."

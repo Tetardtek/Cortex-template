@@ -55,6 +55,8 @@ l'aide apparaît ici à la génération suivante.
 | `brain signaux --accuser <sig_id>` | une fois traité — jamais d'office |
 | `brain etat` | l'instant : les sessions ouvertes ici, les verrous, les signaux — rien ne bouge |
 | `brain etat --verrous` | les verrous seulement |
+| `brain schema` | la base suit-elle le schéma ? ce qu'une version a retiré — rien ne bouge |
+| `brain schema --appliquer` | retirer ces tables ; refusé tout entier si une seule porte des lignes |
 | `brain aligne` | reprendre le tronc, le noyau verrouillé compris |
 | `brain briefing [--projet P]` | le briefing du boot, calculé (helloWorld le lance) |
 | `brain briefing --fiches P` | seulement les prochaines fiches d'un projet |

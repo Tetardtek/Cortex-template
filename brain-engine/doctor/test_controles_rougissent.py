@@ -35,6 +35,7 @@ Garanties :
     niveaux / non déclaré une entrée qui apparaît sans se déclarer est signalée
     niveaux / fantôme     une entrée déclarée et absente est signalée
     niveaux / vestige     un vestige absent (le retrait fait) ou présent (à faire) ne rougit pas
+    schéma retiré         une table que le schéma a retirée, et que la base garde, est signalée
     registre / hors cat.  un agent que le catalogue ignore est signalé
     registre / en retard  un catalogue qui n'est pas ce que `--emit` produirait
                           (description, statut, classification) rougit en
@@ -1226,6 +1227,25 @@ def cmd_close_stale():
                      cloture("- ✅ ~~**[MY" "-68] x**~~\n  texte\n\n## [MY" "-68] la suite\n\nrien de clos\n"), 0)
             garantie("clôture / reprise close sans rapport",
                      cloture("### [MY" "-54] x\n\n" + rapport + "\n### [MY" "-54] suite — ✅ soldé\n\ntexte\n"), 1)
+            # La forme : « mesuré sur le runner (…) : » — le rapport de BS-32, complet, que le
+            # contrôle comptait « sans rapport » faute de la chaîne `mesuré :`. Quelques mots
+            # entre le champ et ses deux-points passent ; un champ absent rougit toujours.
+            bs32 = ("> **Clôture** — mesuré sur le runner (PR jetable #83, fermée) : la CI passait (✅) → rouge (❌)"
+                    " · tenu par : l'étape de la CI\n")
+            garantie("clôture / « mesuré sur … : » est un rapport",
+                     cloture("### [MY" "-158] x — ✅\n\n" + bs32), 0)
+            garantie("clôture / « tenu, ici, par : » n'est pas « tenu par » ⇒ rouge",
+                     cloture("### [MY" "-158] x — ✅\n\n" + rapport.replace("tenu par :", "tenu, ici, par :")), 1)
+            garantie("clôture / « tenu par la CI : » est un rapport",
+                     cloture("### [MY" "-158] x — ✅\n\n" + rapport.replace("tenu par :", "tenu par la CI :")), 0)
+            garantie("clôture / sans « tenu par » ⇒ rouge",
+                     cloture("### [MY" "-158] x — ✅\n\n> **Clôture** — mesuré sur le runner : 0 → 1\n"), 1)
+            garantie("clôture / « mesuré » sans ses deux-points ⇒ rouge",
+                     cloture("### [MY" "-158] x — ✅\n\n> **Clôture** — mesuré 0 → 1 · tenu par : x\n"), 1)
+            garantie("clôture / un « mesuré » trop loin de ses deux-points ⇒ rouge",
+                     cloture("### [MY" "-158] x — ✅\n\n> **Clôture** — mesuré " + "mot " * 40
+                             + ": 0 → 1 · tenu par : x\n"), 1)
+
             # Le rapport de la voisine ne couvre pas une fiche : c'est la frontière.
             garantie("clôture / le rapport voisin ne compte pas",
                      cloture("### [MY" "-58] x — ✅\n\ntexte\n\n- **[MY" "-86] voisine**\n" + rapport), 1)
@@ -2128,6 +2148,32 @@ def cmd_close_stale():
             with sqlite3.connect(chemin) as cx:
                 cx.execute("UPDATE claims SET ttl_hours = 4, status = 'closed'")
             garantie("ttl / un claim FERMÉ n'est pas jugé", ttl(), 0)
+
+    # ── La base a quitté ce que le schéma retire — ────────────────
+    #
+    # Le contrôle du doctor joue `schema-retraits.sh --check` du brain : 1 tant qu'une
+    # table retirée reste, vide ou pleine. Une base SQLite jetable, depuis le `schema.sql`
+    # du vrai brain, le vrai script dirigé vers elle par l'environnement.
+    retraits = VRAI_BRAIN / "scripts" / "schema-retraits.sh"
+    if retraits.exists() and "--check" in retraits.read_text(encoding="utf-8"):
+        import sqlite3
+        with tempfile.TemporaryDirectory(prefix="temoin-retraits-") as tmp:
+            chemin = Path(tmp) / "brain.db"
+            with sqlite3.connect(chemin) as cx:
+                cx.executescript((VRAI_BRAIN / "brain-engine" / "schema.sql").read_text(encoding="utf-8"))
+            env_r = {**os.environ, "BRAIN_DB_BACKEND": "sqlite", "BRAIN_DB_PATH": str(chemin)}
+
+            def check() -> int:
+                return subprocess.run(["bash", str(retraits), "--check"], capture_output=True,
+                                      text=True, env=env_r).returncode
+
+            garantie("schéma retiré / une base propre passe", check(), 0)
+            with sqlite3.connect(chemin) as cx:
+                cx.execute("CREATE TABLE todo_items (id INTEGER PRIMARY KEY, x TEXT)")
+            garantie("schéma retiré / une table retirée reste", check(), 1)
+            with sqlite3.connect(chemin) as cx:
+                cx.execute("INSERT INTO todo_items (x) VALUES ('la donnée de l''instance')")
+            garantie("schéma retiré / une table retirée pleine reste", check(), 1)
 
     # ── L'archivage a tourne — ────────────────────────────────────
     #

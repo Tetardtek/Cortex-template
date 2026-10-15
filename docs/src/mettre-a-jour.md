@@ -144,15 +144,17 @@ Installé avec `--sans-service` : `bash scripts/brain-engine.sh stop`, puis `sta
 **5. Suivre le schéma de la base**
 
 Le schéma sait ajouter une table chez toi, jamais en retirer une. Quand une
-version retire des tables, ce script les retire de ta base :
+version retire des tables, `brain schema` les retire de ta base :
 
 ```bash
-bash scripts/schema-retraits.sh              # à blanc : la base visée, et ce qui partirait
-bash scripts/schema-retraits.sh --appliquer
+brain schema                 # à blanc : la base visée, et ce qui partirait
+brain schema --appliquer
 ```
 
 Il refuse tout si une seule de ces tables contient des lignes : ce sont
 peut-être les tiennes. Exporte-les, vide la table, puis relance.
+Le doctor le rappelle tant qu'il reste une table à retirer (« la base a quitté
+ce que le schéma retire »).
 
 **6. Lire les notes de version** : elles disent ce qui se fait à la main, par
 exemple une ligne à corriger dans ton `~/.claude/CLAUDE.md`, qui n'est pas dans

@@ -15,11 +15,12 @@
 #   post-checkout → la vue des agents suit un checkout de branche, un worktree neuf
 #   (post-merge la reconstruit aussi : `agents/` est une vue quand `noyau/agents/` existe)
 #
-# Quand un dossier du brain est un satellite (son propre dépôt), trois lanceurs de
-# plus dans ses hooks — post-commit, post-merge, post-rewrite :
+# Quand un dossier du brain est un satellite (son propre dépôt), des lanceurs de plus
+# dans ses hooks — post-commit, post-merge, post-rewrite, sauf mention :
 #   handoffs/         → scripts/hooks/handoffs-satellite : la base suit les handoffs
 #   instance/agents/  → scripts/hooks/agents-satellite : la vue suit la couche de l'instance
 #   progression/      → scripts/hooks/agents-satellite : la carte des compléments suit la progression
+#   workspace/        → scripts/hooks/workspace-satellite (pre-commit) : le backlog se juge au commit
 #
 # Ce qui s'installe dans .git/hooks n'est qu'un LANCEUR : il exécute la source
 # versionnée du dépôt principal. Corriger un hook, c'est corriger sa source et
@@ -44,7 +45,14 @@ HOOKS=(pre-commit commit-msg post-commit post-merge post-rewrite post-checkout)
 # répondrait par le dépôt du brain — d'où le `.git`.
 BRAIN_MAIN="$(cd "$HOOKS_DIR/../.." && pwd)"
 SAT_HOOKS=(post-commit post-merge post-rewrite)
-SATELLITES=(handoffs:handoffs-satellite instance/agents:agents-satellite progression:agents-satellite)
+# <chemin>:<source>[:<hooks séparés par des virgules>] — sans hooks nommés, SAT_HOOKS.
+SATELLITES=(handoffs:handoffs-satellite instance/agents:agents-satellite progression:agents-satellite
+            workspace:workspace-satellite:pre-commit)
+sat_lire() {  # <entrée> → pose chemin, source et hooks_sat (le tableau de ses hooks)
+    local reste
+    chemin="${1%%:*}"; reste="${1#*:}"; source="${reste%%:*}"
+    if [[ "$reste" == *:* ]]; then IFS=, read -ra hooks_sat <<< "${reste#*:}"; else hooks_sat=("${SAT_HOOKS[@]}"); fi
+}
 sat_dir() {  # <chemin> → son dossier de hooks, vide s'il n'est pas un dépôt à lui
     [[ -e "$BRAIN_MAIN/$1/.git" ]] || return 0
     echo "$(cd "$BRAIN_MAIN/$1" && cd "$(git rev-parse --git-common-dir)" && pwd)/hooks"
@@ -82,17 +90,17 @@ if [[ "${1:-}" == "--check" ]]; then
     done
     poses=()
     for sat in "${SATELLITES[@]}"; do
-        chemin="${sat%%:*}"; source="${sat#*:}"; dir="$(sat_dir "$chemin")"
+        sat_lire "$sat"; dir="$(sat_dir "$chemin")"
         [[ -n "$dir" ]] || continue
-        for h in "${SAT_HOOKS[@]}"; do
+        for h in "${hooks_sat[@]}"; do
             [[ -f "$dir/$h" ]] && [[ "$(cat "$dir/$h")" == "$(lanceur_satellite "$h" "$chemin" "$source")" ]] \
                 || manquants+=("$chemin/$h")
         done
-        poses+=("$chemin/")
+        poses+=("$chemin/ — ${#hooks_sat[@]} lanceur(s)")
     done
     if (( ${#manquants[@]} == 0 )); then
         echo "✅ Hooks brain installés — les ${#HOOKS[@]} lanceurs sont en place"
-        for p in "${poses[@]}"; do echo "✅ Satellite $p — ses ${#SAT_HOOKS[@]} lanceurs aussi"; done
+        for p in "${poses[@]}"; do echo "✅ Satellite $p aussi"; done
         exit 0
     fi
     echo "⚠️  Hooks brain absents ou écrits à la main : ${manquants[*]}"
@@ -100,7 +108,9 @@ if [[ "${1:-}" == "--check" ]]; then
     exit 1
 fi
 
-for h in "${HOOKS[@]}" "${SATELLITES[@]#*:}"; do
+sources=()
+for sat in "${SATELLITES[@]}"; do sat_lire "$sat"; sources+=("$source"); done
+for h in "${HOOKS[@]}" "${sources[@]}"; do
     [[ -f "$BRAIN_ROOT/scripts/hooks/$h" ]] || { echo "❌ source absente : scripts/hooks/$h" >&2; exit 1; }
 done
 
@@ -123,10 +133,10 @@ for h in "${HOOKS[@]}"; do
 done
 
 for sat in "${SATELLITES[@]}"; do
-    chemin="${sat%%:*}"; source="${sat#*:}"; dir="$(sat_dir "$chemin")"
+    sat_lire "$sat"; dir="$(sat_dir "$chemin")"
     [[ -n "$dir" ]] || continue
     mkdir -p "$dir"
-    for h in "${SAT_HOOKS[@]}"; do
+    for h in "${hooks_sat[@]}"; do
         installer "$dir" "$h" "$(lanceur_satellite "$h" "$chemin" "$source")"
         echo "✅ $chemin/ $h"
     done

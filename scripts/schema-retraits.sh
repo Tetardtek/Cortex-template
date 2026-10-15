@@ -2,12 +2,14 @@
 # brain-distribuable: oui
 # schema-retraits.sh — Retire de la base les tables que le schéma a retirées
 #
-# Usage :
+# Usage — le verbe `brain schema` le joue :
 #   bash scripts/schema-retraits.sh              → à blanc : ce qui serait retiré
 #   bash scripts/schema-retraits.sh --appliquer  → retire, puis dit ce qui l'a été
+#   bash scripts/schema-retraits.sh --check      → le contrat du doctor : 1 tant qu'il reste à retirer
 #
-# Sortie : 0 = rien à faire, ou fait · 1 = refusé (une table porte des lignes)
-#          2 = base injoignable ou erreur
+# Sortie : 0 = rien à faire, ou fait · 1 = refusé (une table porte des lignes),
+#              ou, avec --check, il reste à retirer
+#          2 = base injoignable, argument inconnu, ou erreur
 #
 # ── Pourquoi ce script existe ───────────────────────────────────────────────
 #
@@ -63,10 +65,15 @@ RETRAITS = [
 
 racine = Path(sys.argv[1])
 args = sys.argv[2:]
-inconnus = [a for a in args if a != "--appliquer"]
-if inconnus:
-    sys.exit(f"argument inconnu : {' '.join(inconnus)} — usage : schema-retraits.sh [--appliquer]")
+inconnus = [a for a in args if a not in ("--appliquer", "--check")]
+if inconnus or len(set(args)) > 1:
+    print(f"argument refusé : {' '.join(args)} — usage : schema-retraits.sh [--appliquer | --check]",
+          file=sys.stderr)
+    sys.exit(2)
 appliquer = "--appliquer" in args
+# À blanc sort en 0 qu'il reste ou non à retirer : `--check` dit 1 tant qu'il reste,
+# pour que le doctor (« la base a quitté ce que le schéma retire ») s'y fie.
+check = "--check" in args
 
 sys.path.insert(0, str(racine / "brain-engine"))
 try:
@@ -117,11 +124,16 @@ if pleines:
     for t, n in pleines:
         print(f"     {t} : {n} ligne(s)")
     print("   L'amont les a retirées parce que rien ne les lit plus. Si ces lignes")
-    print("   comptent pour toi, exporte-les ; puis vide la table et relance.")
+    print("   comptent pour toi, exporte-les ; puis vide la table et relance")
+    print("   `brain schema --appliquer`.")
+    sys.exit(1)
+
+if check:
+    print("\n🔴 la base garde ce que le schéma a retiré — `brain schema --appliquer` pour retirer")
     sys.exit(1)
 
 if not appliquer:
-    print("\n(à blanc) — relancer avec --appliquer pour retirer")
+    print("\n(à blanc) — `brain schema --appliquer` pour retirer")
     sys.exit(0)
 
 try:

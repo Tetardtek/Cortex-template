@@ -3210,6 +3210,77 @@ class TestBrainSatellites(unittest.TestCase):
             self.assertTrue((brain / 'profil' / 'nouveau.md').exists(), "--pull a avancé")
             self.assertEqual(self._lancer(brain, '--check').returncode, 0)
 
+    def test_un_depot_tu_par_le_gitignore_est_un_satellite_du_dossier(self):
+        """Un brain servi par le paquet déclare ses satellites standards dans le `NIVEAUX.yml` du
+        programme et les tait par son `.gitignore` ; `satellites.yml` ne liste que les siens. Le
+        verbe les disait « non déclaré », et son bilan mêlait deux comptes : « 12 dépôt(s) sur 4 »
+        (le laptop, 15/10). La règle du doctor (`niveaux.py`) : un dépôt imbriqué que git ignore
+        est rattaché. Un dépôt que rien ne déclare se dit à part, et se compte à part."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            brain, forge = self._brain(tmp)
+            self._lancer(brain, '--cloner')
+            autre = self._forge(tmp / 'ailleurs', 'learning-depot')
+            self._git('clone', '-q', str(autre / 'learning-depot.git'), str(brain / 'learning'), cwd=tmp)
+            (brain / '.gitignore').write_text('/profil/\n/todo/\n/learning/\n')
+            (brain / 'intrus').mkdir()
+            self._git('init', '-q', cwd=brain / 'intrus')
+            r = self._lancer(brain)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            ligne = next((l for l in r.stdout.splitlines() if ' learning ' in f' {l} '), '')
+            self.assertIn('à jour', ligne, r.stdout)
+            self.assertNotIn('non déclaré', ligne, r.stdout)
+            self.assertIn('✅ les 4 dépôts de `laptop` sont à jour', r.stdout,
+                          'le brain, deux satellites de la liste, un du dossier — un compte, un seul')
+            self.assertIn('1 dépôt(s) que rien ne déclare : intrus', r.stdout)
+            self.assertNotIn('sur 3', r.stdout)
+            shutil.rmtree(brain / 'intrus')
+            r = self._lancer(brain)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self._pousser(tmp / 'ailleurs', autre, 'learning-depot', 'nouveau.md')
+            r = self._lancer(brain)
+            self.assertIn('❌ 1 dépôt(s) sur 4 ne sont pas à jour', r.stdout, r.stdout)
+            self.assertEqual(self._lancer(brain, '--tirer').returncode, 0)
+            self.assertTrue((brain / 'learning' / 'nouveau.md').exists(), '--tirer avance aussi un satellite du dossier')
+
+    def test_le_brain_servi_par_le_paquet_n_a_pas_d_amont_par_construction(self):
+        """Son dossier est un dépôt à lui (`brain init`), sans remote : « sans amont » y est l'état
+        voulu, pas une dérive. Un fork sans amont, lui, reste dit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            forge = self._forge(tmp, 'profil-depot')
+            brain = tmp / 'MonBrain'
+            brain.mkdir()
+            self._git('init', '-q', '-b', 'main', cwd=brain)
+            self._poste(brain, 'focus.md', 'le brain naît')
+            (brain / 'brain-compose.local.yml').write_text('machine: laptop\n')
+            (brain / 'satellites.yml').write_text('satellites:\n  profil: {depot: profil-depot, machines: [laptop]}\n')
+            self._git('clone', '-q', str(forge / 'profil-depot.git'), str(brain / 'profil'), cwd=tmp)
+            r = self._lancer(brain)
+            self.assertEqual(r.returncode, 1, 'un fork sans amont : dit\n' + r.stdout)
+            self.assertIn('sans amont', r.stdout)
+            prog = tmp / 'programme'
+            (prog / 'scripts').mkdir(parents=True)
+            shutil.copy(self.SCRIPT, prog / 'scripts' / 'brain-satellites.py')
+            (prog / '.cortex-programme').touch()
+            env = {k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')}
+            r = subprocess.run([sys.executable, str(prog / 'scripts' / 'brain-satellites.py'), '--brain', str(brain)],
+                               capture_output=True, text=True, env=env, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('servi par le paquet', r.stdout)
+            self.assertTrue(any(l.strip().startswith('✅ brain') for l in r.stdout.splitlines()), r.stdout)
+            self.assertIn('✅ les 2 dépôts de `laptop` sont à jour', r.stdout)
+            # Seul le dossier du brain : un satellite sans amont, même chez le paquet, reste dit.
+            (brain / 'perso').mkdir()
+            self._git('init', '-q', '-b', 'main', cwd=brain / 'perso')
+            self._poste(brain / 'perso', 'a.md', 'à moi')
+            (brain / '.gitignore').write_text('/profil/\n/perso/\n')
+            r = subprocess.run([sys.executable, str(prog / 'scripts' / 'brain-satellites.py'), '--brain', str(brain)],
+                               capture_output=True, text=True, env=env, timeout=120)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            ligne = next((l for l in r.stdout.splitlines() if ' perso ' in f' {l} '), '')
+            self.assertIn('sans amont', ligne, r.stdout)
+
     def test_tirer_et_discret_les_noms_du_verbe_et_les_alias_d_avant(self):
         """`brain satellites --tirer` / `--discret` ; `--pull` / `--quiet` restent des alias."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -5600,6 +5671,38 @@ class TestSchemaRetraits(unittest.TestCase):
         r = self._joue('--appliquer', base=absente)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(absente.exists(), "sqlite3 crée ce qu'il ouvre — le script ne doit pas l'ouvrir")
+
+    # ── `--check` : ce que le doctor lit ──
+    # À blanc sort en 0 qu'il y ait ou non à retirer : un contrôle ne peut pas s'y fier.
+    def test_check_rougit_tant_qu_une_table_retiree_reste(self):
+        avant = self._etat()
+        r = self._joue('--check')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('brain schema --appliquer', r.stdout)
+        self.assertEqual(self._etat(), avant, "--check ne touche à rien")
+
+    def test_check_rougit_aussi_sur_une_table_pleine(self):
+        c = sqlite3.connect(self.base)
+        c.execute("INSERT INTO agent_loads (x) VALUES ('la donnee du fork')"); c.commit(); c.close()
+        r = self._joue('--check')
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('agent_loads', r.stdout)
+        self.assertIn('export', r.stdout)
+
+    def test_check_est_vert_sur_une_base_qui_suit_le_schema(self):
+        self._joue('--appliquer')
+        r = self._joue('--check')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('rien à retirer', r.stdout)
+
+    def test_check_et_appliquer_ne_vont_pas_ensemble(self):
+        avant = self._etat()
+        r = self._joue('--check', '--appliquer')
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertEqual(self._etat(), avant)
+
+    def test_a_blanc_nomme_le_verbe(self):
+        self.assertIn('brain schema --appliquer', self._joue().stdout)
 
 
 class TestModulesDesTables(unittest.TestCase):
@@ -8158,7 +8261,7 @@ class TestCommandesDeBrain(unittest.TestCase):
     def test_un_verbe_inconnu_dit_les_verbes_de_l_aide(self):
         r = subprocess.run(['bash', str(self.SCRIPT), 'nimporte'], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 2)
-        self.assertIn('connus : init, servir, doctor, maj, vue, satellites, sessions, signaux, etat, aligne, briefing, migrer', r.stderr)
+        self.assertIn('connus : init, servir, doctor, maj, vue, satellites, sessions, signaux, etat, schema, aligne, briefing, migrer', r.stderr)
 
     # ── La page générée ──
     def test_une_ligne_ajoutee_a_l_aide_apparait_dans_la_table(self):
@@ -8526,6 +8629,60 @@ class TestBrainSignaux(unittest.TestCase):
         self.assertNotIn('--payload', r.stdout)
 
 
+class TestBrainSchema(unittest.TestCase):
+    """`brain schema` — une façade en français devant `schema-retraits.sh`. Jouée contre
+    un FAUX script qui note ses arguments et rend le code qu'on lui donne : aucune base n'est ouverte."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='schema-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        d = self.tmp / 'scripts'
+        d.mkdir()
+        if (BRAIN_ROOT_PATH / 'scripts' / 'schema.py').exists():
+            shutil.copy(BRAIN_ROOT_PATH / 'scripts' / 'schema.py', d / 'schema.py')
+        self.journal = self.tmp / 'appels'
+        (d / 'schema-retraits.sh').write_text(
+            f'#!/bin/bash\nprintf "%s|" "$@" >> "{self.journal}"\nexit "${{CODE:-0}}"\n')
+        self.script = d / 'schema.py'
+
+    def _jouer(self, *args, code=0):
+        if self.journal.exists():
+            self.journal.unlink()
+        r = subprocess.run([sys.executable, str(self.script), *args], capture_output=True, text=True,
+                           timeout=30, env={**os.environ, 'CODE': str(code)})
+        appel = self.journal.read_text().rstrip('|').split('|') if self.journal.exists() else None
+        return r, appel
+
+    def test_chaque_option_lance_le_bon_geste(self):
+        for args, attendu in {(): [''], ('--appliquer',): ['--appliquer']}.items():
+            r, appel = self._jouer(*args)
+            self.assertEqual(r.returncode, 0, (args, r.stderr))
+            self.assertEqual(appel, attendu, args)
+
+    def test_le_code_de_sortie_traverse(self):
+        for args in ((), ('--appliquer',)):
+            for code in (1, 2):
+                r, _ = self._jouer(*args, code=code)
+                self.assertEqual(r.returncode, code, (args, code))
+
+    def test_l_aide_parle_francais(self):
+        r, appel = self._jouer('--help')
+        self.assertEqual((r.returncode, appel), (0, None))
+        self.assertIn('--appliquer', r.stdout)
+
+    def test_la_commande_brain_mene_au_verbe(self):
+        """Le dispatcher : `brain schema` lance `schema.py`, pas un voisin."""
+        r = subprocess.run(['bash', str(BRAIN_ROOT_PATH / 'scripts' / 'brain'), 'schema', '--help'],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('usage: brain schema', r.stdout)
+        self.assertIn('--appliquer', r.stdout)
+
+    def test_une_option_inconnue_ne_lance_rien(self):
+        r, appel = self._jouer('--check')
+        self.assertEqual((r.returncode, appel), (2, None), "--check est le contrat du doctor, pas du verbe")
+
+
 class TestSignauxSansInjection(unittest.TestCase):
     """L'argument d'`inbox` et un `sig_id` partent chez le peer dans une commande SSH. Deux
     protections, écrites après une vraie faille (une quote sortait de la commande) : `valide()`
@@ -8580,15 +8737,15 @@ class TestSignauxSansInjection(unittest.TestCase):
 
 class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
     """Ce qu'un Claude ou un humain lit et tape passe par le verbe — `brain sessions`,
-    `brain signaux` ; le code, lui, appelle les scripts (un contrat interne, sans
+    `brain signaux`, `brain schema` ; le code, lui, appelle les scripts (un contrat interne, sans
     dépendre de la commande dans le PATH). Les journaux de modifications et les agents archivés
     racontent l'histoire : non jugés."""
 
-    VERBES = {'sessions': 'sessions.py', 'signaux': 'signaux.py'}
+    VERBES = {'sessions': 'sessions.py', 'signaux': 'signaux.py', 'schema': 'schema.py'}
 
     GESTE = re.compile(r"(bsi-claim\.sh|bsi-query\.sh)\s+(open|close|close-stale|touch|rattacher|peers|stale|"
                        r"health|recent|count-open|count-stale)\b|claims-orphelins\.py\s+--|"
-                       r"bsi-signal\.sh\"?\s+(send|inbox|outbox|ack)\b")
+                       r"bsi-signal\.sh\"?\s+(send|inbox|outbox|ack)\b|schema-retraits\.sh\b")
 
     def _instructions(self):
         b = BRAIN_ROOT_PATH
@@ -8639,7 +8796,7 @@ class TestLesInstructionsParlentLeVerbe(unittest.TestCase):
         fausses = []
         for f, n, ligne in self._instructions():
             for verbe, appel in re.findall(
-                    r"brain (sessions|signaux)((?:\s+(?:--[a-z-]+(?:\|--[a-z-]+)*|[^\s`|]+))*)", ligne):
+                    r"brain (sessions|signaux|schema)((?:\s+(?:--[a-z-]+(?:\|--[a-z-]+)*|[^\s`|]+))*)", ligne):
                 for opt in re.findall(r"--[a-z-]+", appel):
                     if opt not in connues[verbe]:
                         fausses.append(f"{f}:{n}: brain {verbe} {opt}")
@@ -11350,6 +11507,144 @@ class TestLaBaseSuitLeSatelliteHandoffs(unittest.TestCase):
         self.g('add', 'handoffs/LATEST.md')
         self.g('commit', '-q', '--no-verify', '-m', 'un handoff')   # post-commit tourne quand même
         self.assertEqual(self._marques(b), 1, 'le post-commit du brain synchronise')
+
+
+class TestLeBacklogSeJugeAuCommit(unittest.TestCase):
+    """`workspace/` en satellite : son `pre-commit` juge les fiches que le commit touche.
+
+    BS-32 a été close dans un commit que rien n'a jugé : le dépôt n'avait aucun hook, et seuls
+    le doctor et `kanban tenir` lisent les clôtures — après coup. Le hook joue les outils des
+    fiches (Myéline, trouvée par le `chemin:` de `satellites.yml`) sur les SEULS projets que le
+    commit touche. Joué dans un brain jetable, les vrais hooks installés par
+    `install-brain-hooks.sh`, et un Myéline factice dont les outils notent leurs arguments."""
+
+    FICHIERS = ('scripts/install-brain-hooks.sh', 'scripts/lib/python.sh', 'scripts/lib/donnees.sh',
+                *(f'scripts/hooks/{p.name}' for p in sorted((BRAIN_ROOT_PATH / 'scripts' / 'hooks').iterdir())
+                  if p.is_file()))
+    OUTIL = ('import sys, pathlib\n'
+             'ici = pathlib.Path(__file__).resolve().parent.parent\n'
+             'with open(ici / "appels", "a") as f:\n'
+             '    f.write(pathlib.Path(__file__).name + " " + " ".join(sys.argv[1:]) + "\\n")\n'
+             'sys.exit(1 if (ici / "rouge").exists() or (ici / ("rouge-" + pathlib.Path(__file__).stem)).exists() else 0)\n')
+
+    def _brain(self, myeline: bool = True) -> Path:
+        d = Path(tempfile.mkdtemp(prefix='brain-workspace-sat-'))
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        b = d / 'principal'
+        for rel in self.FICHIERS:
+            if (BRAIN_ROOT_PATH / rel).exists():
+                (b / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(BRAIN_ROOT_PATH / rel, b / rel)
+        self.my = d / 'myeline'
+        (self.my / 'tools').mkdir(parents=True)
+        for outil in ('cloture_backlog.py', 'index_backlog.py'):
+            (self.my / 'tools' / outil).write_text(self.OUTIL)
+        (b / 'satellites.yml').write_text(
+            'satellites:\n  workspace: {depot: workspace, machines: [fixe]}\n'
+            + (f'  myeline: {{depot: myeline, machines: [fixe], chemin: {self.my}}}\n' if myeline else ''))
+        (b / '.gitignore').write_text('/workspace/\n')
+        self.g = lambda *a, cwd=b: subprocess.run(
+            ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a], cwd=cwd,
+            capture_output=True, text=True, env={k: v for k, v in os.environ.items() if not k.startswith('BRAIN_')})
+        self.g('init', '-q', '-b', 'main')
+        self.g('add', '-A')
+        self.g('commit', '-q', '--no-verify', '-m', 'init')
+        self.w = b / 'workspace'
+        for projet in ('recit', 'mon-projet'):
+            (self.w / 'backlog' / projet).mkdir(parents=True)
+            (self.w / 'backlog' / projet / 'backlog.md').write_text('# backlog\n')
+        self.g('init', '-q', '-b', 'main', cwd=self.w)
+        self.g('add', '-A', cwd=self.w)
+        self.g('commit', '-q', '--no-verify', '-m', 'init', cwd=self.w)
+        self.install = subprocess.run(['bash', 'scripts/install-brain-hooks.sh'], cwd=b,
+                                      capture_output=True, text=True)
+        return b
+
+    def _appels(self) -> list[str]:
+        f = self.my / 'appels'
+        return f.read_text().splitlines() if f.exists() else []
+
+    def _commit(self, rel: str, texte: str = 'x\n', cwd: Path | None = None):
+        cwd = cwd or self.w
+        (cwd / rel).parent.mkdir(parents=True, exist_ok=True)
+        (cwd / rel).write_text(texte)
+        self.g('add', rel, cwd=cwd)
+        return self.g('commit', '-q', '-m', rel, cwd=cwd)
+
+    def test_les_outils_jugent_le_projet_touche(self):
+        b = self._brain()
+        r = self._commit('backlog/recit/RC-1.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr + self.install.stdout + self.install.stderr)
+        appels = self._appels()
+        self.assertEqual(len(appels), 2, appels)
+        self.assertTrue(all(f'--brain {b}' in a and '--projet recit' in a for a in appels), appels)
+        self.assertTrue(any(a.startswith('index_backlog.py') and '--check' in a for a in appels), appels)
+        self.assertFalse(any('--projet mon-projet' in a for a in appels), 'un projet non touché ne se juge pas')
+
+    def test_un_rouge_refuse_le_commit_et_dit_la_forme(self):
+        self._brain()
+        (self.my / 'rouge').touch()
+        r = self._commit('backlog/recit/RC-1.md')
+        self.assertNotEqual(r.returncode, 0, 'le commit devait être refusé')
+        self.assertIn('mesuré :', r.stdout + r.stderr)
+        self.assertIn('recit', r.stdout + r.stderr)
+        log = self.g('log', '--oneline', cwd=self.w).stdout
+        self.assertEqual(len(log.splitlines()), 1, 'rien n a été commité')
+
+    def test_le_projet_juge_est_celui_du_chemin(self):
+        self._brain()
+        r = self._commit('backlog/mon-projet/MP-1.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        appels = self._appels()
+        self.assertTrue(appels and all('--projet mon-projet' in a for a in appels), appels)
+
+    def test_chaque_outil_peut_refuser_seul(self):
+        for outil in ('cloture_backlog', 'index_backlog'):
+            with self.subTest(outil):
+                self._brain()
+                (self.my / f'rouge-{outil}').touch()
+                r = self._commit('backlog/recit/RC-1.md')
+                self.assertNotEqual(r.returncode, 0, f'{outil} rouge : le commit devait être refusé')
+
+    def test_myeline_declaree_sans_ses_outils_se_tait(self):
+        self._brain()
+        for outil in ('cloture_backlog.py', 'index_backlog.py'):
+            (self.my / 'tools' / outil).unlink()
+        r = self._commit('backlog/recit/RC-1.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_un_commit_hors_du_backlog_ne_juge_rien(self):
+        self._brain()
+        (self.my / 'rouge').touch()
+        r = self._commit('scratch/notes.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._appels(), [])
+
+    def test_sans_myeline_le_hook_se_tait(self):
+        self._brain(myeline=False)
+        r = self._commit('backlog/recit/RC-1.md')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._appels(), [])
+
+    def test_un_worktree_du_satellite_ne_juge_rien(self):
+        """Les outils lisent le dossier de workspace : depuis un worktree, ils jugeraient un autre arbre."""
+        b = self._brain()
+        (self.my / 'rouge').touch()
+        wt = b.parent / 'arbre'
+        self.g('worktree', 'add', '-q', '-b', 'pr', str(wt), cwd=self.w)
+        r = self._commit('backlog/recit/RC-1.md', cwd=wt)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self._appels(), [])
+
+    def test_le_check_voit_le_lanceur_manquant(self):
+        b = self._brain()
+        check = lambda: subprocess.run(['bash', 'scripts/install-brain-hooks.sh', '--check'],
+                                       cwd=b, capture_output=True, text=True)
+        self.assertEqual(check().returncode, 0, check().stdout + check().stderr)
+        (self.w / '.git' / 'hooks' / 'pre-commit').unlink()
+        r = check()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('workspace/pre-commit', r.stdout)
 
 
 class TestLaVueSuitLeSatelliteAgents(unittest.TestCase):

@@ -91,6 +91,8 @@ EXEMPTION = re.compile(r"^([A-Z][A-Z0-9]*-\d+)\s+(\S.*)$")
 # complet que ce qu'il exigeait. Un instrument qui punit la précision qu'il
 # réclame est un instrument mal réglé.
 FENETRE = 25
+#: Les caractères qu'un champ du rapport peut porter avant ses deux-points.
+CHAMP = 80
 
 
 def fiches_closes(fiches: dict) -> dict[str, str]:
@@ -115,9 +117,15 @@ def a_son_rapport(suite: str) -> bool:
     # façon dont il est écrit. Les deux premiers rapports détaillés étaient
     # comptés « sans rapport » alors qu'ils en portaient un plus complet que
     # ce que le contrôle demandait.
+    #
+    # Et le champ peut porter quelques mots avant ses deux-points : « mesuré sur le runner
+    # (PR #83, fermée) : … » — le rapport de BS-32, complet, compté « sans rapport » faute
+    # de la chaîne `mesuré :` (15/10). Jusqu'à ses deux-points, sans franchir un `·` (le
+    # séparateur des champs) ni d'autres deux-points, et pas plus loin que CHAMP.
     nu = re.sub(r"\s+", " ", suite.replace("**", "").replace("`", "")
                                   .replace("\n", " ").replace(">", " "))
-    return "Clôture" in nu and "mesuré :" in nu and "tenu par :" in nu
+    return "Clôture" in nu and all(re.search(rf"{champ}\b[^:·]{{0,{CHAMP}}}:", nu)
+                                   for champ in ("mesuré", "tenu par"))
 
 
 def sans_rapport(fiches: dict) -> list[str]:

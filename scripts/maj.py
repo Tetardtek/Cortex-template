@@ -705,7 +705,7 @@ def la_suite(brain: Path, cible: str, sans_unites: bool, dire) -> int:
                                capture_output=True, text=True, timeout=60)
             dire(f"  {r.stdout.strip() or r.stderr.strip()}")
     dire("\nEnsuite, à la main :")
-    dire("  bash scripts/schema-retraits.sh      # à blanc : ce que la version retire de ta base")
+    dire("  brain schema                         # à blanc : ce que la version retire de ta base")
     dire("  brain doctor")
     dire(f"  les notes de la {cible} : ce qui se fait hors du dépôt")
     return 0

@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.6.7"
-generated_at: "2026-10-15T23:57"
+kernel_version: "3.6.8"
+generated_at: "2026-10-16T01:31"
 
 files:
   KERNEL.md: d0691b686e45fb21099ed5106eddafbb9efa552a81f9d25c6f8fee02fbfdf249
-  brain-compose.yml: c1a41746026ad4427ec39cfb253b31b07e27fe9c2093ca89575a54285ebdca1a
+  brain-compose.yml: 44c65b45bf594d11a486ea6e5bebab12f04f2ca282a25bbf19c90bf37cff5ef5
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -71,11 +71,11 @@ files:
   noyau/agents/vps.md: a8fdf0bdecb5dd13162fcbb18722a33cf288d3f1d83bdd46adaaef8cc8ab23aa
   noyau/agents/watch.md: 8339cbe7fec7f31eb2cbcd13d4db000c08b7e29df14138a124139a7017afce9d
   scripts/aligne.py: f0ff56c48aef70f743aeff168b88e3ee63399509410e805e7e76d4b86075f347
-  scripts/brain: cbc9d35f19eff8f043a2d37b5ae0131527e74c606179ee0142b957788b2074fc
+  scripts/brain: 9593b5e9db89e5a504ed40c64c13f8aa48289def87dc100469346211df885806
   scripts/brain-db-sync.sh: 63a1693df32efd1663a97aac5cabe615e8602a88ef798c5d44cb1fd021b5977e
   scripts/brain-engine.sh: 6d6157fdfaebd322e40b19be73a4aa151c348aad8640a95f1126675081cd7b00
   scripts/brain-init.sh: 41db8ef62cd874d567af8390cca5e55a44c47c75d8c873a5a91623d600c9d51a
-  scripts/brain-satellites.py: 3d8b2986f6323e654e13d288c0fe5aa28965db8f4b7ec88db50b8063d3cd97ae
+  scripts/brain-satellites.py: 9cbb62ceb5b3d21978be690cf528608eee5746fd6a90c25574c9cc0ee4bf3bfb
   scripts/brain-setup.sh: 82d2644ecee15ca734e9a05b0ecbec340737eeb1acacbe700833ef97bc58176e
   scripts/brain-statusline.sh: 6956c72f44fd5f1816c046c3adbb854a4d6d38315a0cd9425b7962cbdefa4677
   scripts/brain-status.sh: f4e6eb19b633948cfd590584ec1fd284fdef462c4d11a83b1c832226bd99a581
@@ -96,7 +96,7 @@ files:
   scripts/garde-lecture.py: fb87ad186a29f38a30ae74cbd1b8d1bd12ba1c84626d8591c589343ebf37422e
   scripts/hooks/_racines.sh: ffe8bf2ab56541a6b66b192aaece783bbdb1415040583ab0ebb4ac613071353e
   scripts/hooks/_vue.sh: b701fb6175fe05d8adc65f9f18979c528e7b89fe64cf7e1c8427a29896592356
-  scripts/install-brain-hooks.sh: 8e0432bb7201783990f5df86a3610d9ff3a6cf70dd9a35b8bd13ed3170722f85
+  scripts/install-brain-hooks.sh: 7984df7c7b1c64f82a84161b7590e68521a3908fb21ec321e365bc832c165536
   scripts/kernel-isolation-check.sh: 20b5048eb48063d5c290abd0aa335d5a43ba8685818cba389f8f7b892049a00c
   scripts/kernel-lock-gen.sh: 1700187a0ab1d3a155597aeaa5aa148c96ffcebb43c8f171c177e8939cb5de44
   scripts/lib/donnees.sh: 622b5ace1928b7b699925984224b6aa2fe5116ed4053afc4ccc96cdafbb225e6
@@ -109,12 +109,13 @@ files:
   scripts/lib/satellites-taire.sh: 38c3909bd43cd132d1f2a21e84765ff3f42dbefe767b5cc1194405d5ff9598ac
   scripts/lib/secrets-semis.sh: 79897641c9bd69b3f8178ed7542cfa3775dbd60b6151d08093e27e889b2c72f2
   scripts/maj-disponible.py: 8e85db4e9b0414de07faa900b3dd8021e5fb29a51dc0a2052823793e04a7ca46
-  scripts/maj.py: 8779f8c9ed3dff11d356cd9b2df7e8df87b16332a4c41116fb88fa93059e37fa
+  scripts/maj.py: 9b7a81aa76fe4cd35e506183e1b10e6b02a6bfb77707febbc879ae27a1b20f82
   scripts/migrer.py: 3cf6d0f42a5a4d3b9755a85b1e7f7eb0829b429d07b46b496a3955eb0c40902f
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
   scripts/posture-gate-check.sh: 321aea8ae25997b802ecc1894640503bf8d14e315a816113f4715e19a6dc78e0
   scripts/saboter.py: 1bab6652ae9a59753cc35177250616d3302fc1babe651eaa6181017b097a22f2
-  scripts/schema-retraits.sh: 0d867d6ad70604a4d1147bfd1b7cd73fe2c69e74f775150cfc8fe7912d196687
+  scripts/schema.py: bd53e6828c417e5dd777ae0b897f4d6988c6011454d2b1e7bb76573ba7ff68a0
+  scripts/schema-retraits.sh: 07233c007a988697d5ea152dc3df0ddbf156fe28e7c36bd2f4bcfa915da1e709
   scripts/schema-sqlite-gen.py: 91d5a7b9aa18092ba320694bed49f734cf1712198b7d5429b894bf280c4012ce
   scripts/scratch-nettoyable.py: f7cf8fff66b1ececf7db4c6a4723d7928575dc6731caf81843c5910afd8072be
   scripts/semis-remplir.py: ea129e9e2c1f8c599d0a516eba41abae677ef13474f6f2a47e5f71cea7ed68c9

@@ -30,8 +30,15 @@ Le brain lui-même est compté avec ses satellites : il était en retard aussi.
                 un dossier vide)                                  → --cloner
                 (depuis son `url:`, sinon la forge du brain + `depot:`)
     pas un dépôt  un dossier AVEC du contenu à la place : jamais écrasé
-    non déclaré un dépôt sous le brain que la liste ignore
-    sans amont  une branche qui ne suit rien
+    non déclaré un dépôt sous le brain que rien ne déclare : ni la liste, ni le
+                `.gitignore` du dossier — compté à part     → le déclarer, ou le ranger
+    sans amont  une branche qui ne suit rien (le dossier d'un brain servi par le
+                paquet : son état voulu, ses données restent ici)
+
+Un dépôt que le `.gitignore` du dossier tait est un satellite du dossier — la règle du
+doctor (`niveaux.py`) : chez un brain servi par le paquet, les satellites standards sont
+déclarés par le programme, et `satellites.yml` ne liste que les siens. Il est mesuré et
+tiré comme les autres.
 
 Un arbre modifié (« en cours ») est dit, jamais rougi : c'est du travail.
 
@@ -199,6 +206,16 @@ def depots_presents(brain: Path) -> set[str]:
             for g in brain.glob(motif)}
 
 
+def tu_par_le_dossier(brain: Path, chemin: str) -> bool:
+    """Le `.gitignore` du brain tait ce dépôt : un satellite du dossier (la règle du doctor)."""
+    return git(brain, "check-ignore", "-q", chemin).returncode == 0
+
+
+def programme_a_part() -> bool:
+    """Le programme est installé à part (la marque) : le dossier du brain n'a pas d'amont."""
+    return (Path(__file__).resolve().parent.parent / ".cortex-programme").exists()
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="brain satellites", description="Les satellites de cette machine")
     p.add_argument("--brain", type=Path, default=BRAIN, help=argparse.SUPPRESS)
@@ -277,8 +294,16 @@ def main() -> int:
         return 0 if all((emplacement(brain, c, miens[c]) / ".git").exists() for c in miens) else 1
 
     lignes: list[tuple[str, str, str]] = []
-    for chemin in [".", *miens]:
-        depot = brain if chemin == "." else emplacement(brain, chemin, miens[chemin])
+    hors_liste = sorted(depots_presents(brain) - set(declares))
+    du_dossier = [c for c in hors_liste if tu_par_le_dossier(brain, c)]
+    inconnus = [c for c in hors_liste if c not in du_dossier]
+    for chemin in [".", *miens, *du_dossier]:
+        if chemin == ".":
+            depot = brain
+        elif chemin in du_dossier:
+            depot = brain / chemin
+        else:
+            depot = emplacement(brain, chemin, miens[chemin])
         if vide_ou_absent(depot):
             lignes.append((chemin, "absent", "→ brain satellites --cloner"))
             continue
@@ -287,37 +312,45 @@ def main() -> int:
             lignes.append((chemin, "pas un dépôt", "le dossier a du contenu — à voir à la main"))
             continue
         e, d = etat(depot)
+        if chemin == "." and e == "sans amont" and programme_a_part():
+            e, d = "local", "servi par le paquet : le dossier n'a pas d'amont, ses données restent ici"
+        elif chemin in du_dossier:
+            d = f"{d}  (tu par le .gitignore du dossier)".strip()
         if a.pull and e == "derrière":
             ok, d = mettre_a_jour(depot)
             e = "à jour" if ok else "bloqué"
         lignes.append((chemin, e, d))
-    for chemin in sorted(depots_presents(brain) - set(declares)):
-        lignes.append((chemin, "non déclaré", "absent de satellites.yml"))
+    for chemin in inconnus:
+        lignes.append((chemin, "non déclaré", "ni dans satellites.yml, ni tu par le .gitignore"))
 
-    signes = {"à jour": "✅", "injoignable": "⏭️"}
+    signes = {"à jour": "✅", "local": "✅", "injoignable": "⏭️"}
     injoignables = sum(e == "injoignable" for _, e, _ in lignes)
     interroges = [l for l in lignes if l[1] not in ("absent", "non déclaré")]
-    derives = [l for l in lignes if l[1] not in ("à jour", "injoignable")]
+    # Les dérives se comptent parmi les dépôts attendus ; un dépôt que rien ne déclare
+    # se dit à part — « 12 dépôt(s) sur 4 » mêlait les deux (le laptop, 15/10).
+    derives = [l for l in lignes if l[1] not in ("à jour", "local", "injoignable", "non déclaré")]
     if interroges and injoignables == len(interroges):
         print(f"SKIP forge injoignable — {injoignables} dépôt(s) sans réponse, rien mesuré.")
         return 0
 
     for chemin, e, d in lignes:
-        if a.quiet and e in ("à jour", "injoignable"):
+        if a.quiet and e in ("à jour", "local", "injoignable"):
             continue
         nom = "brain" if chemin == "." else chemin
         print(f"  {signes.get(e, '❌')} {nom:<16} {e:<12} {d}")
-    total = len(miens) + 1
+    total = len(miens) + len(du_dossier) + 1
     if derives:
         print(f"❌ {len(derives)} dépôt(s) sur {total} ne sont pas à jour sur `{ici}`"
               + (f" ({injoignables} injoignable(s))" if injoignables else ""))
         if not a.pull:
             print("   → brain satellites --tirer   (et --cloner pour un absent)")
-        return 1
-    if not a.quiet or injoignables:
+    elif not a.quiet or injoignables:
         print(f"✅ les {total} dépôts de `{ici}` sont à jour"
               + (f" — {injoignables} injoignable(s), non mesuré(s)" if injoignables else ""))
-    return 0
+    if inconnus:
+        print(f"❌ et {len(inconnus)} dépôt(s) que rien ne déclare : {', '.join(inconnus)}")
+        print("   → le déclarer dans satellites.yml (ou le taire : brain satellites --taire), ou le ranger")
+    return 1 if derives or inconnus else 0
 
 
 if __name__ == "__main__":
