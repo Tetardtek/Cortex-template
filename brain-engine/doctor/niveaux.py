@@ -117,7 +117,13 @@ def main() -> int:
     # tient d'avance sa zone ; son absence n'est pas une dérive.
     a_venir = sorted(n for n in declarees - sur_disque
                      if isinstance(declare[n], dict) and declare[n].get("cree_par"))
-    fantomes = sorted(declarees - sur_disque - set(a_venir))
+    # Un vestige absent n'est pas un fantôme : sa déclaration dit que le retrait est
+    # décidé, et l'absence est le geste fait. Une version qui retire une entrée la garde
+    # en vestige — un brain créé avant la porte encore, un brain neuf ne l'a jamais eue.
+    # Mesuré le 15/10 : `locks/`, retiré en 3.6.5, restait chez un brain servi par le
+    # paquet, et le doctor rougissait après la mise à jour.
+    fantomes = sorted(n for n in declarees - sur_disque - set(a_venir)
+                      if niveau_de(declare[n]) != "vestige")
     if a_venir:
         print(f"  ⏳ {len(a_venir)} déclarée(s), à venir — "
               + ", ".join(f"{n} ({declare[n]['cree_par']})" for n in a_venir))

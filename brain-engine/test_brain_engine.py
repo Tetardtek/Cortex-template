@@ -13380,10 +13380,19 @@ class TestNiveauxDuGabarit(unittest.TestCase):
         # commentaire de la source.
         partent = {f'{n}/' for n, c in TestCouchesDuGabarit._table(self)['couches'].items()
                    if c['part'] in ('contenu', 'readme')}
-        # Une vue (`vue_de:`) est absente du rendu par nature : le fork la construit.
+        # Une vue (`vue_de:`) est absente du rendu par nature : le fork la construit. Un
+        # vestige aussi : le gabarit l'a retiré, un brain créé avant le garde.
         absentes = [n for n, v in entrees.items() if n != 'NIVEAUX.yml'
-                    and not (isinstance(v, dict) and (v.get('cree_par') or v.get('vue_de')))
+                    and not (isinstance(v, dict) and (v.get('cree_par') or v.get('vue_de')
+                                                      or v.get('niveau') == 'vestige'))
                     and n not in partent and not (rendu / n.rstrip('/')).exists()]
+        # Le vestige part : sans sa déclaration, un brain servi par le paquet créé avant la
+        # 3.6.5 voit `locks/` « non déclaré » et son doctor rougit (le laptop, 15/10).
+        vestiges = {n for n, v in yaml.safe_load((self.brain / 'NIVEAUX.yml').read_text(
+            encoding='utf-8'))['entrees'].items() if isinstance(v, dict) and v.get('niveau') == 'vestige'}
+        self.assertTrue(vestiges, 'la source déclare au moins un vestige — sinon ce témoin ne juge rien')
+        for n in sorted(vestiges):
+            self.assertEqual((entrees.get(n) or {}).get('niveau'), 'vestige', f'{n} : le vestige ne part pas')
         self.assertTrue(all(isinstance(entrees.get(n), dict) and entrees[n].get('cree_par')
                             for n in self.INSTALLE), "ce que l'installation crée porte `cree_par:`")
         # Et rien à la racine du rendu sans déclaration.

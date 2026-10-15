@@ -101,6 +101,8 @@ entrees:
   learning/:
     niveau: donnee
     versionne: depot-separe
+  locks/:
+    niveau: vestige
   MYSECRETS.example:
     niveau: programme
     indexe: non

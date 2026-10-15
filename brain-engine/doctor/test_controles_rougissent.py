@@ -34,6 +34,7 @@ Garanties :
     lock / absent         pas de kernel.lock ⇒ refus, pas un vert par défaut
     niveaux / non déclaré une entrée qui apparaît sans se déclarer est signalée
     niveaux / fantôme     une entrée déclarée et absente est signalée
+    niveaux / vestige     un vestige absent (le retrait fait) ou présent (à faire) ne rougit pas
     registre / hors cat.  un agent que le catalogue ignore est signalé
     registre / en retard  un catalogue qui n'est pas ce que `--emit` produirait
                           (description, statut, classification) rougit en
@@ -464,6 +465,7 @@ def main() -> int:
         niveaux.write_text(
             "version: 1\nniveaux:\n  programme: \"conçu, versionné\"\n"
             "  satellite: \"monté à côté\"\n  donnee: \"à l'utilisateur\"\n"
+            "  vestige: \"à retirer\"\n"
             f"entrees:\n{declare}\n", encoding="utf-8")
         git_init(base)
         garantie("niveaux / brain cohérent",
@@ -500,6 +502,19 @@ def main() -> int:
                            encoding="utf-8")
         garantie("niveaux / entrée fantôme",
                  joue("niveaux.py", base, "--check"), 1)
+        niveaux.write_text(vrai_niveaux, encoding="utf-8")
+
+        # Un vestige : la décision de retirer est prise. Absent, le geste est fait — pas un
+        # fantôme ; présent, il attend son geste — pas une dérive. Mesuré sur le laptop le
+        # 15/10 : `locks/`, retiré en 3.6.5, restait chez un brain créé avant.
+        niveaux.write_text(vrai_niveaux + '  "vieux/": vestige\n', encoding="utf-8")
+        garantie("niveaux / vestige absent du disque",
+                 joue("niveaux.py", base, "--check"), 0)
+        (base / "vieux").mkdir()
+        (base / "vieux" / ".gitkeep").write_text("", encoding="utf-8")
+        garantie("niveaux / vestige encore sur le disque",
+                 joue("niveaux.py", base, "--check"), 0)
+        shutil.rmtree(base / "vieux")
         niveaux.write_text(vrai_niveaux, encoding="utf-8")
 
         # ── manifests : une clé inconnue est une dérive, pas une extension ─
