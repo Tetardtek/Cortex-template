@@ -9,7 +9,7 @@ ordre: 1.5
 
 > Ton fork porte à la fois le programme (le gabarit) et ta mémoire (projets,
 > sessions, config). Une mise à jour **fusionne** les deux : git fait ce
-> travail. Kernel v3.6.6.
+> travail. Kernel v3.6.7.
 
 Cette page décrit la méthode tant que le gabarit se distribue comme un dépôt
 git : chaque version est un **tag** (`v2.3.3`…), posé par-dessus la précédente. <!-- docs-verite: permis -->
@@ -217,6 +217,8 @@ brain doctor                       # le verdict : son code de sortie
 
 - **`pipx upgrade` garde l'index** donné à `pipx install` : il n'y a pas à le
   redonner. `pipx list` dit la version installée.
+- **Le briefing te prévient** quand une version plus récente existe : une fois par jour,
+  `brain-maj.timer` lit cet index (sans jeton), et la ligne nomme les commandes.
 - **`brain init` relancé sur ton dossier** ne recrée rien de ce qui existe : ta
   config locale reste (seule sa ligne `kernel_version` suit la version reçue), tes
   données et tes satellites aussi — un modèle du gabarit ne se pose que dans un

@@ -12925,6 +12925,113 @@ class TestBrainMajChezLePaquet(unittest.TestCase):
         self.assertIn('aucun ancêtre commun', r.stdout)
 
 
+class TestMajDisponibleChezLePaquet(unittest.TestCase):
+    """Un brain servi par le paquet apprend qu'une version existe — par l'index de pipx.
+
+    Le timer lisait les tags d'un remote git, qu'un brain servi par le paquet n'a pas : il
+    notait « sans amont » et le briefing se taisait, à jamais. Joué contre un programme
+    installé à part FACTICE (la marque, le `pipx_metadata.json` du venv, `provenance.json`) et
+    un index PyPI jetable servi en 127.0.0.1 : jamais le vrai registre."""
+
+    SCRIPT = BRAIN_ROOT_PATH / 'scripts' / 'maj-disponible.py'
+
+    def setUp(self):
+        import http.server, threading, functools
+        self.tmp = Path(tempfile.mkdtemp(prefix='maj-paquet-dispo-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        venv = self.tmp / 'venv'
+        paquet = venv / 'lib' / 'python3.12' / 'site-packages' / 'brain_cortex'
+        self.prog = paquet / 'programme'
+        (self.prog / 'scripts').mkdir(parents=True)
+        shutil.copy(self.SCRIPT, self.prog / 'scripts' / 'maj-disponible.py')
+        (self.prog / '.cortex-programme').touch()
+        (venv / 'pyvenv.cfg').write_text('home = /usr/bin\n')
+        (paquet / 'provenance.json').write_text('{"nom": "brain-cortex", "version": "3.6.6", "tag": "v3.6.6"}')
+        self.venv = venv
+        self.data = self.tmp / 'MonBrain'
+        self.data.mkdir()
+        (self.data / 'brain-compose.yml').write_text('version: "3.6.6"\n')
+        self.etat = self.tmp / 'etat' / 'maj.json'
+        self.index = self.tmp / 'index'
+        (self.index / 'simple' / 'brain-cortex').mkdir(parents=True)
+        class Muet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+        self.serveur = http.server.ThreadingHTTPServer(
+            ('127.0.0.1', 0), functools.partial(Muet, directory=str(self.index)))
+        threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
+        self.addCleanup(self.serveur.server_close)
+        self.addCleanup(self.serveur.shutdown)
+        self.url = f'http://127.0.0.1:{self.serveur.server_address[1]}/simple/'
+
+    def _pipx(self, url):
+        args = ['--index-url', url, '--extra-index-url', 'https://pypi.org/simple'] if url else []
+        (self.venv / 'pipx_metadata.json').write_text(json.dumps(
+            {'main_package': {'package': 'brain-cortex', 'pip_args': args}}))
+
+    def _publie(self, *versions):
+        liens = ''.join(f'<a href="../../files/brain_cortex-{v}-py3-none-any.whl">brain_cortex-{v}-py3-none-any.whl</a>\n'
+                        for v in versions)
+        (self.index / 'simple' / 'brain-cortex' / 'index.html').write_text(f'<html><body>\n{liens}</body></html>\n')
+
+    def _run(self, *args):
+        env = dict(os.environ, BRAIN_ROOT=str(self.data), BRAIN_MAJ_ETAT=str(self.etat))
+        return subprocess.run([sys.executable, str(self.prog / 'scripts' / 'maj-disponible.py'), *args],
+                              env=env, capture_output=True, text=True, timeout=60)
+
+    def test_une_version_plus_recente_nomme_pipx(self):
+        self._pipx(self.url)
+        self._publie('3.6.5', '3.6.6', '3.6.7')
+        self.assertEqual(self._run().returncode, 0)
+        lu = self._run('--lire')
+        self.assertEqual(lu.returncode, 1, lu.stdout + lu.stderr)
+        self.assertEqual(len(lu.stdout.strip().splitlines()), 1)
+        self.assertIn('v3.6.7 est disponible', lu.stdout)
+        self.assertIn('tu es en 3.6.6', lu.stdout)
+        self.assertIn('pipx upgrade brain-cortex', lu.stdout)
+        self.assertIn('brain init', lu.stdout)
+
+    def test_a_jour_rien_ne_s_affiche(self):
+        self._pipx(self.url)
+        self._publie('3.6.5', '3.6.6')
+        self._run()
+        self.assertEqual(self._run('--lire').returncode, 0)
+        self.assertEqual(self._run('--lire').stdout, '')
+
+    def test_la_comparaison_est_numerique(self):
+        (self.venv / 'lib' / 'python3.12' / 'site-packages' / 'brain_cortex' / 'provenance.json').write_text(
+            '{"version": "3.6.9"}')
+        self._pipx(self.url)
+        self._publie('3.6.9', '3.6.10')
+        self._run()
+        self.assertIn('v3.6.10 est disponible', self._run('--lire').stdout)
+
+    def test_la_version_installee_est_celle_de_la_roue(self):
+        """`provenance.json` dit la version installée ; la config du brain peut retarder sur elle."""
+        (self.venv / 'lib' / 'python3.12' / 'site-packages' / 'brain_cortex' / 'provenance.json').write_text(
+            '{"version": "3.6.7"}')
+        self._pipx(self.url)
+        self._publie('3.6.6', '3.6.7')
+        self._run()
+        self.assertEqual(self._run('--lire').stdout, '')
+
+    def test_un_index_injoignable_n_est_pas_a_jour(self):
+        self.serveur.shutdown()
+        self.serveur.server_close()
+        self._pipx(self.url)
+        r = self._run()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.etat.read_text())['resultat'], 'injoignable')
+
+    def test_installe_sans_index_se_tait(self):
+        """Installé depuis un fichier : pipx n'a gardé aucun index — rien à comparer, le dire au journal."""
+        self._pipx(None)
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('index', r.stdout)
+        self.assertEqual(self._run('--lire').stdout, '')
+
+
 class TestMajDisponible(unittest.TestCase):
     """Le boot dit qu'une version plus récente existe — et laisse chacun libre.
 

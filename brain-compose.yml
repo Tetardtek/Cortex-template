@@ -2,7 +2,7 @@
 # Versionné dans le kernel. Schema + feature flags + registre agents.
 # Géré par l'agent brain-compose — ne pas éditer manuellement.
 
-version: "3.6.6"
+version: "3.6.7"
 
 # ---
 # Ownership — kerneluser
@@ -262,3 +262,6 @@ changelog:
   - version: "3.6.6"
     date: "2026-10-15"
     notes: "Le doctor d un brain servi par le paquet reste vert apres la mise a jour. La v3.6.5 a retire locks/ de NIVEAUX.yml ; un brain servi par le paquet, cree avant elle, garde le locks/.gitkeep de son premier brain init, et son doctor rougissait sur niveaux declares (sur le disque, non declarees : locks/). locks/ revient en vestige - la decision de retirer est prise, le geste reste a faire - et part dans le NIVEAUX.yml du gabarit ; un vestige absent du disque n est plus un fantome : un brain neuf, qui ne l a jamais eu, reste vert. Le dossier est vide et peut etre retire quand on veut. Un fork clone par git n etait pas touche. Mise a jour depuis la v3.6.5 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."
+  - version: "3.6.7"
+    date: "2026-10-15"
+    notes: "Un brain servi par le paquet apprend qu une version plus recente existe. Le timer des versions (brain-maj.timer) lisait les tags d un remote git, qu un brain servi par le paquet n a pas : il notait sans amont, et le briefing se taisait a jamais. Chez un programme installe a part, il lit maintenant l index que pipx a garde de l installation, sans jeton, et la version de la roue ; la ligne du briefing nomme pipx upgrade brain-cortex, puis brain init <nom> <dossier>. Installe depuis un fichier, sans index garde : le briefing se tait, et le journal du timer dit pourquoi. Un fork clone par git garde son remote. Mise a jour depuis la v3.6.6 : un fork clone par git, brain maj, brain maj --appliquer, puis brain doctor ; un brain servi par le paquet, pipx upgrade brain-cortex, brain init <nom> <dossier>, puis brain doctor."

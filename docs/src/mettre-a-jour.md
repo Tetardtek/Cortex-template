@@ -216,6 +216,8 @@ brain doctor                       # le verdict : son code de sortie
 
 - **`pipx upgrade` garde l'index** donné à `pipx install` : il n'y a pas à le
   redonner. `pipx list` dit la version installée.
+- **Le briefing te prévient** quand une version plus récente existe : une fois par jour,
+  `brain-maj.timer` lit cet index (sans jeton), et la ligne nomme les commandes.
 - **`brain init` relancé sur ton dossier** ne recrée rien de ce qui existe : ta
   config locale reste (seule sa ligne `kernel_version` suit la version reçue), tes
   données et tes satellites aussi — un modèle du gabarit ne se pose que dans un

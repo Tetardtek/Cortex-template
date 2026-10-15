@@ -25,6 +25,10 @@ L'amont est le remote que la page « Se mettre à jour » fait déclarer :
 Sans lui — le brain source, ou un fork qui ne suit pas l'amont — rien ne
 s'affiche. La vérification le dit dans son journal, le briefing se tait.
 
+Un brain servi par le paquet n'a pas cet amont, par construction : sa source
+est l'index que pipx a gardé de l'installation, et la ligne du briefing nomme
+`pipx upgrade brain-cortex`, puis `brain init`.
+
 ── Jamais sur le chemin du boot ───────────────────────────────────────────
 
 `--lire` n'appelle jamais git ni le réseau : il lit l'état qu'un passage
@@ -94,6 +98,74 @@ def version_locale(brain: Path) -> tuple[int, int, int] | None:
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+# ── Le brain servi par le paquet : l'index de pipx, pas un remote git ──────
+#
+# Installé par pipx, le programme vit à part (la marque `.cortex-programme`) et le dossier
+# du brain n'a pas d'amont git, par construction : le passage notait « sans amont », et le
+# briefing se taisait à jamais. La source des versions est alors l'index que pipx a gardé
+# de l'installation (`pipx_metadata.json` du venv, son `--index-url`) — le registre, lu
+# sans jeton — et la version installée, celle que la roue déclare (`provenance.json`).
+
+PAQUET = re.compile(r"brain[_-]cortex-(\d+)\.(\d+)\.(\d+)[-.]")
+
+
+def programme_a_part() -> Path | None:
+    ici = Path(__file__).resolve().parent.parent
+    return ici if (ici / ".cortex-programme").exists() else None
+
+
+def venv_de(programme: Path) -> Path | None:
+    for d in programme.parents:
+        if (d / "pyvenv.cfg").is_file():
+            return d
+    return None
+
+
+def index_du_paquet(programme: Path) -> str | None:
+    venv = venv_de(programme)
+    try:
+        meta = json.loads((venv / "pipx_metadata.json").read_text(encoding="utf-8")) if venv else {}
+    except (OSError, ValueError):
+        return None
+    args = list((meta.get("main_package") or {}).get("pip_args") or [])
+    for i, a in enumerate(args):
+        if a == "--index-url" and i + 1 < len(args):
+            return args[i + 1]
+        if a.startswith("--index-url="):
+            return a.split("=", 1)[1]
+    return None
+
+
+def version_du_paquet(programme: Path, brain: Path):
+    try:
+        v = json.loads((programme.parent / "provenance.json").read_text(encoding="utf-8")).get("version", "")
+        return tuple(int(x) for x in v.split("."))
+    except (OSError, ValueError, AttributeError):
+        return version_locale(brain)
+
+
+def verifier_paquet(programme: Path, brain: Path, maintenant: datetime) -> dict:
+    """Le passage du timer chez le paquet : lit la page du projet sur l'index, rien d'autre."""
+    import urllib.request
+    locale = version_du_paquet(programme, brain)
+    etat = {"date": maintenant.strftime("%Y-%m-%dT%H:%M:%SZ"), "locale": texte(locale), "source": "paquet"}
+    index = index_du_paquet(programme)
+    if not index:
+        return {**etat, "resultat": "sans index"}
+    url = index.rstrip("/") + "/brain-cortex/"
+    try:
+        with urllib.request.urlopen(url, timeout=DELAI) as r:
+            page = r.read().decode("utf-8", "replace")
+    except Exception as e:                                  # noqa: BLE001 — tout échec est « injoignable »
+        return {**etat, "resultat": "injoignable", "detail": f"{url} : {e}"[:200]}
+    versions = [tuple(int(x) for x in m.groups()) for m in PAQUET.finditer(page)]
+    if not versions:
+        return {**etat, "resultat": "sans version", "succes": etat["date"]}
+    derniere = max(versions)
+    return {**etat, "succes": etat["date"], "amont": texte(derniere),
+            "resultat": "plus récente" if locale and derniere > locale else "à jour"}
+
+
 def texte(v) -> str:
     return ".".join(str(x) for x in v) if v else "?"
 
@@ -150,9 +222,12 @@ def lire_etat(chemin: Path) -> dict | None:
 def lire(chemin: Path, maintenant: datetime) -> tuple[int, str]:
     """Le briefing : aucun appel à git, aucun réseau."""
     etat = lire_etat(chemin)
-    if not etat or etat.get("resultat") in (None, "sans amont"):
+    if not etat or etat.get("resultat") in (None, "sans amont", "sans index"):
         return 0, ""
     if etat["resultat"] == "plus récente":
+        if etat.get("source") == "paquet":
+            return 1, (f"🆕 v{etat['amont']} est disponible (tu es en {etat['locale']}) — "
+                       "quand tu veux : pipx upgrade brain-cortex, puis brain init <nom> <dossier>")
         return 1, (f"🆕 v{etat['amont']} est disponible (tu es en {etat['locale']}) — "
                    f"quand tu veux : {PAGE}")
     succes = etat.get("succes")
@@ -173,12 +248,14 @@ def main() -> int:
         if ligne:
             print(ligne)
         return code
-    etat = verifier(brain, remote, maintenant)
+    programme = programme_a_part()
+    etat = verifier_paquet(programme, brain, maintenant) if programme else verifier(brain, remote, maintenant)
     ecrire(chemin, etat, lire_etat(chemin))
     dit = {
         "sans amont": f"pas de remote `{remote}` — rien à comparer (le brain source, ou un fork qui ne suit pas l'amont)",
+        "sans index": "servi par le paquet, sans index gardé par pipx (installé depuis un fichier ?) — rien à comparer",
         "injoignable": f"amont injoignable : {etat.get('detail', '')}",
-        "sans version": "l'amont ne porte aucun tag vX.Y.Z",
+        "sans version": "l'amont ne porte aucune version vX.Y.Z",
         "à jour": f"à jour : {etat['locale']} (amont {etat.get('amont')})",
         "plus récente": f"v{etat.get('amont')} disponible — tu es en {etat['locale']}",
     }[etat["resultat"]]

@@ -3,12 +3,12 @@
 # Régénérer : bash scripts/kernel-lock-gen.sh
 # Vérifier  : bash scripts/kernel-isolation-check.sh
 
-kernel_version: "3.6.6"
-generated_at: "2026-10-15T22:56"
+kernel_version: "3.6.7"
+generated_at: "2026-10-15T23:57"
 
 files:
   KERNEL.md: d0691b686e45fb21099ed5106eddafbb9efa552a81f9d25c6f8fee02fbfdf249
-  brain-compose.yml: 089648471d53709050395ce0b25224357c0160ff4b80cefd976877cb92f97045
+  brain-compose.yml: c1a41746026ad4427ec39cfb253b31b07e27fe9c2093ca89575a54285ebdca1a
   brain-constitution.md: 496aaab6144a51a3a0ad756fbf293ecd755fc2ceb7c650c92fd9a131d3cb9f43
   noyau/agents/agent-review.md: 0063b44ac4de78e722e58a97e64155acc00808b4ea126fa6c64bab03e724a977
   noyau/agents/AGENTS.md: 453361f1ea4b15606de84007f2784e7010fcdc1a85235c1e59a3a96c3880248e
@@ -108,7 +108,7 @@ files:
   scripts/lib/reglages-doctor.sh: 5596f14627ae045fb1a1d9cd5a45472e1178cee4e9f24eb251a7fba8fedf8419
   scripts/lib/satellites-taire.sh: 38c3909bd43cd132d1f2a21e84765ff3f42dbefe767b5cc1194405d5ff9598ac
   scripts/lib/secrets-semis.sh: 79897641c9bd69b3f8178ed7542cfa3775dbd60b6151d08093e27e889b2c72f2
-  scripts/maj-disponible.py: 97f6537cb2ee7c2ae36931ffe9b17f043eef2bb1bc1eb942f94200c1d9d78c16
+  scripts/maj-disponible.py: 8e85db4e9b0414de07faa900b3dd8021e5fb29a51dc0a2052823793e04a7ca46
   scripts/maj.py: 8779f8c9ed3dff11d356cd9b2df7e8df87b16332a4c41116fb88fa93059e37fa
   scripts/migrer.py: 3cf6d0f42a5a4d3b9755a85b1e7f7eb0829b429d07b46b496a3955eb0c40902f
   scripts/ollama-setup.sh: b7a0004a0c2a70a17ee4a6a48300d2e3c2270c266f19522c174543afbcf07d2e
